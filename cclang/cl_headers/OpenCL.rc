@@ -1,0 +1,28 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+1 TEXTINCLUDE
+BEGIN
+    "resource.h\0"
+END
+
+//
+// Module with OpenCL C declarations with corresponding headers
+//
+
+OPENCL_C_H                PCM   "opencl-c.h"
+OPENCL_C_COMMON_H         PCM   "opencl-c-common.h"
+OPENCL_C_20_H             PCM   "opencl-c-20.h"
+OPENCL_C_PLATFORM_H       PCM   "opencl-c-platform.h"
+OPENCL_C_PLATFORM_12_H    PCM   "opencl-c-platform-12.h"
+OPENCL_C_PLATFORM_20_H    PCM   "opencl-c-platform-20.h"
+OPENCL_C_INTEL_H          PCM   "opencl-c-intel.h"
+
+OPENCL_C_COMMON_PCM     PCM   "opencl-c-common.pcm"
+OPENCL_C_12_SPIR_PCM    PCM   "opencl-c-12-spir.pcm"
+OPENCL_C_20_SPIR_PCM    PCM   "opencl-c-20-spir.pcm"
+OPENCL_C_12_SPIR64_PCM  PCM   "opencl-c-12-spir64.pcm"
+OPENCL_C_20_SPIR64_PCM  PCM   "opencl-c-20-spir64.pcm"
+
+OPENCL_C_MODULE_MAP       PCM   "module.modulemap"

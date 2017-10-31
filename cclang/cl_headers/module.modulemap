@@ -1,0 +1,28 @@
+module common {
+  header "opencl-c-common.h"
+  export *
+}
+module cl12spir {
+  header "opencl-c-intel.h"
+  header "opencl-c-platform-12.h"
+  export *
+  use common
+}
+module cl20spir {
+  header "opencl-c-intel.h"
+  header "opencl-c-platform-20.h"
+  export *
+  use common
+}
+module cl12spir64 {
+  header "opencl-c-intel.h"
+  header "opencl-c-platform-12.h"
+  export *
+  use common
+}
+module cl20spir64 {
+  header "opencl-c-intel.h"
+  header "opencl-c-platform-20.h"
+  export *
+  use common
+}
