@@ -26,7 +26,8 @@
 
 cmake_minimum_required(VERSION 3.4.3)
 
-set(LIB_NAME cclang)
+set(CCLANG_LIB_NAME cclang)
+set(CCLANG_LIB_NAME ${CCLANG_LIB_NAME} PARENT_SCOPE)
 
 if(NOT PATCH)
     find_program(PATCH NAMES patch)
@@ -87,6 +88,7 @@ set(CCLANG_SOURCE_URL ${CCLANG_SOURCE_DIR})
 
 message(STATUS "LLVM_SOURCE_URL    = ${LLVM_SOURCE_URL}")
 message(STATUS "CLANG_SOURCE_URL   = ${CLANG_SOURCE_URL}")
+message(STATUS "CCLANG_LIB_NAME    = ${CCLANG_LIB_NAME}")
 message(STATUS "CCLANG_SOURCE_URL  = ${CCLANG_SOURCE_URL}")
 message(STATUS "CCLANG_BUILD_TYPE  = ${CMAKE_BUILD_TYPE}")
 message(STATUS "CCLANG_INSTALL_DIR = ${CCLANG_INSTALL_DIR}")
@@ -107,7 +109,7 @@ list(SORT CLANG_PATCH_FILES)
 include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
 
 
-ExternalProject_Add(${LIB_NAME}
+ExternalProject_Add(${CCLANG_LIB_NAME}
     URL ${LLVM_SOURCE_URL}
     PREFIX src
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/src
@@ -117,23 +119,23 @@ ExternalProject_Add(${LIB_NAME}
                ${CCLANG_OPTIONS}
 )
 
-ExternalProject_Add_Step(${LIB_NAME} "add_clang"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CLANG_SOURCE_URL} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${LIB_NAME}/tools/clang
+ExternalProject_Add_Step(${CCLANG_LIB_NAME} "add_clang"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CLANG_SOURCE_URL} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/tools/clang
             DEPENDEES download
-            COMMENT "Copying ${CLANG_SOURCE_URL} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${LIB_NAME}/tools/clang"
+            COMMENT "Copying ${CLANG_SOURCE_URL} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/tools/clang"
             )
 
-ExternalProject_Add_Step(${LIB_NAME} "add_cclang"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CCLANG_SOURCE_URL} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${LIB_NAME}/projects/cclang
+ExternalProject_Add_Step(${CCLANG_LIB_NAME} "add_cclang"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CCLANG_SOURCE_URL} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang
             DEPENDEES add_clang
-            COMMENT "Copying ${CCLANG_SOURCE_URL} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${LIB_NAME}/projects/cclang"
+            COMMENT "Copying ${CCLANG_SOURCE_URL} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang"
             )
 
-ExternalProject_Add_Step(${LIB_NAME} "add_opencl_headers"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${OCL_HEADERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${LIB_NAME}/projects/cclang
+ExternalProject_Add_Step(${CCLANG_LIB_NAME} "add_opencl_headers"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${OCL_HEADERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang
             DEPENDEES add_cclang
             DEPENDERS patch
-            COMMENT "Copying ${OCL_HEADERS_DIR} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${LIB_NAME}/projects/cclang"
+            COMMENT "Copying ${OCL_HEADERS_DIR} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang"
             )
 
 # Apply customization patches to LLVM if any.
@@ -141,8 +143,8 @@ set(i 1)
 set(patch_dependee "patch")
 foreach(patch_file ${LLVM_PATCH_FILES})
 
-    ExternalProject_Add_Step(${LIB_NAME} "patch${i}"
-            COMMAND ${PATCH} -d "${CMAKE_CURRENT_BINARY_DIR}/src/src/${LIB_NAME}" -p1 < ${patch_file}
+    ExternalProject_Add_Step(${CCLANG_LIB_NAME} "patch${i}"
+            COMMAND ${PATCH} -d "${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}" -p1 < ${patch_file}
             DEPENDEES ${patch_dependee}
             DEPENDERS configure
             COMMENT "Apply ${patch_file} file"
@@ -156,8 +158,8 @@ endforeach()
 # Apply customization patches to CLANG if any.
 foreach(patch_file ${CLANG_PATCH_FILES})
 
-    ExternalProject_Add_Step(${LIB_NAME} "patch${i}"
-            COMMAND ${PATCH} -d "${CMAKE_CURRENT_BINARY_DIR}/src/src/${LIB_NAME}/tools/clang" -p1 < ${patch_file}
+    ExternalProject_Add_Step(${CCLANG_LIB_NAME} "patch${i}"
+            COMMAND ${PATCH} -d "${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/tools/clang" -p1 < ${patch_file}
             DEPENDEES ${patch_dependee}
             DEPENDERS configure
             COMMENT "Apply ${patch_file} file"
@@ -167,4 +169,15 @@ foreach(patch_file ${CLANG_PATCH_FILES})
     math(EXPR i "${i} + 1")
 
 endforeach()
+
+if(CCLANG_INSTALL_ARTIFACTS_DIR)
+    ExternalProject_Add_Step(${CCLANG_LIB_NAME} "copy_artifacts"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${CCLANG_INSTALL_ARTIFACTS_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E copy "${CCLANG_INSTALL_DIR}/bin/clang-4.0" ${CCLANG_INSTALL_ARTIFACTS_DIR}/clang
+            COMMAND ${CMAKE_COMMAND} -E copy "${CCLANG_INSTALL_DIR}/lib/libcommon_clang.so" ${CCLANG_INSTALL_ARTIFACTS_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CCLANG_INSTALL_DIR}/include/cclang/" ${CCLANG_INSTALL_ARTIFACTS_DIR}
+            DEPENDEES install
+            COMMENT "Copying common clang artifacts from ${CCLANG_INSTALL_DIR} to ${CCLANG_INSTALL_ARTIFACTS_DIR}"
+            )
+endif()
 
