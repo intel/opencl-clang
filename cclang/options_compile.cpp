@@ -228,6 +228,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   // marked with inline keyword.
   effectiveArgs.push_back("-fgnu89-inline");
 
+  // Do not support all extensions by default. Support for a particular
+  // extension should be enabled by passing a '-cl-ext' option in pszOptionsEx.
+  effectiveArgs.push_back("-cl-ext=-all");
+
   // add the extended options verbatim
   std::back_insert_iterator<ArgsVector> it(std::back_inserter(effectiveArgs));
   quoted_tokenize(it, pszOptionsEx, " \t", '"', '\x00');
