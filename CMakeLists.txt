@@ -33,17 +33,134 @@ if(NOT PATCH)
     find_program(PATCH NAMES patch)
 endif()
 
-if(NOT CLANG)
-    find_program(CLANG NAMES clang-4.0)
+
+# function version_from_exe - Decode the output of "${exefile} --version".
+# The expected version number format is three or fewer decimal values
+# separated by periods.
+#
+# The caller passes in variable names to be set by this function:
+# - _ver_full - Full version string, like "3" or "3.8" or "3.8.5"
+# - _vermajor - major version - first field
+# - _verminor - minor version - second field
+# - _vermicro - "micro" version - third field
+#
+# Fields not present are returned as blank.
+#
+# Only the first line from "exefile --version" is examined.
+#
+# Processing:
+# - All text in parentheses is discard.
+# - Discarded: The first word and, if present, "version".
+# - The first remaining word is considered the version number.
+#
+# Example version output (first line only):
+#
+# Fedora example:
+##  $ clang --version
+##  clang version 5.0.1 (tags/RELEASE_501/final)
+#
+##  $ gcc --version
+##  gcc (GCC) 7.2.1 20170915 (Red Hat 7.2.1-2)
+#
+# Ubuntu example:
+##  $ clang --version
+##  clang version 3.8.0-2ubuntu4 (tags/RELEASE_380/final)
+#
+##  $ gcc --version
+##  gcc (Ubuntu 5.4.0-6ubuntu1~16.04.6) 5.4.0 20160609
+
+function (version_from_exe exefile _ver_full _vermajor _verminor _vermicro)
+    execute_process(
+        COMMAND "${exefile}" "--version"
+        RESULT_VARIABLE var_result
+        OUTPUT_VARIABLE var_stdout
+        ERROR_VARIABLE var_stderr
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE
+        )
+    if(NOT var_result EQUAL 0)
+        message("version number request failed: ${var_result}: \"${exefile}\"")
+        if(NOT "${var_stderr}" STREQUAL "")
+            message("version request: \"${var_stderr}\"")
+        endif()
+        set(${_ver_full} "")
+        set(${_vermajor} "")
+        set(${_verminor} "")
+        set(${_vermicro} "")
+        return()
+    endif()
+
+    # Discard all but first line
+    string(FIND "${var_stdout}" "\n" nl)
+    string(SUBSTRING "${var_stdout}" 0 ${nl} var_stdout)
+
+    # Remove all parenthesized items.
+    string(REGEX REPLACE "\\([^)]+\\)" "" var_stdout "${var_stdout}")
+
+    # Remove first word and optional following "version"
+    string(REGEX REPLACE "^[A-Za-z0-9_]+( +version +)? +" "" var_stdout "${var_stdout}")
+
+    string(REGEX MATCH "^([0-9]+)((\\.([0-9]+))(\\.([0-9]+))?)?" var_stdout "${var_stdout}")
+    #                    (      )((   (      ))(   (      )) )
+    #                    1       23   4        5   6
+
+    set("${_ver_full}" "${CMAKE_MATCH_0}" PARENT_SCOPE)
+    set("${_vermajor}" "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    set("${_verminor}" "${CMAKE_MATCH_4}" PARENT_SCOPE)
+    set("${_vermicro}" "${CMAKE_MATCH_6}" PARENT_SCOPE)
+endfunction()
+
+
+if(NOT DEFINED CLANG)
+    find_program(CLANG NAMES clang)
     if("${CLANG}" STREQUAL "CLANG-NOTFOUND" )
-        message(FATAL_ERROR " clang-4.0 not found")
+        unset(CLANG CACHE)
+    else()
+        version_from_exe("${CLANG}" "clang_ver_full" "clang_ver_major" "clang_ver_minor" "clang_ver_micro")
+
+        if("${clang_ver_major}" STREQUAL "")
+            unset(CLANG CACHE)
+        elseif("${clang_ver_major}" LESS 4)
+            unset(CLANG CACHE)
+        endif()
     endif()
 endif()
 
-if(NOT CLANGXX)
+if(NOT DEFINED CLANGXX)
+    find_program(CLANGXX NAMES clang++)
+    if("${CLANGXX}" STREQUAL "CLANGXX-NOTFOUND" )
+        unset(CLANGXX CACHE)
+    else()
+        version_from_exe("${CLANGXX}" "clangxx_ver_full" "clangxx_ver_major" "clangxx_ver_minor" "clangxx_ver_micro")
+
+        if("${clangxx_ver_major}" STREQUAL "")
+            unset(CLANGXX CACHE)
+        elseif("${clangxx_ver_major}" LESS 4)
+            unset(CLANGXX CACHE)
+        endif()
+    endif()
+endif()
+
+if((NOT DEFINED CLANG ) OR (NOT DEFINED CLANGXX ))
+    if((DEFINED CLANG ) OR (DEFINED CLANGXX ))
+        message(SEND_ERROR "${CMAKE_CURRENT_LIST_FILE}: CLANG = \"${CLANG}\"")
+        message(SEND_ERROR "${CMAKE_CURRENT_LIST_FILE}: CLANGXX = \"${CLANGXX}\"")
+        message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE}: inconsistent CLANG vs CLANGXX")
+    endif()
+endif()
+
+
+if(NOT DEFINED CLANG)
+    find_program(CLANG NAMES clang-4.0)
+    if("${CLANG}" STREQUAL "CLANG-NOTFOUND" )
+        message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE}: clang-4.0 not found")
+    endif()
+endif()
+
+if(NOT DEFINED CLANGXX)
     find_program(CLANGXX NAMES clang++-4.0)
     if("${CLANGXX}" STREQUAL "CLANGXX-NOTFOUND" )
-        message(FATAL_ERROR " clang++-4.0 not found")
+        message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE}: clang++-4.0 not found")
     endif()
 endif()
 
