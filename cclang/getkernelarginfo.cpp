@@ -25,6 +25,8 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/Mutex.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 #include <string>
@@ -39,6 +41,8 @@ struct CachedArgInfo {
   cl_kernel_arg_access_qualifier accessQualifier;
   cl_kernel_arg_type_qualifier typeQualifier;
 };
+
+static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > kernelArgInfoMutex;
 
 class OCLFEKernelArgInfo : public IOCLFEKernelArgInfo {
 public:
@@ -78,6 +82,10 @@ extern "C" CC_DLL_EXPORT int GetKernelArgInfo(const void *pBin,
                                               IOCLFEKernelArgInfo **ppResult) {
   // Lazy initialization
   CommonClangInitialize();
+
+  // LLVM doesn't guarantee thread safety,
+  // therefore we serialize execution of LLVM code.
+  llvm::sys::SmartScopedLock<true> kernelArgInfoGuard {*kernelArgInfoMutex};
 
   try {
     std::unique_ptr<llvm::MemoryBuffer> pBinBuff(

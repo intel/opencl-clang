@@ -27,10 +27,15 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/Mutex.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace Intel::OpenCL::ClangFE;
 using namespace llvm;
+
+static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > linkMutex;
+static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > linkOptionsMutex;
 
 void CommonClangInitialize();
 
@@ -291,6 +296,10 @@ OCLFEBinaryResult *LinkInternal(const void **pInputBinaries,
       return pResult.release();
     }
 
+    // LLVM doesn't guarantee thread safety,
+    // therefore we serialize execution of LLVM code.
+    llvm::sys::SmartScopedLock<true> linkGuard {*linkMutex};
+
     // Parse options
     ClangLinkOptions optionsParser;
     optionsParser.processOptions(pszOptions);
@@ -387,6 +396,10 @@ extern "C" CC_DLL_EXPORT int Link(const void **pInputBinaries,
 extern "C" CC_DLL_EXPORT bool CheckLinkOptions(const char *pszOptions,
                                                char *pszUnknownOptions,
                                                size_t uiUnknownOptionsSize) {
+  // LLVM doesn't guarantee thread safety,
+  // therefore we serialize execution of LLVM code.
+  llvm::sys::SmartScopedLock<true> linkOptionsGuard {*linkOptionsMutex};
+
   try {
     ClangLinkOptions optionsParser;
     return optionsParser.checkOptions(pszOptions, pszUnknownOptions,

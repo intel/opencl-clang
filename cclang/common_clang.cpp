@@ -76,6 +76,8 @@ static volatile bool lazyCCInit =
     true; // the flag must be 'volatile' to prevent caching in a CPU register
 static llvm::sys::Mutex lazyCCInitMutex;
 
+static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > compileMutex;
+
 void CommonClangTerminate() { llvm::llvm_shutdown(); }
 
 // This function mustn't be invoked from a static object constructor,
@@ -182,6 +184,10 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
   try {
     std::unique_ptr<OCLFEBinaryResult> pResult(new OCLFEBinaryResult());
+
+    // LLVM doesn't guarantee thread safety,
+    // therefore we serialize execution of LLVM code.
+    llvm::sys::SmartScopedLock<true> compileGuard {*compileMutex};
 
     // Parse options
     CompileOptionsParser optionsParser(pszOpenCLVer);

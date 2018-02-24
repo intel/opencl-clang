@@ -19,9 +19,11 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "common_clang.h"
 #include "options.h"
 
+#include "clang/Driver/Options.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
-#include "clang/Driver/Options.h"
+#include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/Mutex.h"
 
 #include <sstream>
 
@@ -33,6 +35,8 @@ Copyright (c) Intel Corporation (2009-2017).
 #undef PREFIX
 
 using namespace llvm::opt;
+
+static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > compileOptionsMutex;
 
 static const OptTable::Info ClangOptionsInfoTable[] = {
 #define PREFIX(NAME, VALUE)
@@ -370,6 +374,10 @@ std::string CompileOptionsParser::getEffectiveOptionsAsString() const {
 extern "C" CC_DLL_EXPORT bool CheckCompileOptions(const char *pszOptions,
                                                   char *pszUnknownOptions,
                                                   size_t uiUnknownOptionsSize) {
+  // LLVM doesn't guarantee thread safety,
+  // therefore we serialize execution of LLVM code.
+  llvm::sys::SmartScopedLock<true> compileOptionsGuard {*compileOptionsMutex};
+
   try {
     CompileOptionsParser optionsParser("200");
     return optionsParser.checkOptions(pszOptions, pszUnknownOptions,
