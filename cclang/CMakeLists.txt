@@ -110,9 +110,10 @@ else (WIN32)
 endif (WIN32)
 
 # set that name of the main output file as a target name
-set( TARGET_NAME common_clang${BUILD_PLATFORM} )
-
-set(COMMON_CLANG_LIBRARY_NAME ${TARGET_NAME})
+if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
+    message(FATAL_ERROR "COMMON_CLANG_LIBRARY_NAME not set!")
+endif()
+set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
 #
 # TblGen the options include file
