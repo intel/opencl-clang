@@ -111,7 +111,7 @@ endif (WIN32)
 
 # set that name of the main output file as a target name
 if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
-    message(FATAL_ERROR "COMMON_CLANG_LIBRARY_NAME not set!")
+    set(COMMON_CLANG_LIBRARY_NAME common_clang)
 endif()
 set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
