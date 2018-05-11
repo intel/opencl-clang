@@ -179,16 +179,16 @@ set(CCLANG_OPTIONS
     "-DCOMMON_CLANG_LIBRARY_NAME:STRING=${COMMON_CLANG_LIBRARY_NAME}"
 )
 
-if(NOT LLVM_SOURCE_DIR)
-    set(LLVM_SOURCE_DIR   "${CMAKE_CURRENT_SOURCE_DIR}/../llvm_source")
+if(NOT LLVM_STOCK_SOURCE_DIR)
+    set(LLVM_STOCK_SOURCE_DIR   "${CMAKE_CURRENT_SOURCE_DIR}/../llvm_source")
 endif()
 
 if(NOT CLANG_SOURCE_DIR)
     set(CLANG_SOURCE_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/../clang_source")
 endif()
 
-if(NOT OCL_HEADERS_DIR)
-    set(OCL_HEADERS_DIR   "${CMAKE_CURRENT_SOURCE_DIR}/../opencl_headers")
+if(NOT CCLANG_OCL_HEADERS_DIR)
+    set(CCLANG_OCL_HEADERS_DIR   "${CMAKE_CURRENT_SOURCE_DIR}/../opencl_headers")
 endif()
 
 set (CCLANG_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cclang")
@@ -197,10 +197,10 @@ if(NOT CCLANG_INSTALL_DIR)
     set(CCLANG_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install")
 endif()
 
-# Use LLVM sources stored at LLVM_SOURCE_DIR.
-set(LLVM_SOURCE_URL ${LLVM_SOURCE_DIR})
+# Use LLVM sources stored at LLVM_STOCK_SOURCE_DIR.
+set(LLVM_STOCK_SOURCE_URL ${LLVM_STOCK_SOURCE_DIR})
 # Also tar archive with stock/pure LLVM sources can be used. Just specify the path ...
-# set(LLVM_SOURCE_URL "${CMAKE_CURRENT_SOURCE_DIR}/llvm-4.0.0.src.tar.xz")
+# set(LLVM_STOCK_SOURCE_URL "${CMAKE_CURRENT_SOURCE_DIR}/llvm-4.0.0.src.tar.xz")
 
 # Use CLANG sources stored at CLANG_SOURCE_DIR.
 set(CLANG_SOURCE_URL ${CLANG_SOURCE_DIR})
@@ -208,13 +208,14 @@ set(CLANG_SOURCE_URL ${CLANG_SOURCE_DIR})
 # Use CCLANG sources stored at CCLANG_SOURCE_DIR
 set(CCLANG_SOURCE_URL ${CCLANG_SOURCE_DIR})
 
-message(STATUS "LLVM_SOURCE_URL    = ${LLVM_SOURCE_URL}")
-message(STATUS "CLANG_SOURCE_URL   = ${CLANG_SOURCE_URL}")
-message(STATUS "CCLANG_LIB_NAME    = ${CCLANG_LIB_NAME}")
-message(STATUS "CCLANG_SOURCE_URL  = ${CCLANG_SOURCE_URL}")
-message(STATUS "CCLANG_BUILD_TYPE  = ${CMAKE_BUILD_TYPE}")
-message(STATUS "CCLANG_INSTALL_DIR = ${CCLANG_INSTALL_DIR}")
-message(STATUS "CCLANG_OPTIONS     = ${CCLANG_OPTIONS}")
+message(STATUS "LLVM_SOURCE_URL        = ${LLVM_STOCK_SOURCE_URL}")
+message(STATUS "CLANG_SOURCE_URL       = ${CLANG_SOURCE_URL}")
+message(STATUS "CCLANG_LIB_NAME        = ${CCLANG_LIB_NAME}")
+message(STATUS "CCLANG_SOURCE_URL      = ${CCLANG_SOURCE_URL}")
+message(STATUS "CCLANG_OCL_HEADERS_DIR = ${CCLANG_OCL_HEADERS_DIR}")
+message(STATUS "CCLANG_BUILD_TYPE      = ${CMAKE_BUILD_TYPE}")
+message(STATUS "CCLANG_INSTALL_DIR     = ${CCLANG_INSTALL_DIR}")
+message(STATUS "CCLANG_OPTIONS         = ${CCLANG_OPTIONS}")
 
 
 # Customization patches will be applied to LLVM if present.
@@ -232,7 +233,7 @@ include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
 
 
 ExternalProject_Add(${CCLANG_LIB_NAME}
-    URL ${LLVM_SOURCE_URL}
+    URL ${LLVM_STOCK_SOURCE_URL}
     PREFIX src
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/src
     CMAKE_ARGS -G ${CMAKE_GENERATOR}
@@ -254,10 +255,10 @@ ExternalProject_Add_Step(${CCLANG_LIB_NAME} "add_cclang"
             )
 
 ExternalProject_Add_Step(${CCLANG_LIB_NAME} "add_opencl_headers"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${OCL_HEADERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CCLANG_OCL_HEADERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang
             DEPENDEES add_cclang
             DEPENDERS patch
-            COMMENT "Copying ${OCL_HEADERS_DIR} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang"
+            COMMENT "Copying ${CCLANG_OCL_HEADERS_DIR} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang"
             )
 
 # Apply customization patches to LLVM if any.
