@@ -207,7 +207,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
         ir_ostream(new llvm::raw_svector_ostream(pResult->getIRBufferRef()));
     // Set buffers
     // CompilerInstance takes ownership over output stream
-    compiler->SetOutputStream(std::move(ir_ostream));
+    compiler->setOutputStream(std::move(ir_ostream));
 
     compiler->setDiagnostics(&*Diags);
 

@@ -29,7 +29,7 @@ Copyright (c) Intel Corporation (2009-2017).
 
 #define PREFIX(NAME, VALUE) const char *const NAME[] = VALUE;
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
-               HELPTEXT, METAVAR)
+               HELPTEXT, METAVAR, VALUES)
 #include "opencl_clang_options.inc"
 #undef OPTION
 #undef PREFIX
@@ -41,7 +41,7 @@ static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > compileOptionsMutex;
 static const OptTable::Info ClangOptionsInfoTable[] = {
 #define PREFIX(NAME, VALUE)
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
-               HELPTEXT, METAVAR)                                              \
+               HELPTEXT, METAVAR, VALUES)                                      \
   {                                                                            \
     PREFIX, NAME, HELPTEXT, METAVAR, OPT_COMPILE_##ID,                         \
         llvm::opt::Option::KIND##Class, PARAM, FLAGS, OPT_COMPILE_##GROUP,     \
