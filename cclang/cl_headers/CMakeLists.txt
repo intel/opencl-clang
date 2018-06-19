@@ -76,6 +76,7 @@ create_pcm(opencl-c-20-spir64.pcm cl20spir64 opencl-c-intel.h "${SPIR64_TRIPLE};
 add_custom_target (
     opencl.pcm.target
     DEPENDS
+    opencl.headers.target
     opencl-c-common.pcm
     opencl-c-12-spir.pcm
     opencl-c-20-spir.pcm
@@ -137,7 +138,7 @@ add_library(${CL_HEADERS_LIB} OBJECT
     ${CL_HEADERS_SRC}
 )
 
-add_dependencies(${CL_HEADERS_LIB} opencl.pcm.target opencl.headers.target)
+add_dependencies(${CL_HEADERS_LIB} opencl.pcm.target)
 
 install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/opencl-c.h
