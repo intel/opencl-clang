@@ -51,6 +51,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/Serialization/ASTReader.h"
 #include "clang/Serialization/ModuleManager.h"
+#include "LLVMSPIRVLib.h"
 
 // The following #defines are used as return value of Compile() API and defined
 // in https://github.com/KhronosGroup/OpenCL-Headers/blob/master/CL/cl.h
@@ -276,6 +277,32 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
     // multi-threaded environment is unsupported)
     // llvm::remove_fatal_error_handler();
     err_ostream.flush();
+
+    if (success && optionsParser.hasEmitSPIRV()) {
+      // Translate LLVM IR to SPIR-V.
+      llvm::StringRef LLVM_IR(static_cast<const char*>(pResult->GetIR()),
+                              pResult->GetIRSize());
+      std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(LLVM_IR, pResult->GetIRName(), false);
+      llvm::LLVMContext Context;
+      auto E = llvm::getOwningLazyBitcodeModule(std::move(MB), Context,
+                                               /*ShouldLazyLoadMetadata=*/true);
+      llvm::logAllUnhandledErrors(E.takeError(), err_ostream, "error: ");
+      std::unique_ptr<llvm::Module> M = std::move(*E);
+
+      if (M->materializeAll()) {
+        if (pBinaryResult) {
+          *pBinaryResult = nullptr;
+        }
+        assert(!"Failed to read just compiled LLVM IR!");
+        return CL_COMPILE_PROGRAM_FAILURE;
+      }
+      pResult->getIRBufferRef().clear();
+      llvm::raw_svector_ostream OS(pResult->getIRBufferRef());
+      std::string Err;
+      success = llvm::writeSpirv(M.get(), OS, Err);
+      err_ostream << Err.c_str();
+      err_ostream.flush();
+    }
 
     if (pBinaryResult) {
       *pBinaryResult = pResult.release();
