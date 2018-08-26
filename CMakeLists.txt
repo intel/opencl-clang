@@ -151,9 +151,15 @@ endfunction()
 set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
 set(CLANG_REVISION master)
 
+set(SPIRV_SOURCE_DIR ${LLVM_SOURCE_DIR}/projects/llvm-spirv)
+set(SPIRV_REVISION master)
+
 apply_patches(${CLANG_SOURCE_DIR}
               ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
               ${CLANG_REVISION})
+apply_patches(${SPIRV_SOURCE_DIR}
+              ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
+              ${SPIRV_REVISION})
 
 #
 # TblGen the options include file
@@ -204,6 +210,7 @@ include_directories( AFTER
             ${CLANG_SOURCE_DIR}/include # for basic headers
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}
+            ${SPIRV_SOURCE_DIR}/include
             )
 
 link_directories(
@@ -251,6 +258,7 @@ target_link_libraries( ${TARGET_NAME}
                        LLVMObject
                        LLVMOption
                        LLVMProfileData
+                       LLVMSPIRVLib
                        LLVMScalarOpts
                        LLVMSelectionDAG
                        LLVMSupport
