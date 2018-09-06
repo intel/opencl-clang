@@ -1,9 +1,0 @@
-diff -Naur --strip-trailing-cr -x cclang -x .git -x .gitignore a/test/SemaOpenCL/overload_addrspace_resolution.cl b/test/SemaOpenCL/overload_addrspace_resolution.cl
---- a/test/SemaOpenCL/overload_addrspace_resolution.cl	2017-10-17 14:27:53.580333766 +0300
-+++ b/test/SemaOpenCL/overload_addrspace_resolution.cl	2017-10-17 14:28:23.704335266 +0300
-@@ -1,4 +1,4 @@
--// RUN: %clang_cc1 -cl-std=CL2.0 -emit-llvm -o - %s | FileCheck %s
-+// RUN: %clang_cc1 -cl-std=CL2.0 -emit-llvm -o - -triple x86_64-unknown-unknown %s | FileCheck %s
- 
- void __attribute__((overloadable)) foo(global int *a, global int *b);
- void __attribute__((overloadable)) foo(generic int *a, generic int *b);

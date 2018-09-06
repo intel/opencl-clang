@@ -1,306 +1,262 @@
+project( common_clang )
+cmake_minimum_required(VERSION 2.8.8)
+
+# Do not omit TARGET_OBJECTS expression from the SOURCES target
+# property
+# `cmake --help-policy CMP0051` for details.
+cmake_policy(SET CMP0051 NEW)
+
+set( REVISION_ID $ENV{REVISION_ID} )
+set( GIT_VERSION $ENV{REVISION} )
+set( GIT_REVISION $ENV{RELEASE_BRANCH} )
+math( EXPR BUILDVER_WC_REVISION "6 * 65536" )
+
+set( PRODUCTVER_MAJOR 4 )
+set( PRODUCTVER_MINOR 3 )
+
+math(EXPR BUILDVER_16_BIT_MAJOR "${BUILDVER_WC_REVISION} / 65536")
+math(EXPR BUILDVER_16_BIT_MINOR "${BUILDVER_WC_REVISION} % 65536")
+
+message(STATUS "Current build version is ${BUILDVER_WC_REVISION}")
+message(STATUS "GIT Version: ${GIT_VERSION}")
+message(STATUS "GIT Revision: ${GIT_REVISION}")
+message(STATUS "PRODUCTVER_MAJOR: ${PRODUCTVER_MAJOR}")
+message(STATUS "PRODUCTVER_MINOR: ${PRODUCTVER_MINOR}")
+
+# --------------
+#  write a file with the BUILDVERSION define
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/buildversion.h
+"
+#define BUILDVERSION ${BUILDVER_WC_REVISION}
+#ifndef _DEBUG
+    #define BUILDVERSIONSTR \"(Build\ ${BUILDVER_WC_REVISION})\"
+#else
+    #define BUILDVERSIONSTR \"(Build[DEBUG]\ ${BUILDVER_WC_REVISION})\"
+#endif
+#define PRODUCTVERSION_MAJOR ${PRODUCTVER_MAJOR}
+#define PRODUCTVERSION_MINOR ${PRODUCTVER_MINOR}
+#define BUILDVERSION16BIT_MAJOR ${BUILDVER_16_BIT_MAJOR}
+#define BUILDVERSION16BIT_MINOR ${BUILDVER_16_BIT_MINOR}
+#define VERSIONSTRING \"${PRODUCTVER_MAJOR}.${PRODUCTVER_MINOR}.${BUILDVER_16_BIT_MAJOR}.${BUILDVER_16_BIT_MINOR}\"
+")
+# --------------
+
+if (NOT WIN32)
+    add_subdirectory( linux_linker )
+endif()
 #
-#  Copyright (c) 2017, Intel Corporation
-# 
-#  Permission is hereby granted, free of charge, to any person obtaining a
-#  copy of this software and associated documentation files (the "Software"),
-#  to deal in the Software without restriction, including without limitation
-#  the rights to use, copy, modify, merge, publish, distribute, sublicense,
-#  and/or sell copies of the Software, and to permit persons to whom the
-#  Software is furnished to do so, subject to the following conditions:
-# 
-#  The above copyright notice and this permission notice shall be included
-#  in all copies or substantial portions of the Software.
-# 
-#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-#  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-#  THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-#  OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-#  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-#  OTHER DEALINGS IN THE SOFTWARE.
+# Set compiler RTTI options according to the given flag
 #
+macro(use_rtti val)
+    if( CMAKE_COMPILER_IS_GNUCXX OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+        if( ${val} )
+            llvm_replace_compiler_option(CMAKE_CXX_FLAGS "-fno-rtti" "-frtti")
+        else()
+            llvm_replace_compiler_option(CMAKE_CXX_FLAGS "-frtti" "-fno-rtti" )
+        endif()
+    else(MSVC)
+        if( ${val} )
+            llvm_replace_compiler_option(CMAKE_CXX_FLAGS "/GR-" "/GR")
+        else()
+            llvm_replace_compiler_option(CMAKE_CXX_FLAGS "/GR" "/GR-" )
+        endif()
+    endif()
+    set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" PARENT_SCOPE )
+endmacro(use_rtti)
 
 #
-# Common clang
+# Set compiler Exception Handling options according to the given flag
 #
+macro(use_eh val)
+    if( CMAKE_COMPILER_IS_GNUCXX OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+        if( ${val} )
+            remove_definitions( -fno-exceptions )
+        else()
+            add_definitions( -fno-exceptions )
+        endif()
+    else(MSVC)
+        if( ${val} )
+              llvm_replace_compiler_option(CMAKE_CXX_FLAGS "/EHs-c-" "/EHsc" )
+              add_definitions( /D_HAS_EXCEPTIONS=1 )
+        else()
+              llvm_replace_compiler_option(CMAKE_CXX_FLAGS "/EHsc" "/EHs-c-")
+              add_definitions( /D_HAS_EXCEPTIONS=0 )
+        endif()
+    endif()
+endmacro(use_eh)
 
-cmake_minimum_required(VERSION 3.4.3)
+macro(catFiles outFileName)
+    file(WRITE ${outFileName} "")
+    foreach(file ${ARGN})
+        file(READ ${file} CONTENT)
+        file(APPEND ${outFileName} "${CONTENT}")
+    endforeach(file)
+endmacro(catFiles)
 
-set(CCLANG_LIB_NAME cclang)
-set(CCLANG_LIB_NAME ${CCLANG_LIB_NAME} PARENT_SCOPE)
+use_eh(TRUE)
+use_rtti(FALSE)
 
-if(NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
+if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(ADDR 32)
+else ()
+    set(ADDR 64)
+endif (CMAKE_SIZEOF_VOID_P EQUAL 4)
+
+# set windows binary suffix
+if (WIN32)
+    set (BUILD_PLATFORM ${ADDR})
+else (WIN32)
+    set (BUILD_PLATFORM "")
+endif (WIN32)
+
+# set that name of the main output file as a target name
+if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
     set(COMMON_CLANG_LIBRARY_NAME common_clang)
 endif()
+set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
-if(NOT PATCH)
-    find_program(PATCH NAMES patch)
-endif()
-
-
-# function version_from_exe - Decode the output of "${exefile} --version".
-# The expected version number format is three or fewer decimal values
-# separated by periods.
 #
-# The caller passes in variable names to be set by this function:
-# - _ver_full - Full version string, like "3" or "3.8" or "3.8.5"
-# - _vermajor - major version - first field
-# - _verminor - minor version - second field
-# - _vermicro - "micro" version - third field
+# TblGen the options include file
 #
-# Fields not present are returned as blank.
+set (COMPILE_OPTIONS_TD  opencl_clang_options.td)
+set (COMPILE_OPTIONS_INC opencl_clang_options.inc)
+set (LINK_OPTIONS_TD  opencl_link_options.td)
+set (LINK_OPTIONS_INC opencl_link_options.inc)
+
+set(LLVM_TARGET_DEFINITIONS ${COMPILE_OPTIONS_TD})
+tablegen(LLVM ${COMPILE_OPTIONS_INC} -gen-opt-parser-defs)
+add_public_tablegen_target(CClangCompileOptions)
+
+set(LLVM_TARGET_DEFINITIONS ${LINK_OPTIONS_TD})
+tablegen(LLVM ${LINK_OPTIONS_INC} -gen-opt-parser-defs)
+add_public_tablegen_target(CClangLinkOptions)
+
 #
-# Only the first line from "exefile --version" is examined.
+# Source code
 #
-# Processing:
-# - All text in parentheses is discard.
-# - Discarded: The first word and, if present, "version".
-# - The first remaining word is considered the version number.
-#
-# Example version output (first line only):
-#
-# Fedora example:
-##  $ clang --version
-##  clang version 5.0.1 (tags/RELEASE_501/final)
-#
-##  $ gcc --version
-##  gcc (GCC) 7.2.1 20170915 (Red Hat 7.2.1-2)
-#
-# Ubuntu example:
-##  $ clang --version
-##  clang version 3.8.0-2ubuntu4 (tags/RELEASE_380/final)
-#
-##  $ gcc --version
-##  gcc (Ubuntu 5.4.0-6ubuntu1~16.04.6) 5.4.0 20160609
-
-function (version_from_exe exefile _ver_full _vermajor _verminor _vermicro)
-    execute_process(
-        COMMAND "${exefile}" "--version"
-        RESULT_VARIABLE var_result
-        OUTPUT_VARIABLE var_stdout
-        ERROR_VARIABLE var_stderr
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_STRIP_TRAILING_WHITESPACE
-        )
-    if(NOT var_result EQUAL 0)
-        message("version number request failed: ${var_result}: \"${exefile}\"")
-        if(NOT "${var_stderr}" STREQUAL "")
-            message("version request: \"${var_stderr}\"")
-        endif()
-        set(${_ver_full} "")
-        set(${_vermajor} "")
-        set(${_verminor} "")
-        set(${_vermicro} "")
-        return()
-    endif()
-
-    # Discard all but first line
-    string(FIND "${var_stdout}" "\n" nl)
-    string(SUBSTRING "${var_stdout}" 0 ${nl} var_stdout)
-
-    # Remove all parenthesized items.
-    string(REGEX REPLACE "\\([^)]+\\)" "" var_stdout "${var_stdout}")
-
-    # Remove first word and optional following "version"
-    string(REGEX REPLACE "^[A-Za-z0-9_]+( +version +)? +" "" var_stdout "${var_stdout}")
-
-    string(REGEX MATCH "^([0-9]+)((\\.([0-9]+))(\\.([0-9]+))?)?" var_stdout "${var_stdout}")
-    #                    (      )((   (      ))(   (      )) )
-    #                    1       23   4        5   6
-
-    set("${_ver_full}" "${CMAKE_MATCH_0}" PARENT_SCOPE)
-    set("${_vermajor}" "${CMAKE_MATCH_1}" PARENT_SCOPE)
-    set("${_verminor}" "${CMAKE_MATCH_4}" PARENT_SCOPE)
-    set("${_vermicro}" "${CMAKE_MATCH_6}" PARENT_SCOPE)
-endfunction()
-
-
-if(NOT DEFINED CLANG)
-    find_program(CLANG NAMES clang)
-    if("${CLANG}" STREQUAL "CLANG-NOTFOUND" )
-        unset(CLANG CACHE)
-    else()
-        version_from_exe("${CLANG}" "clang_ver_full" "clang_ver_major" "clang_ver_minor" "clang_ver_micro")
-
-        if("${clang_ver_major}" STREQUAL "")
-            unset(CLANG CACHE)
-        elseif("${clang_ver_major}" LESS 4)
-            unset(CLANG CACHE)
-        endif()
-    endif()
-endif()
-
-if(NOT DEFINED CLANGXX)
-    find_program(CLANGXX NAMES clang++)
-    if("${CLANGXX}" STREQUAL "CLANGXX-NOTFOUND" )
-        unset(CLANGXX CACHE)
-    else()
-        version_from_exe("${CLANGXX}" "clangxx_ver_full" "clangxx_ver_major" "clangxx_ver_minor" "clangxx_ver_micro")
-
-        if("${clangxx_ver_major}" STREQUAL "")
-            unset(CLANGXX CACHE)
-        elseif("${clangxx_ver_major}" LESS 4)
-            unset(CLANGXX CACHE)
-        endif()
-    endif()
-endif()
-
-if((NOT DEFINED CLANG ) OR (NOT DEFINED CLANGXX ))
-    if((DEFINED CLANG ) OR (DEFINED CLANGXX ))
-        message(SEND_ERROR "${CMAKE_CURRENT_LIST_FILE}: CLANG = \"${CLANG}\"")
-        message(SEND_ERROR "${CMAKE_CURRENT_LIST_FILE}: CLANGXX = \"${CLANGXX}\"")
-        message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE}: inconsistent CLANG vs CLANGXX")
-    endif()
-endif()
-
-
-if(NOT DEFINED CLANG)
-    find_program(CLANG NAMES clang-4.0)
-    if("${CLANG}" STREQUAL "CLANG-NOTFOUND" )
-        message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE}: clang-4.0 not found")
-    endif()
-endif()
-
-if(NOT DEFINED CLANGXX)
-    find_program(CLANGXX NAMES clang++-4.0)
-    if("${CLANGXX}" STREQUAL "CLANGXX-NOTFOUND" )
-        message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE}: clang++-4.0 not found")
-    endif()
-endif()
-
-set(CCLANG_OPTIONS
-    "-DBUILD_X64:BOOL=ON"
-    "-DLLVM_USE_INTEL_JITEVENTS:BOOL=ON"
-    "-DLLVM_USE_LINKER:STRING=gold"
-    "-DCMAKE_CXX_COMPILER:FILEPATH=${CLANGXX}"
-    "-DCMAKE_C_COMPILER:FILEPATH=${CLANG}"
-    "-DLLVM_OPTIMIZED_TABLEGEN=ON"
-    "-DLLVM_TARGETS_TO_BUILD='X86'"
-    "-DCOMMON_CLANG_LIBRARY_NAME:STRING=${COMMON_CLANG_LIBRARY_NAME}"
+set(TARGET_INCLUDE_FILES
+    exceptions.h
+    common_clang.h
+    options.h
+    binary_result.h
+    pch_mgr.h
+    ${COMPILE_OPTIONS_TD}
+    ${LINK_OPTIONS_TD}
+    ${COMPILE_OPTIONS_INC}
+    ${LINK_OPTIONS_INC}
 )
 
-if(NOT LLVM_STOCK_SOURCE_DIR)
-    set(LLVM_STOCK_SOURCE_DIR   "${CMAKE_CURRENT_SOURCE_DIR}/../llvm_source")
-endif()
-
-if(NOT CLANG_SOURCE_DIR)
-    set(CLANG_SOURCE_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/../clang_source")
-endif()
-
-if(NOT CCLANG_OCL_HEADERS_DIR)
-    set(CCLANG_OCL_HEADERS_DIR   "${CMAKE_CURRENT_SOURCE_DIR}/../opencl_headers")
-endif()
-
-set (CCLANG_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cclang")
-
-if(NOT CCLANG_INSTALL_DIR)
-    set(CCLANG_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/install")
-endif()
-
-# Use LLVM sources stored at LLVM_STOCK_SOURCE_DIR.
-set(LLVM_STOCK_SOURCE_URL ${LLVM_STOCK_SOURCE_DIR})
-# Also tar archive with stock/pure LLVM sources can be used. Just specify the path ...
-# set(LLVM_STOCK_SOURCE_URL "${CMAKE_CURRENT_SOURCE_DIR}/llvm-4.0.0.src.tar.xz")
-
-# Use CLANG sources stored at CLANG_SOURCE_DIR.
-set(CLANG_SOURCE_URL ${CLANG_SOURCE_DIR})
-
-# Use CCLANG sources stored at CCLANG_SOURCE_DIR
-set(CCLANG_SOURCE_URL ${CCLANG_SOURCE_DIR})
-
-message(STATUS "LLVM_SOURCE_URL        = ${LLVM_STOCK_SOURCE_URL}")
-message(STATUS "CLANG_SOURCE_URL       = ${CLANG_SOURCE_URL}")
-message(STATUS "CCLANG_LIB_NAME        = ${CCLANG_LIB_NAME}")
-message(STATUS "CCLANG_SOURCE_URL      = ${CCLANG_SOURCE_URL}")
-message(STATUS "CCLANG_OCL_HEADERS_DIR = ${CCLANG_OCL_HEADERS_DIR}")
-message(STATUS "CCLANG_BUILD_TYPE      = ${CMAKE_BUILD_TYPE}")
-message(STATUS "CCLANG_INSTALL_DIR     = ${CCLANG_INSTALL_DIR}")
-message(STATUS "CCLANG_OPTIONS         = ${CCLANG_OPTIONS}")
-
-
-# Customization patches will be applied to LLVM if present.
-file(GLOB LLVM_PATCH_FILES "${CMAKE_CURRENT_SOURCE_DIR}/llvm_patches/releases/4.0.0/patches/*.patch")
-# Sort list of patch files.
-list(SORT LLVM_PATCH_FILES)
-
-# Customization patches will be applied to CLANG if present.
-file(GLOB CLANG_PATCH_FILES "${CMAKE_CURRENT_SOURCE_DIR}/clang_patches/releases/4.0.1/patches/*.patch")
-# Sort list of patch files.
-list(SORT CLANG_PATCH_FILES)
-
-
-include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
-
-
-ExternalProject_Add(${CCLANG_LIB_NAME}
-    URL ${LLVM_STOCK_SOURCE_URL}
-    PREFIX src
-    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/src
-    CMAKE_ARGS -G ${CMAKE_GENERATOR}
-               -DCMAKE_BUILD_TYPE=$<$<CONFIG:Debug>:Debug>$<$<CONFIG:Release>:Release>$<$<CONFIG:ReleaseInternal>:Release>
-               -DCMAKE_INSTALL_PREFIX=${CCLANG_INSTALL_DIR}
-               ${CCLANG_OPTIONS}
+set(TARGET_SOURCE_FILES
+    common_clang.cpp
+    link.cpp
+    getkernelarginfo.cpp
+    common_clang.rc
+    options.cpp
+    pch_mgr.cpp
+    options_compile.cpp
+    options_link.cpp
 )
 
-ExternalProject_Add_Step(${CCLANG_LIB_NAME} "add_clang"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CLANG_SOURCE_URL} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/tools/clang
-            DEPENDEES download
-            COMMENT "Copying ${CLANG_SOURCE_URL} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/tools/clang"
-            )
-
-ExternalProject_Add_Step(${CCLANG_LIB_NAME} "add_cclang"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CCLANG_SOURCE_URL} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang
-            DEPENDEES add_clang
-            COMMENT "Copying ${CCLANG_SOURCE_URL} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang"
-            )
-
-ExternalProject_Add_Step(${CCLANG_LIB_NAME} "add_opencl_headers"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CCLANG_OCL_HEADERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang
-            DEPENDEES add_cclang
-            DEPENDERS patch
-            COMMENT "Copying ${CCLANG_OCL_HEADERS_DIR} to ${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/projects/cclang"
-            )
-
-# Apply customization patches to LLVM if any.
-set(i 1)
-set(patch_dependee "patch")
-foreach(patch_file ${LLVM_PATCH_FILES})
-
-    ExternalProject_Add_Step(${CCLANG_LIB_NAME} "patch${i}"
-            COMMAND ${PATCH} -d "${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}" -p1 < ${patch_file}
-            DEPENDEES ${patch_dependee}
-            DEPENDERS configure
-            COMMENT "Apply ${patch_file} file"
-            )
-
-    set(patch_dependee "patch${i}")
-    math(EXPR i "${i} + 1")
-
-endforeach()
-
-# Apply customization patches to CLANG if any.
-foreach(patch_file ${CLANG_PATCH_FILES})
-
-    ExternalProject_Add_Step(${CCLANG_LIB_NAME} "patch${i}"
-            COMMAND ${PATCH} -d "${CMAKE_CURRENT_BINARY_DIR}/src/src/${CCLANG_LIB_NAME}/tools/clang" -p1 < ${patch_file}
-            DEPENDEES ${patch_dependee}
-            DEPENDERS configure
-            COMMENT "Apply ${patch_file} file"
-            )
-
-    set(patch_dependee "patch${i}")
-    math(EXPR i "${i} + 1")
-
-endforeach()
-
-if(CCLANG_INSTALL_ARTIFACTS_DIR)
-    ExternalProject_Add_Step(${CCLANG_LIB_NAME} "copy_artifacts"
-            COMMAND "${CMAKE_COMMAND}" -E make_directory "${CCLANG_INSTALL_ARTIFACTS_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E copy "${CCLANG_INSTALL_DIR}/bin/clang-4.0" ${CCLANG_INSTALL_ARTIFACTS_DIR}/clang
-            COMMAND ${CMAKE_COMMAND} -E copy "${CCLANG_INSTALL_DIR}/lib/lib${COMMON_CLANG_LIBRARY_NAME}.so" ${CCLANG_INSTALL_ARTIFACTS_DIR}
-            COMMAND ${CMAKE_COMMAND} -E copy_directory "${CCLANG_INSTALL_DIR}/include/cclang/" ${CCLANG_INSTALL_ARTIFACTS_DIR}
-            DEPENDEES install
-            COMMENT "Copying common clang artifacts from ${CCLANG_INSTALL_DIR} to ${CCLANG_INSTALL_ARTIFACTS_DIR}"
-            )
+add_definitions( -D__STDC_LIMIT_MACROS )
+add_definitions( -D__STDC_CONSTANT_MACROS )
+add_definitions( -DCOMMON_CLANG_EXPORTS )
+if (NOT WIN32)
+    add_definitions( -DLIBCOMMON_CLANG_NAME="lib${COMMON_CLANG_LIBRARY_NAME}.so")
 endif()
 
+#
+# Include directories
+#
+
+set(CLANG_BINARY_DIR ${LLVM_BINARY_DIR}/tools/clang/)
+set(CLANG_SOURCE_DIR ${LLVM_MAIN_SRC_DIR}/tools/clang/)
+
+include_directories( AFTER
+            ${CLANG_BINARY_DIR}/include # for tablegened includes
+            ${CLANG_SOURCE_DIR}/include # for basic headers
+            ${CMAKE_CURRENT_BINARY_DIR}
+            ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}
+            )
+
+link_directories(
+    ${LLVM_LIBRARY_DIRS}
+)
+
+add_subdirectory(cl_headers)
+
+add_library(${TARGET_NAME} SHARED
+    ${TARGET_INCLUDE_FILES}
+    ${TARGET_SOURCE_FILES}
+    $<TARGET_OBJECTS:cl_headers>
+)
+
+add_dependencies(${TARGET_NAME} CClangLinkOptions CClangCompileOptions)
+
+install(TARGETS ${TARGET_NAME}
+    RUNTIME DESTINATION bin
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib)
+
+install(FILES
+        common_clang.h
+        DESTINATION include/cclang)
+
+# The list of clang libraries is taken from clang makefile
+# (build/tools/clang/tools/driver/CMakeFiles/clang.dir/build.make)
+# All duplicate libraries are there on purpose
+target_link_libraries( ${TARGET_NAME}
+                       LINK_PRIVATE
+                       LLVMAnalysis
+                       LLVMAsmParser
+                       LLVMAsmPrinter
+                       LLVMBitReader
+                       LLVMBitWriter
+                       LLVMCodeGen
+                       LLVMCore
+                       LLVMIRReader
+                       LLVMInstCombine
+                       LLVMInstrumentation
+                       LLVMMC
+                       LLVMMCDisassembler
+                       LLVMMCParser
+                       LLVMObjCARCOpts
+                       LLVMObject
+                       LLVMOption
+                       LLVMProfileData
+                       LLVMScalarOpts
+                       LLVMSelectionDAG
+                       LLVMSupport
+                       LLVMTarget
+                       LLVMTransformUtils
+                       LLVMVectorize
+                       LLVMX86AsmParser
+                       LLVMX86AsmPrinter
+                       LLVMX86CodeGen
+                       LLVMX86Desc
+                       LLVMX86Disassembler
+                       LLVMX86Info
+                       LLVMX86Utils
+                       clangARCMigrate
+                       clangAST
+                       clangAnalysis
+                       clangBasic
+                       clangCodeGen
+                       clangDriver
+                       clangEdit
+                       clangFrontend
+                       clangFrontendTool
+                       clangLex
+                       clangParse
+                       clangRewrite
+                       clangRewriteFrontend
+                       clangSema
+                       clangSerialization
+                       clangStaticAnalyzerCheckers
+                       clangStaticAnalyzerCore
+                       clangStaticAnalyzerFrontend
+                       ${CMAKE_DL_LIBS}
+                      )
+
+if (NOT WIN32)
+    list(APPEND LINK_LIBS pthread)
+endif ()
