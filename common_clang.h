@@ -17,8 +17,8 @@ Copyright (c) Intel Corporation (2009-2017).
 \*****************************************************************************/
 
 #pragma once
-#include "CL/cl.h"
 #include "assert.h"
+#include "cstddef" // size_t
 
 #if defined(_WIN32)
 #if defined(COMMON_CLANG_EXPORTS)
@@ -65,28 +65,6 @@ struct IOCLFEBinaryResult {
 protected:
   virtual ~IOCLFEBinaryResult() {}
 };
-
-//
-// GetKernelArgInfo function result structure
-//
-struct IOCLFEKernelArgInfo {
-public:
-  virtual unsigned int getNumArgs() const = 0;
-  virtual const char *getArgName(unsigned int index) const = 0;
-  virtual const char *getArgTypeName(unsigned int index) const = 0;
-  virtual cl_kernel_arg_address_qualifier
-  getArgAdressQualifier(unsigned int index) const = 0;
-  virtual cl_kernel_arg_access_qualifier
-  getArgAccessQualifier(unsigned int index) const = 0;
-  virtual cl_kernel_arg_type_qualifier
-  getArgTypeQualifier(unsigned int index) const = 0;
-
-  // release result
-  virtual void Release() = 0;
-
-protected:
-  virtual ~IOCLFEKernelArgInfo() {}
-};
 }
 }
 }
@@ -102,24 +80,6 @@ protected:
 //    true if the options verification was successful, false otherwise
 //
 extern "C" CC_DLL_EXPORT bool CheckCompileOptions(
-    // A string for compile options
-    const char *pszOptions,
-    // buffer to get the list of unknown options
-    char *pszUnknownOptions,
-    // size of the buffer for unknown options
-    size_t uiUnknownOptionsSize);
-
-//
-// Verifies the given OpenCL application supplied link options
-// Params:
-//    pszOptions - compilation options string
-//    pszUnknownOptions - optional outbound pointer to the space separated
-//    unrecognized options
-//    uiUnknownOptionsSize - size of the pszUnknownOptions buffer
-// Returns:
-//    true if the options verification was successful, false otherwise
-//
-extern "C" CC_DLL_EXPORT bool CheckLinkOptions(
     // A string for compile options
     const char *pszOptions,
     // buffer to get the list of unknown options
@@ -167,48 +127,3 @@ extern "C" CC_DLL_EXPORT int Compile(
     // optional outbound pointer to the compilation results
     Intel::OpenCL::ClangFE::IOCLFEBinaryResult **pBinaryResult);
 
-//
-// Links the given OpenCL binaries
-// Params:
-//    pInputHeaders - array of the header buffers
-//    uiNumInputHeader - size of the pInputHeaders array
-//    pszInputHeadersNames - array of the headers names
-//    pPCHBuffer - optional pointer to the pch buffer
-//    uiPCHBufferSize - size of the pch buffer
-//    pszOptions - OpenCL application supplied options
-//    pszOptionsEx - optional extra options string usually supplied by runtime
-//    pszDeviceSupportedExtentions - space separated list of the supported
-//    OpenCL extensions string
-//    pszOpenCLVer - OpenCL version string - "120" for OpenCL 1.2, "200" for
-//    OpenCL 2.0, ...
-//    pBinaryResult - optional outbound pointer to the compilation results
-// Returns:
-//    Link Result as int:  0 - success, error otherwise.
-//
-extern "C" CC_DLL_EXPORT int Link(
-    // array of additional input headers to be passed in memory
-    const void **pInputBinaries,
-    // the number of input binaries
-    unsigned int uiNumBinaries,
-    // the size in bytes of each binary
-    const size_t *puiBinariesSizes,
-    // OpenCL application supplied options
-    const char *pszOptions,
-    // optional outbound pointer to the compilation results
-    Intel::OpenCL::ClangFE::IOCLFEBinaryResult **pBinaryResult);
-
-//
-// Gets the kernel argument information for the specific kernel
-// Params:
-//    pBin - pointer to the binary to query
-//    uiBinarySize - size of the binary pointed by pBin
-//    szKernelName - name of the kernel to query the info about
-//    ppResult - pointer to the result structure - allocated by function
-//               client should call Release method to free the memory
-// Returns:
-//    Link Result as int:  0 - success, error otherwise.
-//
-extern "C" CC_DLL_EXPORT int
-GetKernelArgInfo(const void *pBin, size_t uiBinarySize,
-                 const char *szKernelName,
-                 Intel::OpenCL::ClangFE::IOCLFEKernelArgInfo **ppResult);
