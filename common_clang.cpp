@@ -52,7 +52,12 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/Serialization/ASTReader.h"
 #include "clang/Serialization/ModuleManager.h"
-#include "CL/cl.h"
+
+// The following #defines are used as return value of Compile() API and defined
+// in https://github.com/KhronosGroup/OpenCL-Headers/blob/master/CL/cl.h
+#define CL_SUCCESS 0
+#define CL_COMPILE_PROGRAM_FAILURE -15
+#define CL_OUT_OF_HOST_MEMORY -6
 
 #include "assert.h"
 #include <list>

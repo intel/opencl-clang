@@ -33,22 +33,10 @@ enum COMPILE_OPT_ID {
   OPT_COMPILE_INVALID = 0, // This is not an option ID.
 #define PREFIX(NAME, VALUE)
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
-               HELPTEXT, METAVAR)                                              \
+               HELPTEXT, METAVAR, VALUES)                                      \
   OPT_COMPILE_##ID,
 #include "opencl_clang_options.inc"
   OPT_COMPILE_LAST_OPTION
-#undef OPTION
-#undef PREFIX
-};
-
-enum LINK_OPT_ID {
-  OPT_LINK_INVALID = 0, // This is not an option ID.
-#define PREFIX(NAME, VALUE)
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
-               HELPTEXT, METAVAR)                                              \
-  OPT_LINK_##ID,
-#include "opencl_link_options.inc"
-  OPT_LINK_LAST_OPTION
 #undef OPTION
 #undef PREFIX
 };
