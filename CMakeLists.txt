@@ -17,6 +17,7 @@ set( PRODUCTVER_MINOR 3 )
 math(EXPR BUILDVER_16_BIT_MAJOR "${BUILDVER_WC_REVISION} / 65536")
 math(EXPR BUILDVER_16_BIT_MINOR "${BUILDVER_WC_REVISION} % 65536")
 
+find_package(Git REQUIRED)
 message(STATUS "Current build version is ${BUILDVER_WC_REVISION}")
 message(STATUS "GIT Version: ${GIT_VERSION}")
 message(STATUS "GIT Revision: ${GIT_REVISION}")
@@ -114,6 +115,45 @@ if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
     set(COMMON_CLANG_LIBRARY_NAME common_clang)
 endif()
 set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
+
+function(apply_patches repo_dir patches_dir revision_to_patch)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
+        WORKING_DIRECTORY ${repo_dir}
+        OUTPUT_VARIABLE CURRENT_HASH
+    )
+    if(NOT ${CURRENT_HASH} EQUAL ${revision_to_patch})
+        message(STATUS "Skip patching of ${repo_dir}. Expected revision: ${revision_to_patch}")
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} log -1 --oneline --decorate
+            WORKING_DIRECTORY ${repo_dir}
+            OUTPUT_VARIABLE CURRENT_BRANCH
+        )
+        message(STATUS "Current revision: ${CURRENT_BRANCH}")
+        return()
+    endif(NOT ${CURRENT_HASH} EQUAL ${revision_to_patch})
+
+    file(GLOB patches ${patches_dir}/*.patch)
+    if(NOT patches)
+        return()
+    endif()
+    list(SORT patches)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} checkout -b patched
+        WORKING_DIRECTORY ${repo_dir}
+    )
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patches}
+        WORKING_DIRECTORY ${repo_dir}
+    )
+endfunction()
+
+set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
+set(CLANG_REVISION master)
+
+apply_patches(${CLANG_SOURCE_DIR}
+              ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
+              ${CLANG_REVISION})
 
 #
 # TblGen the options include file
