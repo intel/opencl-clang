@@ -120,16 +120,10 @@ set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 #
 set (COMPILE_OPTIONS_TD  opencl_clang_options.td)
 set (COMPILE_OPTIONS_INC opencl_clang_options.inc)
-set (LINK_OPTIONS_TD  opencl_link_options.td)
-set (LINK_OPTIONS_INC opencl_link_options.inc)
 
 set(LLVM_TARGET_DEFINITIONS ${COMPILE_OPTIONS_TD})
 tablegen(LLVM ${COMPILE_OPTIONS_INC} -gen-opt-parser-defs)
 add_public_tablegen_target(CClangCompileOptions)
-
-set(LLVM_TARGET_DEFINITIONS ${LINK_OPTIONS_TD})
-tablegen(LLVM ${LINK_OPTIONS_INC} -gen-opt-parser-defs)
-add_public_tablegen_target(CClangLinkOptions)
 
 #
 # Source code
@@ -141,20 +135,15 @@ set(TARGET_INCLUDE_FILES
     binary_result.h
     pch_mgr.h
     ${COMPILE_OPTIONS_TD}
-    ${LINK_OPTIONS_TD}
     ${COMPILE_OPTIONS_INC}
-    ${LINK_OPTIONS_INC}
 )
 
 set(TARGET_SOURCE_FILES
     common_clang.cpp
-    link.cpp
-    getkernelarginfo.cpp
     common_clang.rc
     options.cpp
     pch_mgr.cpp
     options_compile.cpp
-    options_link.cpp
 )
 
 add_definitions( -D__STDC_LIMIT_MACROS )
@@ -190,7 +179,7 @@ add_library(${TARGET_NAME} SHARED
     $<TARGET_OBJECTS:cl_headers>
 )
 
-add_dependencies(${TARGET_NAME} CClangLinkOptions CClangCompileOptions)
+add_dependencies(${TARGET_NAME} CClangCompileOptions)
 
 install(TARGETS ${TARGET_NAME}
     RUNTIME DESTINATION bin

@@ -22,6 +22,10 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/ADT/SmallVector.h"
 #include <string>
 
+// The following #define is taken from
+// https://github.com/KhronosGroup/OpenCL-Headers/blob/master/CL/cl.h
+#define CL_SUCCESS 0
+
 class OCLFEBinaryResult : public Intel::OpenCL::ClangFE::IOCLFEBinaryResult {
   // IOCLFEBinaryResult
 public:
