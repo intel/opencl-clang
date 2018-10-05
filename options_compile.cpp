@@ -203,24 +203,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 
   effectiveArgs.push_back(szTriple);
 
-  effectiveArgs.push_back("-fmodules");
-  effectiveArgs.push_back("-fmodule-file=opencl-c-common.pcm");
-  if (szTriple.find("spir64") != szTriple.npos) {
-    if (iCLStdSet <= 120) {
-      effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
-    } else {
-      effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
-    }
-  } else if (szTriple.find("spir") != szTriple.npos) {
-    if (iCLStdSet <= 120) {
-      effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
-    } else {
-      effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
-    }
-  }
-
   effectiveArgs.push_back("-include");
-  effectiveArgs.push_back("opencl-c-intel.h");
+  effectiveArgs.push_back("opencl-c.h");
 
   // Don't optimize in the frontend
   // clang defaults to -O0, and in that mode, does not produce IR that is
