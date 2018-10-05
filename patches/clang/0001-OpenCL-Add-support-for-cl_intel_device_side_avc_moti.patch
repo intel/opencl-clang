@@ -1,0 +1,1788 @@
+From 0e552107f6a1d5336135788f553ac596bec2042e Mon Sep 17 00:00:00 2001
+From: Alexey Sachkov <alexey.sachkov@intel.com>
+Date: Wed, 29 Aug 2018 15:32:16 +0300
+Subject: [PATCH] [OpenCL] Add support for
+ cl_intel_device_side_avc_motion_estimation extension
+
+Documentation can be found at
+https://www.khronos.org/registry/OpenCL/extensions/intel/cl_intel_device_side_avc_motion_estimation.txt
+
+Patch by Kristina Bessonova
+
+Change-Id: I30d953c944f4fef35e18f5e2cb4193b1979dabce
+---
+ include/clang-c/Index.h                            |  16 +-
+ include/clang/AST/ASTContext.h                     |   3 +
+ include/clang/AST/OperationKinds.def               |   5 +
+ include/clang/AST/Type.h                           |  33 +-
+ include/clang/Basic/OpenCLExtensionTypes.def       |  41 ++
+ include/clang/Basic/OpenCLExtensions.def           |   1 +
+ include/clang/Sema/Initialization.h                |  10 +-
+ include/clang/Serialization/ASTBitCodes.h          |   4 +
+ include/clang/module.modulemap                     |   1 +
+ lib/AST/ASTContext.cpp                             |  10 +
+ lib/AST/ASTImporter.cpp                            |   4 +
+ lib/AST/Expr.cpp                                   |   1 +
+ lib/AST/ExprConstant.cpp                           |   5 +
+ lib/AST/ItaniumMangle.cpp                          |   6 +
+ lib/AST/MicrosoftMangle.cpp                        |   5 +
+ lib/AST/NSAPI.cpp                                  |   3 +
+ lib/AST/Type.cpp                                   |   7 +
+ lib/AST/TypeLoc.cpp                                |   3 +
+ lib/Analysis/PrintfFormatString.cpp                |   3 +
+ lib/CodeGen/CGDebugInfo.cpp                        |   4 +
+ lib/CodeGen/CGDebugInfo.h                          |   3 +
+ lib/CodeGen/CGExpr.cpp                             |   4 +
+ lib/CodeGen/CGExprAgg.cpp                          |   1 +
+ lib/CodeGen/CGExprComplex.cpp                      |   1 +
+ lib/CodeGen/CGExprConstant.cpp                     |   1 +
+ lib/CodeGen/CGExprScalar.cpp                       |   8 +
+ lib/CodeGen/CGOpenCLRuntime.cpp                    |   5 +
+ lib/CodeGen/CodeGenTypes.cpp                       |   3 +
+ lib/CodeGen/ItaniumCXXABI.cpp                      |   3 +
+ lib/Edit/RewriteObjCFoundationAPI.cpp              |   1 +
+ lib/Headers/opencl-c.h                             | 628 +++++++++++++++++++++
+ lib/Index/USRGeneration.cpp                        |   3 +
+ lib/Sema/Sema.cpp                                  |   4 +
+ lib/Sema/SemaExpr.cpp                              |   6 +
+ lib/Sema/SemaInit.cpp                              |  60 +-
+ lib/Serialization/ASTCommon.cpp                    |   5 +
+ lib/Serialization/ASTReader.cpp                    |   5 +
+ lib/StaticAnalyzer/Core/ExprEngineC.cpp            |   1 +
+ .../CodeGenOpenCL/intel-subgroups-avc-ext-types.cl |  97 ++++
+ test/Headers/opencl-c-header.cl                    |   1 +
+ test/SemaOpenCL/extension-version.cl               |   9 +
+ test/SemaOpenCL/intel-subgroup-avc-ext-types.cl    | 108 ++++
+ tools/libclang/CIndex.cpp                          |   3 +
+ tools/libclang/CXType.cpp                          |   4 +
+ 44 files changed, 1124 insertions(+), 5 deletions(-)
+ create mode 100644 include/clang/Basic/OpenCLExtensionTypes.def
+ create mode 100644 test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
+ create mode 100644 test/SemaOpenCL/intel-subgroup-avc-ext-types.cl
+
+diff --git a/include/clang-c/Index.h b/include/clang-c/Index.h
+index 65dada38b0..3df40af7cb 100644
+--- a/include/clang-c/Index.h
++++ b/include/clang-c/Index.h
+@@ -3266,7 +3266,21 @@ enum CXTypeKind {
+   CXType_OCLSampler = 157,
+   CXType_OCLEvent = 158,
+   CXType_OCLQueue = 159,
+-  CXType_OCLReserveID = 160
++  CXType_OCLReserveID = 160,
++
++  CXType_OCLIntelSubgroupAVCMcePayload = 161,
++  CXType_OCLIntelSubgroupAVCImePayload = 162,
++  CXType_OCLIntelSubgroupAVCRefPayload = 163,
++  CXType_OCLIntelSubgroupAVCSicPayload = 164,
++  CXType_OCLIntelSubgroupAVCMceResult = 165,
++  CXType_OCLIntelSubgroupAVCImeResult = 166,
++  CXType_OCLIntelSubgroupAVCRefResult = 167,
++  CXType_OCLIntelSubgroupAVCSicResult = 168,
++  CXType_OCLIntelSubgroupAVCImeResultSingleRefStreamout = 169,
++  CXType_OCLIntelSubgroupAVCImeResultDualRefStreamout = 170,
++  CXType_OCLIntelSubgroupAVCImeSingleRefStreamin = 171,
++
++  CXType_OCLIntelSubgroupAVCImeDualRefStreamin = 172
+ };
+ 
+ /**
+diff --git a/include/clang/AST/ASTContext.h b/include/clang/AST/ASTContext.h
+index 6eb86183d9..163565997f 100644
+--- a/include/clang/AST/ASTContext.h
++++ b/include/clang/AST/ASTContext.h
+@@ -1041,6 +1041,9 @@ public:
+   CanQualType OCLSamplerTy, OCLEventTy, OCLClkEventTy;
+   CanQualType OCLQueueTy, OCLReserveIDTy;
+   CanQualType OMPArraySectionTy;
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  CanQualType Id##Ty;
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ 
+   // Types for deductions in C++0x [stmt.ranged]'s desugaring. Built on demand.
+   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
+diff --git a/include/clang/AST/OperationKinds.def b/include/clang/AST/OperationKinds.def
+index e2d65d8488..a6f219906b 100644
+--- a/include/clang/AST/OperationKinds.def
++++ b/include/clang/AST/OperationKinds.def
+@@ -330,6 +330,11 @@ CAST_OPERATION(AddressSpaceConversion)
+ // Convert an integer initializer to an OpenCL sampler.
+ CAST_OPERATION(IntToOCLSampler)
+ 
++// Convert a zero value to opaque data types defined in the
++// cl_intel_device_sie_avc_motion_estimation OpenCL extension.
++//   intel_sub_group_avc_ime_payload_t = 0x0;
++CAST_OPERATION(ZeroToOCLIntelSubgroupAVCType)
++
+ //===- Binary Operations  -------------------------------------------------===//
+ // Operators listed in order of precedence.
+ // Note that additions to this should also update the StmtVisitor class and
+diff --git a/include/clang/AST/Type.h b/include/clang/AST/Type.h
+index 9a8dd6faff..5d6f4adb32 100644
+--- a/include/clang/AST/Type.h
++++ b/include/clang/AST/Type.h
+@@ -1911,6 +1911,13 @@ public:
+   bool isQueueT() const;                        // OpenCL queue_t
+   bool isReserveIDT() const;                    // OpenCL reserve_id_t
+ 
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  bool is##Id##Type() const;
++#include "clang/Basic/OpenCLExtensionTypes.def"
++  // Type defined in cl_intel_device_side_avc_motion_estimation OpenCL extension
++  bool isOCLIntelSubgroupAVCType() const;
++  bool isOCLExtOpaqueType() const;              // Any OpenCL extension type
++
+   bool isPipeType() const;                      // OpenCL pipe type
+   bool isOpenCLSpecificType() const;            // Any OpenCL specific type
+ 
+@@ -2253,6 +2260,9 @@ public:
+ // OpenCL image types
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) Id,
+ #include "clang/Basic/OpenCLImageTypes.def"
++// OpenCL extension types
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) Id,
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ // All other builtin types
+ #define BUILTIN_TYPE(Id, SingletonId) Id,
+ #define LAST_BUILTIN_TYPE(Id) LastKind = Id
+@@ -6295,9 +6305,30 @@ inline bool Type::isPipeType() const {
+   return isa<PipeType>(CanonicalType);
+ }
+ 
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  inline bool Type::is##Id##Type() const { \
++    return isSpecificBuiltinType(BuiltinType::Id); \
++  }
++#include "clang/Basic/OpenCLExtensionTypes.def"
++
++inline bool Type::isOCLIntelSubgroupAVCType() const {
++#define INTEL_SUBGROUP_AVC_TYPE(ExtType, Id) \
++  isOCLIntelSubgroupAVC##Id##Type() ||
++  return
++#include "clang/Basic/OpenCLExtensionTypes.def"
++    false; // end of boolean or operation
++}
++
++inline bool Type::isOCLExtOpaqueType() const {
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) is##Id##Type() ||
++  return
++#include "clang/Basic/OpenCLExtensionTypes.def"
++    false; // end of boolean or operation
++}
++
+ inline bool Type::isOpenCLSpecificType() const {
+   return isSamplerT() || isEventT() || isImageType() || isClkEventT() ||
+-         isQueueT() || isReserveIDT() || isPipeType();
++         isQueueT() || isReserveIDT() || isPipeType() || isOCLExtOpaqueType();
+ }
+ 
+ inline bool Type::isTemplateTypeParmType() const {
+diff --git a/include/clang/Basic/OpenCLExtensionTypes.def b/include/clang/Basic/OpenCLExtensionTypes.def
+new file mode 100644
+index 0000000000..b72f7efd6f
+--- /dev/null
++++ b/include/clang/Basic/OpenCLExtensionTypes.def
+@@ -0,0 +1,41 @@
++//===-- OpenCLExtensionTypes.def - Metadata about BuiltinTypes ------*- C++ -*-===//
++//
++//                     The LLVM Compiler Infrastructure
++//
++// This file is distributed under the University of Illinois Open Source
++// License. See LICENSE.TXT for details.
++//
++//===----------------------------------------------------------------------===//
++//  This file extends builtin types database with OpenCL extension types.
++//  Custom code should define this macro:
++//    EXT_OPAQUE_TYPE(Name, Id, Ext)
++
++#ifdef EXT_OPAQUE_TYPE
++
++#ifndef INTEL_SUBGROUP_AVC_TYPE
++#define INTEL_SUBGROUP_AVC_TYPE(Name, Id) \
++  EXT_OPAQUE_TYPE(intel_sub_group_avc_##Name, OCLIntelSubgroupAVC##Id, \
++    cl_intel_device_side_avc_motion_estimation)
++#endif
++
++#endif
++
++#ifdef INTEL_SUBGROUP_AVC_TYPE
++INTEL_SUBGROUP_AVC_TYPE(mce_payload_t, McePayload)
++INTEL_SUBGROUP_AVC_TYPE(ime_payload_t, ImePayload)
++INTEL_SUBGROUP_AVC_TYPE(ref_payload_t, RefPayload)
++INTEL_SUBGROUP_AVC_TYPE(sic_payload_t, SicPayload)
++INTEL_SUBGROUP_AVC_TYPE(mce_result_t, MceResult)
++INTEL_SUBGROUP_AVC_TYPE(ime_result_t, ImeResult)
++INTEL_SUBGROUP_AVC_TYPE(ref_result_t, RefResult)
++INTEL_SUBGROUP_AVC_TYPE(sic_result_t, SicResult)
++INTEL_SUBGROUP_AVC_TYPE(ime_result_single_reference_streamout_t, ImeResultSingleRefStreamout)
++INTEL_SUBGROUP_AVC_TYPE(ime_result_dual_reference_streamout_t, ImeResultDualRefStreamout)
++INTEL_SUBGROUP_AVC_TYPE(ime_single_reference_streamin_t, ImeSingleRefStreamin)
++INTEL_SUBGROUP_AVC_TYPE(ime_dual_reference_streamin_t, ImeDualRefStreamin)
++
++#undef INTEL_SUBGROUP_AVC_TYPE
++#endif // INTEL_SUBGROUP_AVC_TYPE
++
++#undef EXT_OPAQUE_TYPE
++
+diff --git a/include/clang/Basic/OpenCLExtensions.def b/include/clang/Basic/OpenCLExtensions.def
+index 13cb12e7c5..5e7d2cb473 100644
+--- a/include/clang/Basic/OpenCLExtensions.def
++++ b/include/clang/Basic/OpenCLExtensions.def
+@@ -85,6 +85,7 @@ OPENCLEXT_INTERNAL(cl_amd_media_ops2, 100, ~0U)
+ // Intel OpenCL extensions
+ OPENCLEXT_INTERNAL(cl_intel_subgroups, 120, ~0U)
+ OPENCLEXT_INTERNAL(cl_intel_subgroups_short, 120, ~0U)
++OPENCLEXT_INTERNAL(cl_intel_device_side_avc_motion_estimation, 120, ~0U)
+ 
+ #undef OPENCLEXT_INTERNAL
+ 
+diff --git a/include/clang/Sema/Initialization.h b/include/clang/Sema/Initialization.h
+index 8582e971d0..4b147bbacb 100644
+--- a/include/clang/Sema/Initialization.h
++++ b/include/clang/Sema/Initialization.h
+@@ -896,7 +896,11 @@ public:
+     SK_OCLZeroQueue,
+ 
+     /// Passing zero to a function where OpenCL event_t is expected.
+-    SK_OCLZeroEvent
++    SK_OCLZeroEvent,
++
++    /// Initialize by zero types defined in the
++    /// cl_intel_device_side_avc_motion_estimation OpenCL extension
++    SK_OCLIntelSubgroupAVCZeroInit
+   };
+ 
+   /// A single step in the initialization sequence.
+@@ -1340,6 +1344,10 @@ public:
+   /// Add a step to initialize an OpenCL queue_t from 0.
+   void AddOCLZeroQueueStep(QualType T);
+ 
++  /// Add a step to initialize by zero types defined in the
++  /// cl_intel_device_side_avc_motion_estimation OpenCL extension
++  void AddOCLIntelSubgroupAVCZeroInitStep(QualType T);
++
+   /// Add steps to unwrap a initializer list for a reference around a
+   /// single element and rewrap it at the end.
+   void RewrapReferenceInitList(QualType T, InitListExpr *Syntactic);
+diff --git a/include/clang/Serialization/ASTBitCodes.h b/include/clang/Serialization/ASTBitCodes.h
+index 430fc48379..c3cc142059 100644
+--- a/include/clang/Serialization/ASTBitCodes.h
++++ b/include/clang/Serialization/ASTBitCodes.h
+@@ -1015,6 +1015,10 @@ namespace serialization {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+       PREDEF_TYPE_##Id##_ID,
+ #include "clang/Basic/OpenCLImageTypes.def"
++      /// \brief OpenCL extension types with auto numeration
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++      PREDEF_TYPE_##Id##_ID,
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     };
+ 
+     /// The number of predefined type IDs that are reserved for
+diff --git a/include/clang/module.modulemap b/include/clang/module.modulemap
+index 8d525c5ffb..aa89551803 100644
+--- a/include/clang/module.modulemap
++++ b/include/clang/module.modulemap
+@@ -46,6 +46,7 @@ module Clang_Basic {
+   textual header "Basic/LangOptions.def"
+   textual header "Basic/OpenCLExtensions.def"
+   textual header "Basic/OpenCLImageTypes.def"
++  textual header "Basic/OpenCLExtensionTypes.def"
+   textual header "Basic/OpenMPKinds.def"
+   textual header "Basic/OperatorKinds.def"
+   textual header "Basic/Sanitizers.def"
+diff --git a/lib/AST/ASTContext.cpp b/lib/AST/ASTContext.cpp
+index c085f52cae..af80a52d3e 100644
+--- a/lib/AST/ASTContext.cpp
++++ b/lib/AST/ASTContext.cpp
+@@ -1241,6 +1241,10 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
+     InitBuiltinType(OCLClkEventTy, BuiltinType::OCLClkEvent);
+     InitBuiltinType(OCLQueueTy, BuiltinType::OCLQueue);
+     InitBuiltinType(OCLReserveIDTy, BuiltinType::OCLReserveID);
++
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++    InitBuiltinType(Id##Ty, BuiltinType::Id);
++#include "clang/Basic/OpenCLExtensionTypes.def"
+   }
+ 
+   // Builtin type for __objc_yes and __objc_no
+@@ -1892,6 +1896,9 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+     case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+       AS = getTargetAddressSpace(
+           Target->getOpenCLTypeAddrSpace(getOpenCLTypeKind(T)));
+       Width = Target->getPointerWidth(AS);
+@@ -6471,6 +6478,9 @@ static char getObjCEncodingForPrimitiveKind(const ASTContext *C,
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+     case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++    case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     case BuiltinType::OCLEvent:
+     case BuiltinType::OCLClkEvent:
+     case BuiltinType::OCLQueue:
+diff --git a/lib/AST/ASTImporter.cpp b/lib/AST/ASTImporter.cpp
+index b360b39106..5ba2e0ed38 100644
+--- a/lib/AST/ASTImporter.cpp
++++ b/lib/AST/ASTImporter.cpp
+@@ -588,6 +588,10 @@ QualType ASTNodeImporter::VisitBuiltinType(const BuiltinType *T) {
+   case BuiltinType::Id: \
+     return Importer.getToContext().SingletonId;
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id: \
++    return Importer.getToContext().Id##Ty;
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ #define SHARED_SINGLETON_TYPE(Expansion)
+ #define BUILTIN_TYPE(Id, SingletonId) \
+   case BuiltinType::Id: return Importer.getToContext().SingletonId;
+diff --git a/lib/AST/Expr.cpp b/lib/AST/Expr.cpp
+index 50cff156d2..0cba28f1fc 100644
+--- a/lib/AST/Expr.cpp
++++ b/lib/AST/Expr.cpp
+@@ -1643,6 +1643,7 @@ bool CastExpr::CastConsistency() const {
+   case CK_ARCExtendBlockObject:
+   case CK_ZeroToOCLEvent:
+   case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLIntelSubgroupAVCType:
+   case CK_IntToOCLSampler:
+     assert(!getType()->isBooleanType() && "unheralded conversion to bool");
+     goto CheckNoBasePath;
+diff --git a/lib/AST/ExprConstant.cpp b/lib/AST/ExprConstant.cpp
+index 25817b475c..be41665d17 100644
+--- a/lib/AST/ExprConstant.cpp
++++ b/lib/AST/ExprConstant.cpp
+@@ -7448,6 +7448,9 @@ EvaluateBuiltinClassifyType(QualType T, const LangOptions &LangOpts) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+     case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++    case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     case BuiltinType::OCLSampler:
+     case BuiltinType::OCLEvent:
+     case BuiltinType::OCLClkEvent:
+@@ -9388,6 +9391,7 @@ bool IntExprEvaluator::VisitCastExpr(const CastExpr *E) {
+   case CK_BuiltinFnToFnPtr:
+   case CK_ZeroToOCLEvent:
+   case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLIntelSubgroupAVCType:
+   case CK_NonAtomicToAtomic:
+   case CK_AddressSpaceConversion:
+   case CK_IntToOCLSampler:
+@@ -9923,6 +9927,7 @@ bool ComplexExprEvaluator::VisitCastExpr(const CastExpr *E) {
+   case CK_BuiltinFnToFnPtr:
+   case CK_ZeroToOCLEvent:
+   case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLIntelSubgroupAVCType:
+   case CK_NonAtomicToAtomic:
+   case CK_AddressSpaceConversion:
+   case CK_IntToOCLSampler:
+diff --git a/lib/AST/ItaniumMangle.cpp b/lib/AST/ItaniumMangle.cpp
+index 2dc04f2f3d..48265567db 100644
+--- a/lib/AST/ItaniumMangle.cpp
++++ b/lib/AST/ItaniumMangle.cpp
+@@ -2654,6 +2654,12 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
+   case BuiltinType::OCLReserveID:
+     Out << "13ocl_reserveid";
+     break;
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id: \
++    type_name = "ocl_" #ExtType; \
++    Out << type_name.size() << type_name; \
++    break;
++#include "clang/Basic/OpenCLExtensionTypes.def"
+   }
+ }
+ 
+diff --git a/lib/AST/MicrosoftMangle.cpp b/lib/AST/MicrosoftMangle.cpp
+index d5332ba7db..3aae4cea97 100644
+--- a/lib/AST/MicrosoftMangle.cpp
++++ b/lib/AST/MicrosoftMangle.cpp
+@@ -1959,6 +1959,11 @@ void MicrosoftCXXNameMangler::mangleType(const BuiltinType *T, Qualifiers,
+     Out << "PA";
+     mangleArtificalTagType(TTK_Struct, "ocl_reserveid");
+     break;
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id: \
++    mangleArtificalTagType(TTK_Struct, "ocl_" #ExtType); \
++    break;
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ 
+   case BuiltinType::NullPtr:
+     Out << "$$T";
+diff --git a/lib/AST/NSAPI.cpp b/lib/AST/NSAPI.cpp
+index 94ad87b6e3..0e5ba89b34 100644
+--- a/lib/AST/NSAPI.cpp
++++ b/lib/AST/NSAPI.cpp
+@@ -475,6 +475,9 @@ NSAPI::getNSNumberFactoryMethodKind(QualType T) const {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+   case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+   case BuiltinType::OCLSampler:
+   case BuiltinType::OCLEvent:
+   case BuiltinType::OCLClkEvent:
+diff --git a/lib/AST/Type.cpp b/lib/AST/Type.cpp
+index f79a59712a..54216790f0 100644
+--- a/lib/AST/Type.cpp
++++ b/lib/AST/Type.cpp
+@@ -2796,6 +2796,10 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
+     return "reserve_id_t";
+   case OMPArraySection:
+     return "<OpenMP array section type>";
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case Id: \
++    return #ExtType;
++#include "clang/Basic/OpenCLExtensionTypes.def"
+   }
+ 
+   llvm_unreachable("Invalid builtin type.");
+@@ -3796,6 +3800,9 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+     case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++    case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     case BuiltinType::OCLSampler:
+     case BuiltinType::OCLEvent:
+     case BuiltinType::OCLClkEvent:
+diff --git a/lib/AST/TypeLoc.cpp b/lib/AST/TypeLoc.cpp
+index e4fd6f106e..edd297a3fe 100644
+--- a/lib/AST/TypeLoc.cpp
++++ b/lib/AST/TypeLoc.cpp
+@@ -384,6 +384,9 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+   case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+   case BuiltinType::OCLSampler:
+   case BuiltinType::OCLEvent:
+   case BuiltinType::OCLClkEvent:
+diff --git a/lib/Analysis/PrintfFormatString.cpp b/lib/Analysis/PrintfFormatString.cpp
+index dcb15c5e37..5567f7c67b 100644
+--- a/lib/Analysis/PrintfFormatString.cpp
++++ b/lib/Analysis/PrintfFormatString.cpp
+@@ -708,6 +708,9 @@ bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+   case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ #define SIGNED_TYPE(Id, SingletonId)
+ #define UNSIGNED_TYPE(Id, SingletonId)
+ #define FLOATING_TYPE(Id, SingletonId)
+diff --git a/lib/CodeGen/CGDebugInfo.cpp b/lib/CodeGen/CGDebugInfo.cpp
+index 5be6fb3e42..eac817aea7 100644
+--- a/lib/CodeGen/CGDebugInfo.cpp
++++ b/lib/CodeGen/CGDebugInfo.cpp
+@@ -652,6 +652,10 @@ llvm::DIType *CGDebugInfo::CreateType(const BuiltinType *BT) {
+     return getOrCreateStructPtrType("opencl_queue_t", OCLQueueDITy);
+   case BuiltinType::OCLReserveID:
+     return getOrCreateStructPtrType("opencl_reserve_id_t", OCLReserveIDDITy);
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id: \
++    return getOrCreateStructPtrType("opencl_" #ExtType, Id##Ty);
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ 
+   case BuiltinType::UChar:
+   case BuiltinType::Char_U:
+diff --git a/lib/CodeGen/CGDebugInfo.h b/lib/CodeGen/CGDebugInfo.h
+index e632806138..c892413db2 100644
+--- a/lib/CodeGen/CGDebugInfo.h
++++ b/lib/CodeGen/CGDebugInfo.h
+@@ -76,6 +76,9 @@ class CGDebugInfo {
+   llvm::DIType *OCLQueueDITy = nullptr;
+   llvm::DIType *OCLNDRangeDITy = nullptr;
+   llvm::DIType *OCLReserveIDDITy = nullptr;
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  llvm::DIType *Id##Ty = nullptr;
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ 
+   /// Cache of previously constructed Types.
+   llvm::DenseMap<const void *, llvm::TrackingMDRef> TypeCache;
+diff --git a/lib/CodeGen/CGExpr.cpp b/lib/CodeGen/CGExpr.cpp
+index 93a1859de7..0624cd6dac 100644
+--- a/lib/CodeGen/CGExpr.cpp
++++ b/lib/CodeGen/CGExpr.cpp
+@@ -4228,6 +4228,10 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
+     llvm_unreachable("NULL to OpenCL queue lvalue cast is not valid");
+   case CK_ZeroToOCLEvent:
+     llvm_unreachable("NULL to OpenCL event lvalue cast is not valid");
++  case CK_ZeroToOCLIntelSubgroupAVCType:
++    llvm_unreachable("NULL to lvalue of opaque type from the "
++                     "cl_intel_device_side_avc_motion_estimation OpenCL "
++                     "extension is not valid");
+   }
+ 
+   llvm_unreachable("Unhandled lvalue cast kind?");
+diff --git a/lib/CodeGen/CGExprAgg.cpp b/lib/CodeGen/CGExprAgg.cpp
+index 6264110286..a172d9f9f5 100644
+--- a/lib/CodeGen/CGExprAgg.cpp
++++ b/lib/CodeGen/CGExprAgg.cpp
+@@ -849,6 +849,7 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
+   case CK_BuiltinFnToFnPtr:
+   case CK_ZeroToOCLEvent:
+   case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLIntelSubgroupAVCType:
+   case CK_AddressSpaceConversion:
+   case CK_IntToOCLSampler:
+     llvm_unreachable("cast kind invalid for aggregate types");
+diff --git a/lib/CodeGen/CGExprComplex.cpp b/lib/CodeGen/CGExprComplex.cpp
+index fb176093a7..58be8de158 100644
+--- a/lib/CodeGen/CGExprComplex.cpp
++++ b/lib/CodeGen/CGExprComplex.cpp
+@@ -507,6 +507,7 @@ ComplexPairTy ComplexExprEmitter::EmitCast(CastKind CK, Expr *Op,
+   case CK_BuiltinFnToFnPtr:
+   case CK_ZeroToOCLEvent:
+   case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLIntelSubgroupAVCType:
+   case CK_AddressSpaceConversion:
+   case CK_IntToOCLSampler:
+     llvm_unreachable("invalid cast kind for complex value");
+diff --git a/lib/CodeGen/CGExprConstant.cpp b/lib/CodeGen/CGExprConstant.cpp
+index 68766479a5..ef6e240e6e 100644
+--- a/lib/CodeGen/CGExprConstant.cpp
++++ b/lib/CodeGen/CGExprConstant.cpp
+@@ -871,6 +871,7 @@ public:
+     case CK_FloatingCast:
+     case CK_ZeroToOCLEvent:
+     case CK_ZeroToOCLQueue:
++    case CK_ZeroToOCLIntelSubgroupAVCType:
+       return nullptr;
+     }
+     llvm_unreachable("Invalid CastKind");
+diff --git a/lib/CodeGen/CGExprScalar.cpp b/lib/CodeGen/CGExprScalar.cpp
+index c62588c682..3c0b09abcc 100644
+--- a/lib/CodeGen/CGExprScalar.cpp
++++ b/lib/CodeGen/CGExprScalar.cpp
+@@ -1930,6 +1930,14 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
+     return llvm::Constant::getNullValue(ConvertType(DestTy));
+   }
+ 
++  case CK_ZeroToOCLIntelSubgroupAVCType: {
++    assert(DestTy->isOCLIntelSubgroupAVCType() &&
++        "CK_ZeroToOCLIntelSubgroupAVCType cast on type which is not "
++        "defined in the cl_intel_device_side_avc_motion_estimation "
++        "OpenCL extension is invalid");
++    return llvm::Constant::getNullValue(ConvertType(DestTy));
++  }
++
+   case CK_IntToOCLSampler:
+     return CGF.CGM.createOpenCLIntToSamplerConversion(E, CGF);
+ 
+diff --git a/lib/CodeGen/CGOpenCLRuntime.cpp b/lib/CodeGen/CGOpenCLRuntime.cpp
+index 1da19a90c3..baa9178890 100644
+--- a/lib/CodeGen/CGOpenCLRuntime.cpp
++++ b/lib/CodeGen/CGOpenCLRuntime.cpp
+@@ -62,6 +62,11 @@ llvm::Type *CGOpenCLRuntime::convertOpenCLSpecificType(const Type *T) {
+   case BuiltinType::OCLReserveID:
+     return llvm::PointerType::get(
+         llvm::StructType::create(Ctx, "opencl.reserve_id_t"), AddrSpc);
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id: \
++    return llvm::PointerType::get( \
++        llvm::StructType::create(Ctx, "opencl." #ExtType), AddrSpc);
++#include "clang/Basic/OpenCLExtensionTypes.def"
+   }
+ }
+ 
+diff --git a/lib/CodeGen/CodeGenTypes.cpp b/lib/CodeGen/CodeGenTypes.cpp
+index 1a1395e6ae..2acf1ac161 100644
+--- a/lib/CodeGen/CodeGenTypes.cpp
++++ b/lib/CodeGen/CodeGenTypes.cpp
+@@ -503,6 +503,9 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+     case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++    case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     case BuiltinType::OCLSampler:
+     case BuiltinType::OCLEvent:
+     case BuiltinType::OCLClkEvent:
+diff --git a/lib/CodeGen/ItaniumCXXABI.cpp b/lib/CodeGen/ItaniumCXXABI.cpp
+index 00fff144b5..dc8792b840 100644
+--- a/lib/CodeGen/ItaniumCXXABI.cpp
++++ b/lib/CodeGen/ItaniumCXXABI.cpp
+@@ -2808,6 +2808,9 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+     case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++    case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     case BuiltinType::OCLSampler:
+     case BuiltinType::OCLEvent:
+     case BuiltinType::OCLClkEvent:
+diff --git a/lib/Edit/RewriteObjCFoundationAPI.cpp b/lib/Edit/RewriteObjCFoundationAPI.cpp
+index b53a70d875..b2c5ab4654 100644
+--- a/lib/Edit/RewriteObjCFoundationAPI.cpp
++++ b/lib/Edit/RewriteObjCFoundationAPI.cpp
+@@ -1081,6 +1081,7 @@ static bool rewriteToNumericBoxedExpression(const ObjCMessageExpr *Msg,
+     case CK_BuiltinFnToFnPtr:
+     case CK_ZeroToOCLEvent:
+     case CK_ZeroToOCLQueue:
++    case CK_ZeroToOCLIntelSubgroupAVCType:
+     case CK_IntToOCLSampler:
+       return false;
+ 
+diff --git a/lib/Headers/opencl-c.h b/lib/Headers/opencl-c.h
+index e481c792df..384c0b2cd0 100644
+--- a/lib/Headers/opencl-c.h
++++ b/lib/Headers/opencl-c.h
+@@ -16193,6 +16193,634 @@ void        __ovld __conv intel_sub_group_block_write_us4( __global ushort* p, u
+ void        __ovld __conv intel_sub_group_block_write_us8( __global ushort* p, ushort8 data );
+ #endif // cl_intel_subgroups_short
+ 
++#ifdef cl_intel_device_side_avc_motion_estimation
++#pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : begin
++
++#define CLK_AVC_ME_MAJOR_16x16_INTEL 0x0
++#define CLK_AVC_ME_MAJOR_16x8_INTEL 0x1
++#define CLK_AVC_ME_MAJOR_8x16_INTEL 0x2
++#define CLK_AVC_ME_MAJOR_8x8_INTEL 0x3
++
++#define CLK_AVC_ME_MINOR_8x8_INTEL 0x0
++#define CLK_AVC_ME_MINOR_8x4_INTEL 0x1
++#define CLK_AVC_ME_MINOR_4x8_INTEL 0x2
++#define CLK_AVC_ME_MINOR_4x4_INTEL 0x3
++
++#define CLK_AVC_ME_MAJOR_FORWARD_INTEL 0x0
++#define CLK_AVC_ME_MAJOR_BACKWARD_INTEL 0x1
++#define CLK_AVC_ME_MAJOR_BIDIRECTIONAL_INTEL 0x2
++
++#define CLK_AVC_ME_PARTITION_MASK_ALL_INTEL 0x0
++#define CLK_AVC_ME_PARTITION_MASK_16x16_INTEL 0x7E
++#define CLK_AVC_ME_PARTITION_MASK_16x8_INTEL 0x7D
++#define CLK_AVC_ME_PARTITION_MASK_8x16_INTEL 0x7B
++#define CLK_AVC_ME_PARTITION_MASK_8x8_INTEL 0x77
++#define CLK_AVC_ME_PARTITION_MASK_8x4_INTEL 0x6F
++#define CLK_AVC_ME_PARTITION_MASK_4x8_INTEL 0x5F
++#define CLK_AVC_ME_PARTITION_MASK_4x4_INTEL 0x3F
++
++#define CLK_AVC_ME_SLICE_TYPE_PRED_INTEL 0x0
++#define CLK_AVC_ME_SLICE_TYPE_BPRED_INTEL 0x1
++#define CLK_AVC_ME_SLICE_TYPE_INTRA_INTEL 0x2
++
++#define CLK_AVC_ME_SEARCH_WINDOW_EXHAUSTIVE_INTEL 0x0
++#define CLK_AVC_ME_SEARCH_WINDOW_SMALL_INTEL 0x1
++#define CLK_AVC_ME_SEARCH_WINDOW_TINY_INTEL 0x2
++#define CLK_AVC_ME_SEARCH_WINDOW_EXTRA_TINY_INTEL 0x3
++#define CLK_AVC_ME_SEARCH_WINDOW_DIAMOND_INTEL 0x4
++#define CLK_AVC_ME_SEARCH_WINDOW_LARGE_DIAMOND_INTEL 0x5
++#define CLK_AVC_ME_SEARCH_WINDOW_RESERVED0_INTEL 0x6
++#define CLK_AVC_ME_SEARCH_WINDOW_RESERVED1_INTEL 0x7
++#define CLK_AVC_ME_SEARCH_WINDOW_CUSTOM_INTEL 0x8
++#define CLK_AVC_ME_SEARCH_WINDOW_16x12_RADIUS_INTEL 0x9
++#define CLK_AVC_ME_SEARCH_WINDOW_4x4_RADIUS_INTEL 0x2
++#define CLK_AVC_ME_SEARCH_WINDOW_2x2_RADIUS_INTEL 0xa
++
++#define CLK_AVC_ME_SAD_ADJUST_MODE_NONE_INTEL 0x0
++#define CLK_AVC_ME_SAD_ADJUST_MODE_HAAR_INTEL 0x2
++
++#define CLK_AVC_ME_SUBPIXEL_MODE_INTEGER_INTEL 0x0
++#define CLK_AVC_ME_SUBPIXEL_MODE_HPEL_INTEL 0x1
++#define CLK_AVC_ME_SUBPIXEL_MODE_QPEL_INTEL 0x3
++
++#define CLK_AVC_ME_COST_PRECISION_QPEL_INTEL 0x0
++#define CLK_AVC_ME_COST_PRECISION_HPEL_INTEL 0x1
++#define CLK_AVC_ME_COST_PRECISION_PEL_INTEL 0x2
++#define CLK_AVC_ME_COST_PRECISION_DPEL_INTEL 0x3
++
++#define CLK_AVC_ME_BIDIR_WEIGHT_QUARTER_INTEL 0x10
++#define CLK_AVC_ME_BIDIR_WEIGHT_THIRD_INTEL 0x15
++#define CLK_AVC_ME_BIDIR_WEIGHT_HALF_INTEL 0x20
++#define CLK_AVC_ME_BIDIR_WEIGHT_TWO_THIRD_INTEL 0x2B
++#define CLK_AVC_ME_BIDIR_WEIGHT_THREE_QUARTER_INTEL 0x30
++
++#define CLK_AVC_ME_BORDER_REACHED_LEFT_INTEL 0x0
++#define CLK_AVC_ME_BORDER_REACHED_RIGHT_INTEL 0x2
++#define CLK_AVC_ME_BORDER_REACHED_TOP_INTEL 0x4
++#define CLK_AVC_ME_BORDER_REACHED_BOTTOM_INTEL 0x8
++
++#define CLK_AVC_ME_INTRA_16x16_INTEL 0x0
++#define CLK_AVC_ME_INTRA_8x8_INTEL 0x1
++#define CLK_AVC_ME_INTRA_4x4_INTEL 0x2
++
++#define CLK_AVC_ME_SKIP_BLOCK_PARTITION_16x16_INTEL 0x0
++#define CLK_AVC_ME_SKIP_BLOCK_PARTITION_8x8_INTEL 0x4000
++
++#define CLK_AVC_ME_SKIP_BLOCK_16x16_FORWARD_ENABLE_INTEL (0x1 << 24)
++#define CLK_AVC_ME_SKIP_BLOCK_16x16_BACKWARD_ENABLE_INTEL (0x2 << 24)
++#define CLK_AVC_ME_SKIP_BLOCK_16x16_DUAL_ENABLE_INTEL (0x3 << 24)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_FORWARD_ENABLE_INTEL (0x55 << 24)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_BACKWARD_ENABLE_INTEL (0xAA << 24)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_DUAL_ENABLE_INTEL (0xFF << 24)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_0_FORWARD_ENABLE_INTEL (0x1 << 24)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_0_BACKWARD_ENABLE_INTEL (0x2 << 24)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_1_FORWARD_ENABLE_INTEL (0x1 << 26)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_1_BACKWARD_ENABLE_INTEL (0x2 << 26)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_2_FORWARD_ENABLE_INTEL (0x1 << 28)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_2_BACKWARD_ENABLE_INTEL (0x2 << 28)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_3_FORWARD_ENABLE_INTEL (0x1 << 30)
++#define CLK_AVC_ME_SKIP_BLOCK_8x8_3_BACKWARD_ENABLE_INTEL (0x2 << 30)
++
++#define CLK_AVC_ME_BLOCK_BASED_SKIP_4x4_INTEL 0x00
++#define CLK_AVC_ME_BLOCK_BASED_SKIP_8x8_INTEL 0x80
++
++#define CLK_AVC_ME_INTRA_LUMA_PARTITION_MASK_ALL_INTEL 0x0
++#define CLK_AVC_ME_INTRA_LUMA_PARTITION_MASK_16x16_INTEL 0x6
++#define CLK_AVC_ME_INTRA_LUMA_PARTITION_MASK_8x8_INTEL 0x5
++#define CLK_AVC_ME_INTRA_LUMA_PARTITION_MASK_4x4_INTEL 0x3
++
++#define CLK_AVC_ME_INTRA_NEIGHBOR_LEFT_MASK_ENABLE_INTEL 0x60
++#define CLK_AVC_ME_INTRA_NEIGHBOR_UPPER_MASK_ENABLE_INTEL 0x10
++#define CLK_AVC_ME_INTRA_NEIGHBOR_UPPER_RIGHT_MASK_ENABLE_INTEL 0x8
++#define CLK_AVC_ME_INTRA_NEIGHBOR_UPPER_LEFT_MASK_ENABLE_INTEL 0x4
++
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_VERTICAL_INTEL 0x0
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_HORIZONTAL_INTEL 0x1
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_DC_INTEL 0x2
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_DIAGONAL_DOWN_LEFT_INTEL 0x3
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_DIAGONAL_DOWN_RIGHT_INTEL 0x4
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_PLANE_INTEL 0x4
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_VERTICAL_RIGHT_INTEL 0x5
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_HORIZONTAL_DOWN_INTEL 0x6
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_VERTICAL_LEFT_INTEL 0x7
++#define CLK_AVC_ME_LUMA_PREDICTOR_MODE_HORIZONTAL_UP_INTEL 0x8
++#define CLK_AVC_ME_CHROMA_PREDICTOR_MODE_DC_INTEL 0x0
++#define CLK_AVC_ME_CHROMA_PREDICTOR_MODE_HORIZONTAL_INTEL 0x1
++#define CLK_AVC_ME_CHROMA_PREDICTOR_MODE_VERTICAL_INTEL 0x2
++#define CLK_AVC_ME_CHROMA_PREDICTOR_MODE_PLANE_INTEL 0x3
++
++#define CLK_AVC_ME_FRAME_FORWARD_INTEL 0x1
++#define CLK_AVC_ME_FRAME_BACKWARD_INTEL 0x2
++#define CLK_AVC_ME_FRAME_DUAL_INTEL 0x3
++
++#define CLK_AVC_ME_INTERLACED_SCAN_TOP_FIELD_INTEL 0x0
++#define CLK_AVC_ME_INTERLACED_SCAN_BOTTOM_FIELD_INTEL 0x1
++
++#define CLK_AVC_ME_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_PAYLOAD_INITIALIZE_INTEL 0x0
++#define CLK_AVC_REF_PAYLOAD_INITIALIZE_INTEL 0x0
++#define CLK_AVC_SIC_PAYLOAD_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_RESULT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_REF_RESULT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_SIC_RESULT_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMOUT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMIN_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMOUT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMIN_INITIALIZE_INTEL 0x0
++
++// MCE built-in functions
++uchar __ovld
++intel_sub_group_avc_mce_get_default_inter_base_multi_reference_penalty(
++    uchar slice_type, uchar qp);
++ulong __ovld intel_sub_group_avc_mce_get_default_inter_shape_penalty(
++    uchar slice_type, uchar qp);
++uchar __ovld intel_sub_group_avc_mce_get_default_inter_direction_penalty(
++    uchar slice_type, uchar qp);
++uint __ovld intel_sub_group_avc_mce_get_default_intra_luma_shape_penalty(
++    uchar slice_type, uchar qp);
++uint2 __ovld
++intel_sub_group_avc_mce_get_default_inter_motion_vector_coslice_type_table(
++    uchar slice_type, uchar qp);
++uchar __ovld intel_sub_group_avc_mce_get_default_intra_luma_mode_penalty(
++    uchar slice_type, uchar qp);
++
++uint2 __ovld intel_sub_group_avc_mce_get_default_high_penalty_cost_table();
++uint2 __ovld intel_sub_group_avc_mce_get_default_medium_penalty_cost_table();
++uint2 __ovld intel_sub_group_avc_mce_get_default_low_penalty_cost_table();
++uint __ovld intel_sub_group_avc_mce_get_default_non_dc_luma_intra_penalty();
++uchar __ovld
++intel_sub_group_avc_mce_get_default_intra_chroma_mode_base_penalty();
++
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_mce_set_inter_base_multi_reference_penalty(
++    uchar reference_penalty, intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_mce_set_inter_shape_penalty(
++    ulong packed_shape_cost, intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_mce_set_inter_direction_penalty(
++    uchar direction_cost, intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_mce_set_motion_vector_cost_function(
++    ulong packed_cost_center_delta, uint2 packed_cost_table,
++    uchar cost_precision, intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_mce_set_ac_only_haar(
++  intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_mce_set_source_interlaced_field_polarity(
++    uchar src_field_polarity, intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_mce_set_single_reference_interlaced_field_polarity(
++    uchar ref_field_polarity, intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_mce_set_dual_reference_interlaced_field_polarities(
++    uchar fwd_ref_field_polarity, uchar bwd_ref_field_polarity,
++    intel_sub_group_avc_mce_payload_t payload);
++
++ulong __ovld intel_sub_group_avc_mce_get_motion_vectors(
++    intel_sub_group_avc_mce_result_t result);
++ushort __ovld intel_sub_group_avc_mce_get_inter_distortions(
++    intel_sub_group_avc_mce_result_t result);
++ushort __ovld intel_sub_group_avc_mce_get_best_inter_distortion(
++    intel_sub_group_avc_mce_result_t result);
++uchar __ovld intel_sub_group_avc_mce_get_inter_major_shape(
++    intel_sub_group_avc_mce_result_t result);
++uchar __ovld intel_sub_group_avc_mce_get_inter_minor_shapes(
++    intel_sub_group_avc_mce_result_t result);
++uchar __ovld intel_sub_group_avc_mce_get_inter_directions(
++    intel_sub_group_avc_mce_result_t result);
++uchar __ovld intel_sub_group_avc_mce_get_inter_motion_vector_count(
++    intel_sub_group_avc_mce_result_t result);
++uint __ovld intel_sub_group_avc_mce_get_inter_reference_ids(
++    intel_sub_group_avc_mce_result_t result);
++uchar __ovld
++intel_sub_group_avc_mce_get_inter_reference_interlaced_field_polarities(
++    uint packed_reference_ids, uint packed_reference_parameter_field_polarities,
++    intel_sub_group_avc_mce_result_t result);
++
++// IME built-in functions
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_initialize(
++    ushort2 src_coord, uchar partition_mask, uchar sad_adjustment);
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_single_reference(
++    short2 offset, uchar search_window_config,
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_dual_reference(
++    short2 fwd_ref_offset, short2 bwd_ref_offset, uchar search_window_config,
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_max_motion_vector_count(
++    uchar max_motion_vector_count, intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_unidirectional_mix_disable(
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_early_search_termination_threshold(
++    uchar threshold, intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_weighted_sad(
++  uint packed_sad_weights, intel_sub_group_avc_ime_payload_t payload);
++
++ushort2 __ovld intel_sub_group_avc_ime_ref_window_size(
++    uchar search_window_config, char dual_ref);
++short2 __ovld intel_sub_group_avc_ime_adjust_ref_offset(
++    short2 ref_offset, ushort2 ref_coord, ushort2 ref_window_size,
++    ushort2 frame_size);
++
++intel_sub_group_avc_ime_result_t __ovld
++intel_sub_group_avc_ime_evaluate_with_single_reference(
++    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_result_t __ovld
++intel_sub_group_avc_ime_evaluate_with_dual_reference(
++    read_only image2d_t src, read_only image2d_t fwd_ref,
++    read_only image2d_t bwd_ref, sampler_t vme_accel,
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_result_single_reference_streamout_t __ovld
++intel_sub_group_avc_ime_evaluate_with_single_reference_streamout(
++    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_result_dual_reference_streamout_t __ovld
++intel_sub_group_avc_ime_evaluate_with_dual_reference_streamout(
++    read_only image2d_t src, read_only image2d_t fwd_ref,
++    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_result_t __ovld
++intel_sub_group_avc_ime_evaluate_with_single_reference_streamin(
++    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ime_payload_t payload,
++    intel_sub_group_avc_ime_single_reference_streamin_t streamin);
++intel_sub_group_avc_ime_result_t __ovld
++intel_sub_group_avc_ime_evaluate_with_dual_reference_streamin(
++    read_only image2d_t src, read_only image2d_t fwd_ref,
++    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ime_payload_t payload,
++    intel_sub_group_avc_ime_dual_reference_streamin_t streamin);
++intel_sub_group_avc_ime_result_single_reference_streamout_t __ovld
++intel_sub_group_avc_ime_evaluate_with_single_reference_streaminout(
++    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ime_payload_t payload,
++    intel_sub_group_avc_ime_single_reference_streamin_t streamin);
++intel_sub_group_avc_ime_result_dual_reference_streamout_t __ovld
++intel_sub_group_avc_ime_evaluate_with_dual_reference_streaminout(
++    read_only image2d_t src, read_only image2d_t fwd_ref,
++    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ime_payload_t payload,
++    intel_sub_group_avc_ime_dual_reference_streamin_t streamin);
++
++intel_sub_group_avc_ime_single_reference_streamin_t __ovld
++intel_sub_group_avc_ime_get_single_reference_streamin(
++    intel_sub_group_avc_ime_result_single_reference_streamout_t result);
++intel_sub_group_avc_ime_dual_reference_streamin_t __ovld
++intel_sub_group_avc_ime_get_dual_reference_streamin(
++    intel_sub_group_avc_ime_result_dual_reference_streamout_t result);
++intel_sub_group_avc_ime_result_t __ovld
++intel_sub_group_avc_ime_strip_single_reference_streamout(
++    intel_sub_group_avc_ime_result_single_reference_streamout_t result);
++intel_sub_group_avc_ime_result_t __ovld
++intel_sub_group_avc_ime_strip_dual_reference_streamout(
++    intel_sub_group_avc_ime_result_dual_reference_streamout_t result);
++
++uint __ovld intel_sub_group_avc_ime_get_streamout_major_shape_motion_vectors(
++    intel_sub_group_avc_ime_result_single_reference_streamout_t result,
++    uchar major_shape);
++ushort __ovld intel_sub_group_avc_ime_get_streamout_major_shape_distortions(
++    intel_sub_group_avc_ime_result_single_reference_streamout_t result,
++    uchar major_shape);
++uchar __ovld intel_sub_group_avc_ime_get_streamout_major_shape_reference_ids(
++    intel_sub_group_avc_ime_result_single_reference_streamout_t result,
++    uchar major_shape);
++uint __ovld intel_sub_group_avc_ime_get_streamout_major_shape_motion_vectors(
++    intel_sub_group_avc_ime_result_dual_reference_streamout_t result,
++    uchar major_shape, uchar direction);
++ushort __ovld intel_sub_group_avc_ime_get_streamout_major_shape_distortions(
++    intel_sub_group_avc_ime_result_dual_reference_streamout_t result,
++    uchar major_shape, uchar direction);
++uchar __ovld intel_sub_group_avc_ime_get_streamout_major_shape_reference_ids(
++    intel_sub_group_avc_ime_result_dual_reference_streamout_t result,
++    uchar major_shape, uchar direction);
++
++uchar __ovld intel_sub_group_avc_ime_get_border_reached(
++    uchar frame_select, intel_sub_group_avc_ime_result_t result);
++uchar __ovld intel_sub_group_avc_ime_get_truncated_search_indication(
++    intel_sub_group_avc_ime_result_t payload);
++uchar __ovld
++intel_sub_group_avc_ime_get_unidirectional_early_search_termination(
++    intel_sub_group_avc_ime_result_t result);
++uint __ovld intel_sub_group_avc_ime_get_weighting_pattern_minimum_motion_vector(
++    intel_sub_group_avc_ime_result_t result);
++ushort __ovld intel_sub_group_avc_ime_get_weighting_pattern_minimum_distortion(
++    intel_sub_group_avc_ime_result_t result);
++
++// REF built-in functions
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_fme_initialize(
++    ushort2 src_coord, ulong motion_vectors, uchar major_shapes,
++    uchar minor_shapes, uchar directions, uchar pixel_resolution,
++    uchar sad_adjustment);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_bme_initialize(
++    ushort2 src_coord, ulong motion_vectors, uchar major_shapes,
++    uchar minor_shapes, uchar directions, uchar pixel_resolution,
++    uchar bidirectional_weight, uchar sad_adjustment);
++
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_bidirectional_mix_disable(
++    intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_bilinear_filter_enable(
++    intel_sub_group_avc_ref_payload_t payload);
++
++intel_sub_group_avc_ref_result_t __ovld
++intel_sub_group_avc_ref_evaluate_with_single_reference(
++    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_ref_result_t __ovld
++intel_sub_group_avc_ref_evaluate_with_dual_reference(
++    read_only image2d_t src, read_only image2d_t fwd_ref,
++    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_ref_result_t __ovld
++intel_sub_group_avc_ref_evaluate_with_multi_reference(
++    read_only image2d_t src, uint packed_reference_ids,
++    sampler_t vme_accelerator, intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_ref_result_t __ovld
++intel_sub_group_avc_ref_evaluate_with_multi_reference(
++    read_only image2d_t src, uint packed_reference_ids,
++    uchar packed_reference_field_polarities, sampler_t vme_accelerator,
++    intel_sub_group_avc_ref_payload_t payload);
++
++// SIC built-in functions
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_initialize(
++    ushort2 src_coord);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_configure_skc(
++    uint skip_block_partition_type, uint skip_motion_vector_mask,
++    ulong motion_vectors, uchar bidirectional_weight, uchar skip_sad_adjustment,
++    intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_configure_ipe(
++    uchar luma_intra_partition_mask, uchar intra_neighbour_availabilty,
++    uchar left_edge_luma_pixels, uchar left_upper_edge_luma_pixel,
++    uchar upper_edge_luma_pixels, uchar upper_right_edge_luma_pixels,
++    uchar intra_sad_adjustment, intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_configure_ipe(
++    uchar luma_intra_partition_mask, uchar intra_neighbour_availabilty,
++    uchar left_edge_luma_pixels, uchar left_upper_edge_luma_pixel,
++    uchar upper_edge_luma_pixels, uchar upper_right_edge_luma_pixels,
++    ushort left_edge_chroma_pixels, ushort upper_left_corner_chroma_pixel,
++    ushort upper_edge_chroma_pixels, uchar intra_sad_adjustment,
++    intel_sub_group_avc_sic_payload_t payload);
++uint __ovld
++intel_sub_group_avc_sic_get_motion_vector_mask(
++    uint skip_block_partition_type, uchar direction);
++
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_intra_luma_shape_penalty(
++    uint packed_shape_cost, intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_intra_luma_mode_cost_function(
++    uchar luma_mode_penalty, uint luma_packed_neighbor_modes,
++    uint luma_packed_non_dc_penalty, intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_intra_chroma_mode_cost_function(
++    uchar chroma_mode_penalty, intel_sub_group_avc_sic_payload_t payload);
++
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_skc_bilinear_filter_enable(
++    intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_skc_forward_transform_enable(
++    ulong packed_sad_coefficients, intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_block_based_raw_skip_sad(
++    uchar block_based_skip_block_type,
++    intel_sub_group_avc_sic_payload_t payload);
++
++intel_sub_group_avc_sic_result_t __ovld
++intel_sub_group_avc_sic_evaluate_ipe(
++    read_only image2d_t src, sampler_t vme_accelerator,
++    intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_result_t __ovld
++intel_sub_group_avc_sic_evaluate_with_single_reference(
++    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_result_t __ovld
++intel_sub_group_avc_sic_evaluate_with_dual_reference(
++    read_only image2d_t src, read_only image2d_t fwd_ref,
++    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_result_t __ovld
++intel_sub_group_avc_sic_evaluate_with_multi_reference(
++    read_only image2d_t src, uint ids, sampler_t vme_accelerator,
++    intel_sub_group_avc_sic_payload_t pl);
++intel_sub_group_avc_sic_result_t __ovld
++intel_sub_group_avc_sic_evaluate_with_multi_reference(
++    read_only image2d_t src, uint ids, uchar field_polarities,
++    sampler_t vme_accelerator, intel_sub_group_avc_sic_payload_t payload);
++
++uchar __ovld intel_sub_group_avc_sic_get_ipe_luma_shape(
++    intel_sub_group_avc_sic_result_t result);
++ushort __ovld intel_sub_group_avc_sic_get_best_ipe_luma_distortion(
++    intel_sub_group_avc_sic_result_t result);
++ushort __ovld intel_sub_group_avc_sic_get_best_ipe_chroma_distortion(
++    intel_sub_group_avc_sic_result_t result);
++ulong __ovld intel_sub_group_avc_sic_get_packed_ipe_luma_modes(
++    intel_sub_group_avc_sic_result_t result);
++uchar __ovld intel_sub_group_avc_sic_get_ipe_chroma_mode(
++    intel_sub_group_avc_sic_result_t result);
++uint __ovld intel_sub_group_avc_sic_get_packed_skc_luma_count_threshold(
++    intel_sub_group_avc_sic_result_t result);
++ulong __ovld intel_sub_group_avc_sic_get_packed_skc_luma_sum_threshold(
++    intel_sub_group_avc_sic_result_t result);
++ushort __ovld intel_sub_group_avc_sic_get_inter_raw_sads(
++    intel_sub_group_avc_sic_result_t result);
++
++// Wrappers
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_inter_base_multi_reference_penalty(
++    uchar ref_penalty, intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_inter_base_multi_reference_penalty(
++    uchar ref_penalty, intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_inter_base_multi_reference_penalty(
++    uchar ref_penalty, intel_sub_group_avc_sic_payload_t payload);
++
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_inter_shape_penalty(
++    ulong packed_shape_cost, intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_inter_shape_penalty(
++    ulong packed_shape_cost, intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_inter_shape_penalty(
++    ulong packed_shape_cost, intel_sub_group_avc_sic_payload_t payload);
++
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_inter_direction_penalty(
++    uchar direction_cost, intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_inter_direction_penalty(
++    uchar direction_cost, intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_inter_direction_penalty(
++    uchar direction_cost, intel_sub_group_avc_sic_payload_t payload);
++
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_motion_vector_cost_function(
++    ulong cost_delta, uint2 cost_table, uchar cost_precision,
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_motion_vector_cost_function(
++    ulong cost_delta, uint2 cost_table, uchar cost_precision,
++    intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_motion_vector_cost_function(
++    ulong cost_delta, uint2 cost_table, uchar cost_precision,
++    intel_sub_group_avc_sic_payload_t payload);
++
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_source_interlaced_field_polarity(
++    uchar src_field_polarity, intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_source_interlaced_field_polarity(
++    uchar src_field_polarity, intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_source_interlaced_field_polarity(
++    uchar src_field_polarity, intel_sub_group_avc_sic_payload_t payload);
++
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_single_reference_interlaced_field_polarity(
++    uchar ref_field_polarity, intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_single_reference_interlaced_field_polarity(
++    uchar ref_field_polarity, intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_single_reference_interlaced_field_polarity(
++    uchar ref_field_polarity, intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_dual_reference_interlaced_field_polarities(
++    uchar fwd_ref_field_polarity, uchar bwd_ref_field_polarity,
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_dual_reference_interlaced_field_polarities(
++    uchar fwd_ref_field_polarity, uchar bwd_ref_field_polarity,
++    intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_dual_reference_interlaced_field_polarities(
++    uchar fwd_ref_field_polarity, uchar bwd_ref_field_polarity,
++    intel_sub_group_avc_sic_payload_t payload);
++
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_ime_set_ac_only_haar(
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_ref_set_ac_only_haar(
++    intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_sic_set_ac_only_haar(
++    intel_sub_group_avc_sic_payload_t payload);
++
++ulong __ovld intel_sub_group_avc_ime_get_motion_vectors(
++    intel_sub_group_avc_ime_result_t result);
++ulong __ovld intel_sub_group_avc_ref_get_motion_vectors(
++    intel_sub_group_avc_ref_result_t result);
++
++ushort __ovld intel_sub_group_avc_ime_get_inter_distortions(
++    intel_sub_group_avc_ime_result_t result);
++ushort __ovld intel_sub_group_avc_ref_get_inter_distortions(
++    intel_sub_group_avc_ref_result_t result);
++ushort __ovld intel_sub_group_avc_sic_get_inter_distortions(
++    intel_sub_group_avc_sic_result_t result);
++
++ushort __ovld intel_sub_group_avc_ime_get_best_inter_distortion(
++    intel_sub_group_avc_ime_result_t result);
++ushort __ovld intel_sub_group_avc_ref_get_best_inter_distortion(
++    intel_sub_group_avc_ref_result_t result);
++
++uchar __ovld intel_sub_group_avc_ime_get_inter_major_shape(
++    intel_sub_group_avc_ime_result_t result);
++uchar __ovld intel_sub_group_avc_ref_get_inter_major_shape(
++    intel_sub_group_avc_ref_result_t result);
++uchar __ovld intel_sub_group_avc_ime_get_inter_minor_shapes(
++    intel_sub_group_avc_ime_result_t result);
++uchar __ovld intel_sub_group_avc_ref_get_inter_minor_shapes(
++    intel_sub_group_avc_ref_result_t result);
++
++uchar __ovld intel_sub_group_avc_ime_get_inter_directions(
++    intel_sub_group_avc_ime_result_t result);
++uchar __ovld intel_sub_group_avc_ref_get_inter_directions(
++    intel_sub_group_avc_ref_result_t result);
++
++uchar __ovld intel_sub_group_avc_ime_get_inter_motion_vector_count(
++    intel_sub_group_avc_ime_result_t result);
++uchar __ovld intel_sub_group_avc_ref_get_inter_motion_vector_count(
++    intel_sub_group_avc_ref_result_t result);
++
++uint __ovld intel_sub_group_avc_ime_get_inter_reference_ids(
++    intel_sub_group_avc_ime_result_t result);
++uint __ovld intel_sub_group_avc_ref_get_inter_reference_ids(
++    intel_sub_group_avc_ref_result_t result);
++
++uchar __ovld
++intel_sub_group_avc_ime_get_inter_reference_interlaced_field_polarities(
++    uint packed_reference_ids, uint packed_reference_parameter_field_polarities,
++    intel_sub_group_avc_ime_result_t result);
++uchar __ovld
++intel_sub_group_avc_ref_get_inter_reference_interlaced_field_polarities(
++    uint packed_reference_ids, uint packed_reference_parameter_field_polarities,
++    intel_sub_group_avc_ref_result_t result);
++
++// Type conversion functions
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_ime_convert_to_mce_payload(
++    intel_sub_group_avc_ime_payload_t payload);
++intel_sub_group_avc_ime_payload_t __ovld
++intel_sub_group_avc_mce_convert_to_ime_payload(
++    intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_ref_convert_to_mce_payload(
++    intel_sub_group_avc_ref_payload_t payload);
++intel_sub_group_avc_ref_payload_t __ovld
++intel_sub_group_avc_mce_convert_to_ref_payload(
++    intel_sub_group_avc_mce_payload_t payload);
++intel_sub_group_avc_mce_payload_t __ovld
++intel_sub_group_avc_sic_convert_to_mce_payload(
++    intel_sub_group_avc_sic_payload_t payload);
++intel_sub_group_avc_sic_payload_t __ovld
++intel_sub_group_avc_mce_convert_to_sic_payload(
++    intel_sub_group_avc_mce_payload_t payload);
++
++intel_sub_group_avc_mce_result_t __ovld
++intel_sub_group_avc_ime_convert_to_mce_result(
++    intel_sub_group_avc_ime_result_t result);
++intel_sub_group_avc_ime_result_t __ovld
++intel_sub_group_avc_mce_convert_to_ime_result(
++    intel_sub_group_avc_mce_result_t result);
++intel_sub_group_avc_mce_result_t __ovld
++intel_sub_group_avc_ref_convert_to_mce_result(
++    intel_sub_group_avc_ref_result_t result);
++intel_sub_group_avc_ref_result_t __ovld
++intel_sub_group_avc_mce_convert_to_ref_result(
++    intel_sub_group_avc_mce_result_t result);
++intel_sub_group_avc_mce_result_t __ovld
++intel_sub_group_avc_sic_convert_to_mce_result(
++    intel_sub_group_avc_sic_result_t result);
++intel_sub_group_avc_sic_result_t __ovld
++intel_sub_group_avc_mce_convert_to_sic_result(
++    intel_sub_group_avc_mce_result_t result);
++#pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : end
++#endif // cl_intel_device_side_avc_motion_estimation
++
+ #ifdef cl_amd_media_ops
+ uint __ovld amd_bitalign(uint a, uint b, uint c);
+ uint2 __ovld amd_bitalign(uint2 a, uint2 b, uint2 c);
+diff --git a/lib/Index/USRGeneration.cpp b/lib/Index/USRGeneration.cpp
+index b128b69931..306298268f 100644
+--- a/lib/Index/USRGeneration.cpp
++++ b/lib/Index/USRGeneration.cpp
+@@ -704,6 +704,9 @@ void USRGenerator::VisitType(QualType T) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+         case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++        case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+         case BuiltinType::OCLEvent:
+         case BuiltinType::OCLClkEvent:
+         case BuiltinType::OCLQueue:
+diff --git a/lib/Sema/Sema.cpp b/lib/Sema/Sema.cpp
+index 49f3decc11..df994597ab 100644
+--- a/lib/Sema/Sema.cpp
++++ b/lib/Sema/Sema.cpp
+@@ -320,6 +320,10 @@ void Sema::Initialize() {
+ #define GENERIC_IMAGE_TYPE_EXT(Type, Id, Ext) \
+     setOpenCLExtensionForType(Context.Id, Ext);
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++    addImplicitTypedef(#ExtType, Context.Id##Ty); \
++    setOpenCLExtensionForType(Context.Id##Ty, #Ext);
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     };
+ 
+   if (Context.getTargetInfo().hasBuiltinMSVaList()) {
+diff --git a/lib/Sema/SemaExpr.cpp b/lib/Sema/SemaExpr.cpp
+index 3dc6fb151c..84617ec8e2 100644
+--- a/lib/Sema/SemaExpr.cpp
++++ b/lib/Sema/SemaExpr.cpp
+@@ -5058,6 +5058,9 @@ static bool isPlaceholderToRemoveAsArg(QualType type) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+   case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ #define PLACEHOLDER_TYPE(ID, SINGLETON_ID)
+ #define BUILTIN_TYPE(ID, SINGLETON_ID) case BuiltinType::ID:
+ #include "clang/AST/BuiltinTypes.def"
+@@ -16458,6 +16461,9 @@ ExprResult Sema::CheckPlaceholderExpr(Expr *E) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+   case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+ #define BUILTIN_TYPE(Id, SingletonId) case BuiltinType::Id:
+ #define PLACEHOLDER_TYPE(Id, SingletonId)
+ #include "clang/AST/BuiltinTypes.def"
+diff --git a/lib/Sema/SemaInit.cpp b/lib/Sema/SemaInit.cpp
+index 5070996d50..7e885b3ff3 100644
+--- a/lib/Sema/SemaInit.cpp
++++ b/lib/Sema/SemaInit.cpp
+@@ -1166,6 +1166,10 @@ void InitListChecker::CheckListElementTypes(const InitializedEntity &Entity,
+       SemaRef.Diag(IList->getLocStart(), diag::err_init_objc_class)
+         << DeclType;
+     hadError = true;
++  } else if (DeclType->isOCLIntelSubgroupAVCType()) {
++    // Checks for scalar type are sufficient for these types too.
++    CheckScalarType(Entity, IList, DeclType, Index, StructuredList,
++                    StructuredIndex);
+   } else {
+     if (!VerifyOnly)
+       SemaRef.Diag(IList->getLocStart(), diag::err_illegal_initializer_type)
+@@ -3174,6 +3178,7 @@ void InitializationSequence::Step::Destroy() {
+   case SK_OCLSamplerInit:
+   case SK_OCLZeroEvent:
+   case SK_OCLZeroQueue:
++  case SK_OCLIntelSubgroupAVCZeroInit:
+     break;
+ 
+   case SK_ConversionSequence:
+@@ -3473,6 +3478,13 @@ void InitializationSequence::AddOCLZeroQueueStep(QualType T) {
+   Steps.push_back(S);
+ }
+ 
++void InitializationSequence::AddOCLIntelSubgroupAVCZeroInitStep(QualType T) {
++  Step S;
++  S.Kind = SK_OCLIntelSubgroupAVCZeroInit;
++  S.Type = T;
++  Steps.push_back(S);
++}
++
+ void InitializationSequence::RewrapReferenceInitList(QualType T,
+                                                      InitListExpr *Syntactic) {
+   assert(Syntactic->getNumInits() == 1 &&
+@@ -5207,6 +5219,26 @@ static bool TryOCLZeroQueueInitialization(Sema &S,
+   return true;
+ }
+ 
++static bool
++TryOCLIntelSubgroupAVCZeroInitialization(Sema &S,
++                                         InitializationSequence &Sequence,
++                                         QualType DestType, Expr *Initializer) {
++  // We should allow zero initialization for all types defined in the
++  // cl_intel_device_side_avc_motion_estimation extension, except
++  // intel_sub_group_avc_mce_payload_t and intel_sub_group_avc_mce_result_t.
++  // At least OpenCL 1.2 is required.
++  if (S.getLangOpts().OpenCLVersion < 120 ||
++      !DestType->isOCLIntelSubgroupAVCType() ||
++      DestType->isOCLIntelSubgroupAVCMcePayloadType() ||
++      DestType->isOCLIntelSubgroupAVCMceResultType() ||
++      !Initializer->isIntegerConstantExpr(S.getASTContext()) ||
++      Initializer->EvaluateKnownConstInt(S.getASTContext()) != 0)
++    return false;
++
++  Sequence.AddOCLIntelSubgroupAVCZeroInitStep(DestType);
++  return true;
++}
++
+ InitializationSequence::InitializationSequence(Sema &S,
+                                                const InitializedEntity &Entity,
+                                                const InitializationKind &Kind,
+@@ -5484,6 +5516,13 @@ void InitializationSequence::InitializeFrom(Sema &S,
+     if (TryOCLZeroQueueInitialization(S, *this, DestType, Initializer))
+        return;
+ 
++    if (S.getLangOpts().OpenCL && S.getOpenCLOptions().isEnabled(
++            "cl_intel_device_side_avc_motion_estimation")) {
++      if (TryOCLIntelSubgroupAVCZeroInitialization(S, *this, DestType,
++                                                   Initializer))
++        return;
++    }
++
+     // Handle initialization in C
+     AddCAssignmentStep(DestType);
+     MaybeProduceObjCObject(S, *this, Entity);
+@@ -7305,7 +7344,8 @@ InitializationSequence::Perform(Sema &S,
+   case SK_StdInitializerList:
+   case SK_OCLSamplerInit:
+   case SK_OCLZeroEvent:
+-  case SK_OCLZeroQueue: {
++  case SK_OCLZeroQueue:
++  case SK_OCLIntelSubgroupAVCZeroInit: {
+     assert(Args.size() == 1);
+     CurInit = Args[0];
+     if (!CurInit.get()) return ExprError();
+@@ -7944,7 +7984,9 @@ InitializationSequence::Perform(Sema &S,
+         // defined in SPIR spec v1.2 and also opencl-c.h
+         unsigned AddressingMode  = (0x0E & SamplerValue) >> 1;
+         unsigned FilterMode      = (0x30 & SamplerValue) >> 4;
+-        if (FilterMode != 1 && FilterMode != 2)
++        if (FilterMode != 1 && FilterMode != 2 &&
++            !S.getOpenCLOptions().isEnabled(
++                "cl_intel_device_side_avc_motion_estimation"))
+           S.Diag(Kind.getLocation(),
+                  diag::warn_sampler_initializer_invalid_bits)
+                  << "Filter Mode";
+@@ -7978,6 +8020,17 @@ InitializationSequence::Perform(Sema &S,
+                                     CurInit.get()->getValueKind());
+       break;
+     }
++    case SK_OCLIntelSubgroupAVCZeroInit: {
++      assert(Step->Type->isOCLIntelSubgroupAVCType() &&
++             "Intel subgroup AVC ME type initialization on a type which is not "
++             "defined in the cl_intel_device_side_avc_motion_estimation OpenCL "
++             "extension");
++
++      CurInit = S.ImpCastExprToType(CurInit.get(), Step->Type,
++                                    CK_ZeroToOCLIntelSubgroupAVCType,
++                                    CurInit.get()->getValueKind());
++      break;
++    }
+     }
+   }
+ 
+@@ -8864,6 +8917,9 @@ void InitializationSequence::dump(raw_ostream &OS) const {
+     case SK_OCLZeroQueue:
+       OS << "OpenCL queue_t from zero";
+       break;
++    case SK_OCLIntelSubgroupAVCZeroInit:
++      OS << "OpenCL Intel Subgroup AVC ME opaque type from zero";
++      break;
+     }
+ 
+     OS << " [" << S->Type.getAsString() << ']';
+diff --git a/lib/Serialization/ASTCommon.cpp b/lib/Serialization/ASTCommon.cpp
+index da482717f4..06fc930d75 100644
+--- a/lib/Serialization/ASTCommon.cpp
++++ b/lib/Serialization/ASTCommon.cpp
+@@ -213,6 +213,11 @@ serialization::TypeIdxFromBuiltin(const BuiltinType *BT) {
+     ID = PREDEF_TYPE_##Id##_ID; \
+     break;
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++  case BuiltinType::Id: \
++    ID = PREDEF_TYPE_##Id##_ID; \
++    break;
++#include "clang/Basic/OpenCLExtensionTypes.def"
+   case BuiltinType::OCLSampler:
+     ID = PREDEF_TYPE_SAMPLER_ID;
+     break;
+diff --git a/lib/Serialization/ASTReader.cpp b/lib/Serialization/ASTReader.cpp
+index 723839ff62..0da79aca31 100644
+--- a/lib/Serialization/ASTReader.cpp
++++ b/lib/Serialization/ASTReader.cpp
+@@ -6979,6 +6979,11 @@ QualType ASTReader::GetType(TypeID ID) {
+       T = Context.SingletonId; \
+       break;
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) \
++    case PREDEF_TYPE_##Id##_ID: \
++      T = Context.Id##Ty; \
++      break;
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     case PREDEF_TYPE_SAMPLER_ID:
+       T = Context.OCLSamplerTy;
+       break;
+diff --git a/lib/StaticAnalyzer/Core/ExprEngineC.cpp b/lib/StaticAnalyzer/Core/ExprEngineC.cpp
+index 61b7a290e4..40ff3d7cb4 100644
+--- a/lib/StaticAnalyzer/Core/ExprEngineC.cpp
++++ b/lib/StaticAnalyzer/Core/ExprEngineC.cpp
+@@ -414,6 +414,7 @@ void ExprEngine::VisitCast(const CastExpr *CastE, const Expr *Ex,
+       case CK_ObjCObjectLValueCast:
+       case CK_ZeroToOCLEvent:
+       case CK_ZeroToOCLQueue:
++      case CK_ZeroToOCLIntelSubgroupAVCType:
+       case CK_IntToOCLSampler:
+       case CK_LValueBitCast: {
+         state =
+diff --git a/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl b/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
+new file mode 100644
+index 0000000000..65be07fc51
+--- /dev/null
++++ b/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
+@@ -0,0 +1,97 @@
++// RUN: %clang_cc1 %s -triple spir-unknown-unknown -cl-std=CL1.2 -cl-ext=+cl_intel_device_side_avc_motion_estimation -emit-llvm -o - -O0 | FileCheck %s
++
++// CHECK: %opencl.intel_sub_group_avc_mce_payload_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_ime_payload_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_ref_payload_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_sic_payload_t = type opaque
++
++// CHECK: %opencl.intel_sub_group_avc_mce_result_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_ime_result_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_ref_result_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_sic_result_t = type opaque
++
++// CHECK: %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_ime_single_reference_streamin_t = type opaque
++// CHECK: %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t = type opaque
++
++// CHECK: store %opencl.intel_sub_group_avc_ime_payload_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ref_payload_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_sic_payload_t* null,
++
++// CHECK: store %opencl.intel_sub_group_avc_ime_result_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ref_result_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_sic_result_t* null,
++
++// CHECK: store %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ime_single_reference_streamin_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t* null,
++//
++// CHECK: store %opencl.intel_sub_group_avc_ime_payload_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ref_payload_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_sic_payload_t* null,
++
++// CHECK: store %opencl.intel_sub_group_avc_ime_result_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ref_result_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_sic_result_t* null,
++
++// CHECK: store %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ime_single_reference_streamin_t* null,
++// CHECK: store %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t* null,
++
++#pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
++
++// Having the initializers defined in the test allows us not to include default
++// opencl header, and thus reducing test execution time.
++// The initializers' values must match with ones defined in the default opencl
++// header (clang/lib/Headers/opencl-c.h)
++
++#define CLK_AVC_ME_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_PAYLOAD_INITIALIZE_INTEL 0x0
++#define CLK_AVC_REF_PAYLOAD_INITIALIZE_INTEL 0x0
++#define CLK_AVC_SIC_PAYLOAD_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_RESULT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_REF_RESULT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_SIC_RESULT_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMOUT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMIN_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMOUT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMIN_INITIALIZE_INTEL 0x0
++
++void foo() {
++  intel_sub_group_avc_mce_payload_t payload_mce; // No literal initializer for mce types
++  intel_sub_group_avc_ime_payload_t payload_ime = CLK_AVC_IME_PAYLOAD_INITIALIZE_INTEL;
++  intel_sub_group_avc_ref_payload_t payload_ref = CLK_AVC_REF_PAYLOAD_INITIALIZE_INTEL;
++  intel_sub_group_avc_sic_payload_t payload_sic = CLK_AVC_SIC_PAYLOAD_INITIALIZE_INTEL;
++
++  intel_sub_group_avc_mce_result_t result_mce; // No literal initializer for mce types
++  intel_sub_group_avc_ime_result_t result_ime = CLK_AVC_IME_RESULT_INITIALIZE_INTEL;
++  intel_sub_group_avc_ref_result_t result_ref = CLK_AVC_REF_RESULT_INITIALIZE_INTEL;
++  intel_sub_group_avc_sic_result_t result_sic = CLK_AVC_SIC_RESULT_INITIALIZE_INTEL;
++
++  intel_sub_group_avc_ime_result_single_reference_streamout_t sstreamout = CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMOUT_INITIALIZE_INTEL;
++  intel_sub_group_avc_ime_result_dual_reference_streamout_t dstreamout = CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMOUT_INITIALIZE_INTEL;
++  intel_sub_group_avc_ime_single_reference_streamin_t sstreamin = CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMIN_INITIALIZE_INTEL;
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin = CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMIN_INITIALIZE_INTEL;
++
++  // Initialization with initializer list was supported in the first version
++  // of the extension. So we check for backward compatibility here.
++  intel_sub_group_avc_ime_payload_t payload_ime_list = {0};
++  intel_sub_group_avc_ref_payload_t payload_ref_list = {0};
++  intel_sub_group_avc_sic_payload_t payload_sic_list = {0};
++
++  intel_sub_group_avc_ime_result_t result_ime_list = {0};
++  intel_sub_group_avc_ref_result_t result_ref_list = {0};
++  intel_sub_group_avc_sic_result_t result_sic_list = {0};
++
++  intel_sub_group_avc_ime_result_single_reference_streamout_t sstreamout_list = {0};
++  intel_sub_group_avc_ime_result_dual_reference_streamout_t dstreamout_list = {0};
++  intel_sub_group_avc_ime_single_reference_streamin_t sstreamin_list = {0};
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin_list = {0};
++}
++
+diff --git a/test/Headers/opencl-c-header.cl b/test/Headers/opencl-c-header.cl
+index 2c28be19fa..d8fd082eeb 100644
+--- a/test/Headers/opencl-c-header.cl
++++ b/test/Headers/opencl-c-header.cl
+@@ -45,6 +45,7 @@
+ 
+ // Verify that called builtins occur in the generated IR.
+ 
++// CHECK-NOT: intel_sub_group_avc_mce_get_default_inter_base_multi_reference_penalty
+ // CHECK-NOT: ndrange_t
+ // CHECK20: ndrange_t
+ // CHECK: _Z16convert_char_rtec
+diff --git a/test/SemaOpenCL/extension-version.cl b/test/SemaOpenCL/extension-version.cl
+index 714e4c2108..64a28415bb 100644
+--- a/test/SemaOpenCL/extension-version.cl
++++ b/test/SemaOpenCL/extension-version.cl
+@@ -300,3 +300,12 @@
+ #endif
+ #pragma OPENCL EXTENSION cl_intel_subgroups_short : enable
+ 
++#if (__OPENCL_C_VERSION__ >= 120)
++#ifndef cl_intel_device_side_avc_motion_estimation
++#error "Missing cl_intel_device_side_avc_motion_estimation define"
++#endif
++#else
++// expected-warning@+2{{unsupported OpenCL extension 'cl_intel_device_side_avc_motion_estimation' - ignoring}}
++#endif
++#pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
++
+diff --git a/test/SemaOpenCL/intel-subgroup-avc-ext-types.cl b/test/SemaOpenCL/intel-subgroup-avc-ext-types.cl
+new file mode 100644
+index 0000000000..e85e80ca61
+--- /dev/null
++++ b/test/SemaOpenCL/intel-subgroup-avc-ext-types.cl
+@@ -0,0 +1,108 @@
++// RUN: %clang_cc1 %s -triple spir-unknown-unknown -cl-std=CL1.2 -cl-ext=+cl_intel_device_side_avc_motion_estimation -fsyntax-only -verify %s
++
++#pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
++
++// Having the initializers defined in the test allows us not to include default
++// opencl header, and thus reducing test execution time.
++// The initializers' values must match with ones defined in the default opencl
++// header (clang/lib/Headers/opencl-c.h)
++
++#define CLK_AVC_ME_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_PAYLOAD_INITIALIZE_INTEL 0x0
++#define CLK_AVC_REF_PAYLOAD_INITIALIZE_INTEL 0x0
++#define CLK_AVC_SIC_PAYLOAD_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_RESULT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_REF_RESULT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_SIC_RESULT_INITIALIZE_INTEL 0x0
++
++#define CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMOUT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMIN_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMOUT_INITIALIZE_INTEL 0x0
++#define CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMIN_INITIALIZE_INTEL 0x0
++
++// negative test cases
++struct st{};
++typedef char char4 __attribute__((ext_vector_type(4)));
++void foo(bool b, char c, short s, long l, float f, double d, void* v,
++         char4 c4, event_t e, struct st ss) {
++  intel_sub_group_avc_mce_payload_t payload_mce = 0; // No zero initializer for mce types
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_mce_payload_t' with an expression of incompatible type 'int'}}
++  intel_sub_group_avc_mce_payload_t payload_mce2 = 1; // No literal initializer for mce types
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_mce_payload_t' with an expression of incompatible type 'int'}}
++  intel_sub_group_avc_ime_payload_t payload_ime = b;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ime_payload_t' with an expression of incompatible type 'bool'}}
++  intel_sub_group_avc_ref_payload_t payload_ref = c;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ref_payload_t' with an expression of incompatible type 'char'}}
++  intel_sub_group_avc_sic_payload_t payload_sic = s;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_sic_payload_t' with an expression of incompatible type 'short'}}
++
++  intel_sub_group_avc_mce_result_t result_mce = 0; // No zero initializer for mce types
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_mce_result_t' with an expression of incompatible type 'int'}}
++  intel_sub_group_avc_mce_result_t result_mce2 = 1; // No literal initializer for mce types
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_mce_result_t' with an expression of incompatible type 'int'}}
++  intel_sub_group_avc_ime_result_t result_ime = l;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ime_result_t' with an expression of incompatible type 'long'}}
++  intel_sub_group_avc_ref_result_t result_ref = f;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ref_result_t' with an expression of incompatible type 'float'}}
++  intel_sub_group_avc_sic_result_t result_sic = d;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_sic_result_t' with an expression of incompatible type 'double'}}
++
++  intel_sub_group_avc_ime_result_single_reference_streamout_t sstreamout = v;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ime_result_single_reference_streamout_t' with an expression of incompatible type 'void *'}}
++  intel_sub_group_avc_ime_result_dual_reference_streamout_t dstreamout = c4;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ime_result_dual_reference_streamout_t' with an expression of incompatible type 'char4'}}
++  intel_sub_group_avc_ime_single_reference_streamin_t sstreamin = e;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ime_single_reference_streamin_t' with an expression of incompatible type 'event_t'}}
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin = ss;
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ime_dual_reference_streamin_t' with an expression of incompatible type 'struct st'}}
++
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin_list = {0x0, 0x1};
++  // expected-warning@-1 {{excess elements in struct initializer}}
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin_list2 = {};
++  // expected-error@-1 {{scalar initializer cannot be empty}}
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin_list3 = {c};
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ime_dual_reference_streamin_t' with an expression of incompatible type 'char'}}
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin_list4 = {1};
++  // expected-error@-1 {{initializing 'intel_sub_group_avc_ime_dual_reference_streamin_t' with an expression of incompatible type 'int'}}
++}
++
++// positive test cases
++void bar() {
++  const sampler_t vme_sampler = CLK_AVC_ME_INITIALIZE_INTEL;
++
++  intel_sub_group_avc_mce_payload_t payload_mce; // No literal initializer for mce types
++  intel_sub_group_avc_ime_payload_t payload_ime = CLK_AVC_IME_PAYLOAD_INITIALIZE_INTEL;
++  intel_sub_group_avc_ref_payload_t payload_ref = CLK_AVC_REF_PAYLOAD_INITIALIZE_INTEL;
++  intel_sub_group_avc_sic_payload_t payload_sic = CLK_AVC_SIC_PAYLOAD_INITIALIZE_INTEL;
++
++  intel_sub_group_avc_mce_result_t result_mce; // No literal initializer for mce types
++  intel_sub_group_avc_ime_result_t result_ime = CLK_AVC_IME_RESULT_INITIALIZE_INTEL;
++  intel_sub_group_avc_ref_result_t result_ref = CLK_AVC_REF_RESULT_INITIALIZE_INTEL;
++  intel_sub_group_avc_sic_result_t result_sic = CLK_AVC_SIC_RESULT_INITIALIZE_INTEL;
++
++  intel_sub_group_avc_ime_result_single_reference_streamout_t sstreamout = CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMOUT_INITIALIZE_INTEL;
++  intel_sub_group_avc_ime_result_dual_reference_streamout_t dstreamout = CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMOUT_INITIALIZE_INTEL;
++  intel_sub_group_avc_ime_single_reference_streamin_t sstreamin = CLK_AVC_IME_RESULT_SINGLE_REFERENCE_STREAMIN_INITIALIZE_INTEL;
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin = CLK_AVC_IME_RESULT_DUAL_REFERENCE_STREAMIN_INITIALIZE_INTEL;
++
++  // It is allowed to assign variables of the same types
++  intel_sub_group_avc_mce_payload_t pauload_mce2 = payload_mce;
++
++  // Initialization with initializer list was supported in the first version
++  // of the extension. So we check for backward compatibility here.
++  intel_sub_group_avc_ime_payload_t payload_ime_list = {0};
++  intel_sub_group_avc_ref_payload_t payload_ref_list = {0};
++  intel_sub_group_avc_sic_payload_t payload_sic_list = {0};
++
++  intel_sub_group_avc_ime_result_t result_ime_list = {0};
++  intel_sub_group_avc_ref_result_t result_ref_list = {0};
++  intel_sub_group_avc_sic_result_t result_sic_list = {0};
++
++  intel_sub_group_avc_ime_result_single_reference_streamout_t sstreamout_list = {0};
++  intel_sub_group_avc_ime_result_dual_reference_streamout_t dstreamout_list = {0};
++  intel_sub_group_avc_ime_single_reference_streamin_t sstreamin_list = {0};
++  intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin_list = {0};
++}
++
+diff --git a/tools/libclang/CIndex.cpp b/tools/libclang/CIndex.cpp
+index 499d9abf9a..857f73f363 100644
+--- a/tools/libclang/CIndex.cpp
++++ b/tools/libclang/CIndex.cpp
+@@ -1519,6 +1519,9 @@ bool CursorVisitor::VisitBuiltinTypeLoc(BuiltinTypeLoc TL) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+   case BuiltinType::Id:
+ #include "clang/Basic/OpenCLImageTypes.def"
++#define EXT_OPAQUE_TYPE(ExtTYpe, Id, Ext) \
++  case BuiltinType::Id:
++#include "clang/Basic/OpenCLExtensionTypes.def"
+   case BuiltinType::OCLSampler:
+   case BuiltinType::OCLEvent:
+   case BuiltinType::OCLClkEvent:
+diff --git a/tools/libclang/CXType.cpp b/tools/libclang/CXType.cpp
+index 7c0f307944..95f2487dfb 100644
+--- a/tools/libclang/CXType.cpp
++++ b/tools/libclang/CXType.cpp
+@@ -70,6 +70,8 @@ static CXTypeKind GetBuiltinTypeKind(const BuiltinType *BT) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) BTCASE(Id);
+ #include "clang/Basic/OpenCLImageTypes.def"
+ #undef IMAGE_TYPE
++#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) BTCASE(Id);
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     BTCASE(OCLSampler);
+     BTCASE(OCLEvent);
+     BTCASE(OCLQueue);
+@@ -590,6 +592,8 @@ CXString clang_getTypeKindSpelling(enum CXTypeKind K) {
+ #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) TKIND(Id);
+ #include "clang/Basic/OpenCLImageTypes.def"
+ #undef IMAGE_TYPE
++#define EXT_OPAQUE_TYPE(ExtTYpe, Id, Ext) TKIND(Id);
++#include "clang/Basic/OpenCLExtensionTypes.def"
+     TKIND(OCLSampler);
+     TKIND(OCLEvent);
+     TKIND(OCLQueue);
+-- 
+2.14.1
+
