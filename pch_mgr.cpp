@@ -17,7 +17,6 @@ Copyright (c) Intel Corporation (2009-2017).
 \*****************************************************************************/
 
 #include "pch_mgr.h"
-#include "exceptions.h"
 
 #include "llvm/Support/ELF.h"
 #include "llvm/ADT/Twine.h"
