@@ -129,7 +129,6 @@ add_public_tablegen_target(CClangCompileOptions)
 # Source code
 #
 set(TARGET_INCLUDE_FILES
-    exceptions.h
     common_clang.h
     options.h
     binary_result.h
