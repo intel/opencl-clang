@@ -1,0 +1,136 @@
+From fc7c0292d7862330430bc5eb1f6870d4fe2ed86f Mon Sep 17 00:00:00 2001
+From: Alexey Sotkin <alexey.sotkin@intel.com>
+Date: Tue, 27 Mar 2018 13:17:34 +0300
+Subject: [PATCH 3/9] Adding translation of SubgroupSize execution mode
+
+Change-Id: If30b9b420649774b8a90cc9ad820e0f591d84161
+---
+ lib/SPIRV/SPIRVInternal.h            |  1 +
+ lib/SPIRV/SPIRVReader.cpp            |  5 +++++
+ lib/SPIRV/TransOCLMD.cpp             | 11 ++++++++-
+ lib/SPIRV/libSPIRV/SPIRVEntry.cpp    |  1 +
+ test/transcoding/ReqdSubgroupSize.ll | 43 ++++++++++++++++++++++++++++++++++++
+ 5 files changed, 60 insertions(+), 1 deletion(-)
+ create mode 100644 test/transcoding/ReqdSubgroupSize.ll
+
+diff --git a/lib/SPIRV/SPIRVInternal.h b/lib/SPIRV/SPIRVInternal.h
+index d5260b5..ccb8ec5 100644
+--- a/lib/SPIRV/SPIRVInternal.h
++++ b/lib/SPIRV/SPIRVInternal.h
+@@ -363,6 +363,7 @@ const static char SPIRVer[] = "opencl.spir.version";
+ const static char VecTyHint[] = "vec_type_hint";
+ const static char WGSize[] = "reqd_work_group_size";
+ const static char WGSizeHint[] = "work_group_size_hint";
++const static char SubgroupSize[] = "intel_reqd_sub_group_size";
+ } // namespace kSPIR2MD
+ 
+ enum Spir2SamplerKind {
+diff --git a/lib/SPIRV/SPIRVReader.cpp b/lib/SPIRV/SPIRVReader.cpp
+index 9c28596..fd0c676 100644
+--- a/lib/SPIRV/SPIRVReader.cpp
++++ b/lib/SPIRV/SPIRVReader.cpp
+@@ -2562,6 +2562,11 @@ bool SPIRVToLLVM::transKernelMetadata() {
+           ConstantInt::get(Type::getInt32Ty(*Context), 1)));
+       F->setMetadata(kSPIR2MD::VecTyHint, MDNode::get(*Context, MetadataVec));
+     }
++    // Generate metadata for intel_reqd_sub_group_size
++    if (auto *EM = BF->getExecutionMode(ExecutionModeSubgroupSize)) {
++      auto SizeMD = ConstantAsMetadata::get(getUInt32(M, EM->getLiterals()[0]));
++      F->setMetadata(kSPIR2MD::SubgroupSize, MDNode::get(*Context, SizeMD));
++    }
+   }
+   return true;
+ }
+diff --git a/lib/SPIRV/TransOCLMD.cpp b/lib/SPIRV/TransOCLMD.cpp
+index d1e8a58..7ce3498 100644
+--- a/lib/SPIRV/TransOCLMD.cpp
++++ b/lib/SPIRV/TransOCLMD.cpp
+@@ -196,7 +196,7 @@ void TransOCLMD::visit(Module *M) {
+           .done();
+     }
+ 
+-    // !{void (i32 addrspace(1)*)* @kernel, i32 30, i32 X, i32 Y, i32 Z}
++    // !{void (i32 addrspace(1)*)* @kernel, i32 30, i32 hint}
+     if (MDNode *VecTypeHint = Kernel.getMetadata(kSPIR2MD::VecTyHint)) {
+       EM.addOp()
+           .add(&Kernel)
+@@ -204,6 +204,15 @@ void TransOCLMD::visit(Module *M) {
+           .add(transVecTypeHint(VecTypeHint))
+           .done();
+     }
++
++    // !{void (i32 addrspace(1)*)* @kernel, i32 35, i32 size}
++    if (MDNode *ReqdSubgroupSize = Kernel.getMetadata(kSPIR2MD::SubgroupSize)) {
++      EM.addOp()
++          .add(&Kernel)
++          .add(spv::ExecutionModeSubgroupSize)
++          .add(getMDOperandAsInt(ReqdSubgroupSize, 0))
++          .done();
++    }
+   }
+ }
+ 
+diff --git a/lib/SPIRV/libSPIRV/SPIRVEntry.cpp b/lib/SPIRV/libSPIRV/SPIRVEntry.cpp
+index 6678434..e4e9736 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVEntry.cpp
++++ b/lib/SPIRV/libSPIRV/SPIRVEntry.cpp
+@@ -409,6 +409,7 @@ void SPIRVExecutionMode::decode(std::istream &I) {
+   case ExecutionModeInvocations:
+   case ExecutionModeOutputVertices:
+   case ExecutionModeVecTypeHint:
++  case ExecutionModeSubgroupSize:
+     WordLiterals.resize(1);
+     break;
+   default:
+diff --git a/test/transcoding/ReqdSubgroupSize.ll b/test/transcoding/ReqdSubgroupSize.ll
+new file mode 100644
+index 0000000..703a87f
+--- /dev/null
++++ b/test/transcoding/ReqdSubgroupSize.ll
+@@ -0,0 +1,43 @@
++; Check translation of intel_reqd_sub_group_size metadata to SubgroupSize
++; execution mode and back. The IR is producded from the following OpenCL C code:
++; kernel __attribute__((intel_reqd_sub_group_size(8)))
++; void foo() {}
++
++; RUN: llvm-as %s -o - | llvm-spirv -o %t.spv
++; RUN: llvm-spirv %t.spv -to-text -o - | FileCheck %s --check-prefix=CHECK-SPIRV
++; RUN: llvm-spirv %t.spv -r -o - | llvm-dis -o - | FileCheck %s --check-prefix=CHECK-LLVM
++
++; CHECK-SPIRV: EntryPoint 6 [[kernel:[0-9]+]] "foo"
++; CHECK-SPIRV: ExecutionMode [[kernel]] 35 8
++
++; CHECK-LLVM: spir_kernel void @foo() {{.*}} !intel_reqd_sub_group_size ![[MD:[0-9]+]]
++; CHECK-LLVM: ![[MD]] = !{i32 8}
++
++; ModuleID = 'ReqdSubgroupSize.ll'
++source_filename = "ReqdSubgroupSize.ll"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir"
++
++; Function Attrs: norecurse nounwind readnone
++define spir_kernel void @foo() local_unnamed_addr #0 !kernel_arg_addr_space !3 !kernel_arg_access_qual !3 !kernel_arg_type !3 !kernel_arg_base_type !3 !kernel_arg_type_qual !3 !intel_reqd_sub_group_size !5 {
++entry:
++  ret void
++}
++
++attributes #0 = { norecurse nounwind readnone "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++
++!llvm.module.flags = !{!0}
++!opencl.enable.FP_CONTRACT = !{}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!2}
++!opencl.used.extensions = !{!3}
++!opencl.used.optional.core.features = !{!3}
++!opencl.compiler.options = !{!3}
++!llvm.ident = !{!4}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 1, i32 0}
++!2 = !{i32 1, i32 2}
++!3 = !{}
++!4 = !{!"clang version 6.0.0 (cfe/trunk)"}
++!5 = !{i32 8}
+-- 
+1.8.3.1
+
