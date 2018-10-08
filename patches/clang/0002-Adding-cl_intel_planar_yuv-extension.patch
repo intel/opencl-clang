@@ -1,0 +1,43 @@
+From 6d4232e8aac7c2836fcf513ab4aff55ac8ea5fd5 Mon Sep 17 00:00:00 2001
+From: Alexey Sotkin <alexey.sotkin@intel.com>
+Date: Thu, 19 Apr 2018 13:07:24 +0300
+Subject: [PATCH] Adding cl_intel_planar_yuv extension
+
+Just adding a preprocessor #define for the extension.
+
+---
+ include/clang/Basic/OpenCLExtensions.def | 1 +
+ test/SemaOpenCL/extension-version.cl     | 9 +++++++++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/include/clang/Basic/OpenCLExtensions.def b/include/clang/Basic/OpenCLExtensions.def
+index 5e7d2cb..f0b6684 100644
+--- a/include/clang/Basic/OpenCLExtensions.def
++++ b/include/clang/Basic/OpenCLExtensions.def
+@@ -86,6 +86,7 @@ OPENCLEXT_INTERNAL(cl_amd_media_ops2, 100, ~0U)
+ OPENCLEXT_INTERNAL(cl_intel_subgroups, 120, ~0U)
+ OPENCLEXT_INTERNAL(cl_intel_subgroups_short, 120, ~0U)
+ OPENCLEXT_INTERNAL(cl_intel_device_side_avc_motion_estimation, 120, ~0U)
++OPENCLEXT_INTERNAL(cl_intel_planar_yuv, 120, ~0U)
+ 
+ #undef OPENCLEXT_INTERNAL
+ 
+diff --git a/test/SemaOpenCL/extension-version.cl b/test/SemaOpenCL/extension-version.cl
+index 64a2841..3716a4c 100644
+--- a/test/SemaOpenCL/extension-version.cl
++++ b/test/SemaOpenCL/extension-version.cl
+@@ -309,3 +309,11 @@
+ #endif
+ #pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
+ 
++#if (__OPENCL_C_VERSION__ >= 120)
++#ifndef cl_intel_planar_yuv
++#error "Missing cl_intel_planar_yuv define"
++#endif
++#else
++// expected-warning@+2{{unsupported OpenCL extension 'cl_intel_planar_yuv' - ignoring}}
++#endif
++#pragma OPENCL EXTENSION cl_intel_planar_yuv : enable
+-- 
+1.8.3.1
+
