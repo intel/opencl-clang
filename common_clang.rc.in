@@ -1,6 +1,6 @@
 /*****************************************************************************\
 
-Copyright (c) Intel Corporation (2009-2017).
+Copyright (c) Intel Corporation (2009-2018).
 
     INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE.  THIS CODE IS
     LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
@@ -12,18 +12,19 @@ Copyright (c) Intel Corporation (2009-2017).
     use of the code. No license, express or implied, by estoppel or otherwise,
     to any intellectual property rights is granted herein.
 
-  \file common_clang.rc
-
 \*****************************************************************************/
 
+// \231 -> tm
+// \251 -> (C)
+// \256 -> (R)
+
 #include <windows.h>
-#include <buildversion.h>
 
 #ifdef RC_INVOKED
 
-VS_VERSION_INFO "1.0"
-FILEVERSION     "1.0"
-PRODUCTVERSION  "1.0"
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION    @PRODUCT_VER_MAJOR@,@PRODUCT_VER_MINOR@,@LLVM_VER_MAJOR@,@LLVM_VER_MINOR@
+PRODUCTVERSION @PRODUCT_VER_MAJOR@,@PRODUCT_VER_MINOR@,@LLVM_VER_MAJOR@,@LLVM_VER_MINOR@
 FILETYPE       VFT_DLL
 
 BEGIN
@@ -31,19 +32,15 @@ BEGIN
     BEGIN
         BLOCK "040904E4"
         BEGIN
-            VALUE "FileDescription" ,"Intel(R) Frontend Library for OpenCL*"
-            VALUE "ProductName"     ,"Intel(R) OpenCL(TM)"
-            VALUE "LegalCopyright"  ,"Copyright \251 2017 Intel Corporation.  All rights reserved."
-            VALUE "FileVersion"     ,"1.0"
-            VALUE "ProductVersion"  ,"1.0"
+            VALUE "FileDescription" ,"Intel\256 Front-end Library for OpenCL\231 software"
+            VALUE "ProductName"     ,"Intel\256 Front-end Library for OpenCL\231 software"
+            VALUE "LegalCopyright"  ,"Copyright \251 2018 Intel Corporation. All rights reserved."
+            VALUE "FileVersion"     ,"@PRODUCT_VER_MAJOR@.@PRODUCT_VER_MINOR@.@LLVM_VER_MAJOR@.@LLVM_VER_MINOR@"
+            VALUE "ProductVersion"  ,"@PRODUCT_VER_MAJOR@.@PRODUCT_VER_MINOR@.@LLVM_VER_MAJOR@.@LLVM_VER_MINOR@"
 
             VALUE "CompanyName"     ,"Intel Corporation"
-            VALUE "InternalName"    ,"Intel(R) OpenCL(TM) "
-#ifdef RESOURCE_X64
-            VALUE "OriginalFilename","common_clang64.dll"
-#else
-            VALUE "OriginalFilename","common_clang32.dll"
-#endif
+            VALUE "InternalName"    ,"@TARGET_NAME@"
+            VALUE "OriginalFilename","@TARGET_NAME@.dll"
         END
     END
 

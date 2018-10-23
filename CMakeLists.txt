@@ -6,41 +6,7 @@ cmake_minimum_required(VERSION 2.8.8)
 # `cmake --help-policy CMP0051` for details.
 cmake_policy(SET CMP0051 NEW)
 
-set( REVISION_ID $ENV{REVISION_ID} )
-set( GIT_VERSION $ENV{REVISION} )
-set( GIT_REVISION $ENV{RELEASE_BRANCH} )
-math( EXPR BUILDVER_WC_REVISION "6 * 65536" )
-
-set( PRODUCTVER_MAJOR 4 )
-set( PRODUCTVER_MINOR 3 )
-
-math(EXPR BUILDVER_16_BIT_MAJOR "${BUILDVER_WC_REVISION} / 65536")
-math(EXPR BUILDVER_16_BIT_MINOR "${BUILDVER_WC_REVISION} % 65536")
-
 find_package(Git REQUIRED)
-message(STATUS "Current build version is ${BUILDVER_WC_REVISION}")
-message(STATUS "GIT Version: ${GIT_VERSION}")
-message(STATUS "GIT Revision: ${GIT_REVISION}")
-message(STATUS "PRODUCTVER_MAJOR: ${PRODUCTVER_MAJOR}")
-message(STATUS "PRODUCTVER_MINOR: ${PRODUCTVER_MINOR}")
-
-# --------------
-#  write a file with the BUILDVERSION define
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/buildversion.h
-"
-#define BUILDVERSION ${BUILDVER_WC_REVISION}
-#ifndef _DEBUG
-    #define BUILDVERSIONSTR \"(Build\ ${BUILDVER_WC_REVISION})\"
-#else
-    #define BUILDVERSIONSTR \"(Build[DEBUG]\ ${BUILDVER_WC_REVISION})\"
-#endif
-#define PRODUCTVERSION_MAJOR ${PRODUCTVER_MAJOR}
-#define PRODUCTVERSION_MINOR ${PRODUCTVER_MINOR}
-#define BUILDVERSION16BIT_MAJOR ${BUILDVER_16_BIT_MAJOR}
-#define BUILDVERSION16BIT_MINOR ${BUILDVER_16_BIT_MINOR}
-#define VERSIONSTRING \"${PRODUCTVER_MAJOR}.${PRODUCTVER_MINOR}.${BUILDVER_16_BIT_MAJOR}.${BUILDVER_16_BIT_MINOR}\"
-")
-# --------------
 
 if (NOT WIN32)
     add_subdirectory( linux_linker )
@@ -128,6 +94,7 @@ function(apply_patches repo_dir patches_dir revision_to_patch)
             COMMAND ${GIT_EXECUTABLE} log -1 --oneline --decorate
             WORKING_DIRECTORY ${repo_dir}
             OUTPUT_VARIABLE CURRENT_BRANCH
+            ERROR_QUIET
         )
         message(STATUS "Current revision: ${CURRENT_BRANCH}")
         return()
@@ -185,11 +152,27 @@ set(TARGET_INCLUDE_FILES
 
 set(TARGET_SOURCE_FILES
     common_clang.cpp
-    common_clang.rc
     options.cpp
     pch_mgr.cpp
     options_compile.cpp
 )
+
+#
+# Resources
+#
+
+set( PRODUCT_VER_MAJOR 2 )
+set( PRODUCT_VER_MINOR 0 )
+set (LLVM_VER_MAJOR 7 )
+set (LLVM_VER_MINOR 0 )
+
+if (WIN32)
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/common_clang.rc.in
+        ${CMAKE_CURRENT_BINARY_DIR}/common_clang.rc
+        @ONLY)
+    list (APPEND TARGET_SOURCE_FILES ${CMAKE_CURRENT_BINARY_DIR}/common_clang.rc)
+endif (WIN32)
 
 add_definitions( -D__STDC_LIMIT_MACROS )
 add_definitions( -D__STDC_CONSTANT_MACROS )
