@@ -1,0 +1,3020 @@
+From 889f3bd1844ca71bcbc90448113de11006416285 Mon Sep 17 00:00:00 2001
+From: Viktoria Maksimova <viktoria.maksimova@intel.com>
+Date: Mon, 29 Oct 2018 16:41:33 +0300
+Subject: [PATCH 1/2] Implementation of LLVM IR -> SPIRV translation for 
+ SPV_INTEL_device_side_avc_motion_estimation extension
+
+Corresponding OpenCL extension is 'cl_intel_device_side_avc_motion_estimation'
+https://www.khronos.org/registry/OpenCL/extensions/intel/cl_intel_device_side_avc_motion_estimation.txt
+---
+ lib/SPIRV/OCL20ToSPIRV.cpp                         | 204 +++++
+ lib/SPIRV/OCLUtil.cpp                              |   9 +
+ lib/SPIRV/OCLUtil.h                                | 184 ++++
+ lib/SPIRV/SPIRVInternal.h                          |   1 +
+ lib/SPIRV/SPIRVWriter.cpp                          |  20 +-
+ lib/SPIRV/libSPIRV/SPIRVEnum.h                     |   5 +
+ lib/SPIRV/libSPIRV/SPIRVInstruction.h              | 150 ++++
+ lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h              | 118 +++
+ lib/SPIRV/libSPIRV/SPIRVModule.cpp                 |  11 +
+ lib/SPIRV/libSPIRV/SPIRVModule.h                   |   3 +
+ lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h              |   6 +
+ lib/SPIRV/libSPIRV/SPIRVOpCode.h                   |   9 +-
+ lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h               | 124 +++
+ lib/SPIRV/libSPIRV/SPIRVType.cpp                   |   9 +
+ lib/SPIRV/libSPIRV/SPIRVType.h                     | 111 +++
+ lib/SPIRV/libSPIRV/SPIRVValue.h                    |   4 +-
+ lib/SPIRV/libSPIRV/spirv.hpp                       | 932 ++++++++++++---------
+ test/transcoding/subgroup_avc_intel_generic.ll     | 241 ++++++
+ test/transcoding/subgroup_avc_intel_not_builtin.ll |  43 +
+ test/transcoding/subgroup_avc_intel_types.ll       | 110 +++
+ test/transcoding/subgroup_avc_intel_vme_image.ll   | 246 ++++++
+ test/transcoding/subgroup_avc_intel_wrappers.ll    | 158 ++++
+ 22 files changed, 2289 insertions(+), 409 deletions(-)
+ create mode 100644 test/transcoding/subgroup_avc_intel_generic.ll
+ create mode 100644 test/transcoding/subgroup_avc_intel_not_builtin.ll
+ create mode 100644 test/transcoding/subgroup_avc_intel_types.ll
+ create mode 100644 test/transcoding/subgroup_avc_intel_vme_image.ll
+ create mode 100644 test/transcoding/subgroup_avc_intel_wrappers.ll
+
+diff --git a/lib/SPIRV/OCL20ToSPIRV.cpp b/lib/SPIRV/OCL20ToSPIRV.cpp
+index 928d14f..e693c0b 100644
+--- a/lib/SPIRV/OCL20ToSPIRV.cpp
++++ b/lib/SPIRV/OCL20ToSPIRV.cpp
+@@ -274,6 +274,14 @@ public:
+   /// For cl_intel_media_block_io built-ins:
+   void visitSubgroupImageMediaBlockINTEL(CallInst *CI,
+                                          const std::string &DemangledName);
++  // For cl_intel_device_side_avc_motion_estimation built-ins
++  void visitSubgroupAVCBuiltinCall(CallInst *CI, StringRef MangledName,
++                                   const std::string &DemangledName);
++  void visitSubgroupAVCWrapperBuiltinCall(CallInst *CI, Op WrappedOC,
++                                          const std::string &DemangledName);
++  void visitSubgroupAVCBuiltinCallWithSampler(CallInst *CI,
++                                              StringRef MangledName,
++                                              const std::string &DemangledName);
+ 
+   static char ID;
+ 
+@@ -541,6 +549,16 @@ void OCL20ToSPIRV::visitCallInst(CallInst &CI) {
+     visitSubgroupImageMediaBlockINTEL(&CI, DemangledName);
+     return;
+   }
++  // Handle 'cl_intel_device_side_avc_motion_estimation' extension built-ins
++  if (DemangledName.find(kOCLSubgroupsAVCIntel::Prefix) == 0 ||
++      // Workaround for a bug in the extension specification
++      DemangledName.find("intel_sub_group_ime_ref_window_size") == 0) {
++    if (MangledName.find(kMangledName::Sampler) != StringRef::npos)
++      visitSubgroupAVCBuiltinCallWithSampler(&CI, MangledName, DemangledName);
++    else
++      visitSubgroupAVCBuiltinCall(&CI, MangledName, DemangledName);
++    return;
++  }
+   visitCallBuiltinSimple(&CI, MangledName, DemangledName);
+ }
+ 
+@@ -1669,6 +1687,192 @@ void OCL20ToSPIRV::visitSubgroupImageMediaBlockINTEL(
+                       &Attrs);
+ }
+ 
++static const char *getSubgroupAVCIntelOpKind(const std::string &Name) {
++  return StringSwitch<const char *>(Name)
++      .StartsWith(kOCLSubgroupsAVCIntel::IMEPrefix, "ime")
++      .StartsWith(kOCLSubgroupsAVCIntel::REFPrefix, "ref")
++      .StartsWith(kOCLSubgroupsAVCIntel::SICPrefix, "sic");
++}
++
++static const char *getSubgroupAVCIntelTyKind(Type *Ty) {
++  auto STy = cast<StructType>(cast<PointerType>(Ty)->getElementType());
++  auto TName = STy->getName();
++  return TName.endswith("_payload_t") ? "payload" : "result";
++}
++
++static Type *getSubgroupAVCIntelMCEType(Module *M, std::string &TName) {
++  auto Ty = M->getTypeByName(TName);
++  if (Ty)
++    return Ty;
++
++  return StructType::create(M->getContext(), TName);
++}
++
++static Op
++getSubgroupAVCIntelMCEOpCodeForWrapper(const std::string &DemangledName) {
++  if (DemangledName.size() <= strlen(kOCLSubgroupsAVCIntel::MCEPrefix))
++    return OpNop; // this is not a VME built-in
++
++  std::string MCEName = DemangledName;
++  MCEName.replace(0, strlen(kOCLSubgroupsAVCIntel::MCEPrefix),
++                  kOCLSubgroupsAVCIntel::MCEPrefix);
++  Op MCEOC = OpNop;
++  OCLSPIRVSubgroupAVCIntelBuiltinMap::find(MCEName, &MCEOC);
++  return MCEOC;
++}
++
++// Handles Subgroup AVC Intel extension generic built-ins.
++void OCL20ToSPIRV::visitSubgroupAVCBuiltinCall(
++    CallInst *CI, StringRef MangledName, const std::string &DemangledName) {
++  Op OC = OpNop;
++  std::string FName = DemangledName;
++  std::string Prefix = kOCLSubgroupsAVCIntel::Prefix;
++
++  // Update names for built-ins mapped on two or more SPIRV instructions
++  if (FName.find(Prefix + "ime_get_streamout_major_shape_") == 0) {
++    auto PTy = cast<PointerType>(CI->getArgOperand(0)->getType());
++    auto STy = cast<StructType>(PTy->getElementType());
++    assert(STy->hasName() && "Invalid Subgroup AVC Intel built-in call");
++    FName += (STy->getName().contains("single")) ? "_single_reference"
++                                                 : "_dual_reference";
++  } else if (FName.find(Prefix + "sic_configure_ipe") == 0) {
++    FName += (CI->getNumArgOperands() == 8) ? "_luma" : "_luma_chroma";
++  }
++
++  OCLSPIRVSubgroupAVCIntelBuiltinMap::find(FName, &OC);
++  if (OC == OpNop) {
++    if (Op MCEOC = getSubgroupAVCIntelMCEOpCodeForWrapper(DemangledName))
++      // The called function is a VME wrapper built-in
++      return visitSubgroupAVCWrapperBuiltinCall(CI, MCEOC, DemangledName);
++    else
++      // The called function isn't a VME built-in
++      return;
++  }
++
++  AttributeList Attrs = CI->getCalledFunction()->getAttributes();
++  mutateCallInstSPIRV(M, CI,
++                      [=](CallInst *, std::vector<Value *> &Args) {
++                        return getSPIRVFuncName(OC);
++                      },
++                      &Attrs);
++}
++
++// Handles Subgroup AVC Intel extension wrapper built-ins.
++// 'IME', 'REF' and 'SIC' sets contain wrapper built-ins which don't have
++// corresponded instructions in SPIRV and should be translated to a
++// conterpart from 'MCE' with conversion for an argument and result (if needed).
++void OCL20ToSPIRV::visitSubgroupAVCWrapperBuiltinCall(
++    CallInst *CI, Op WrappedOC, const std::string &DemangledName) {
++  AttributeList Attrs = CI->getCalledFunction()->getAttributes();
++  std::string Prefix = kOCLSubgroupsAVCIntel::Prefix;
++
++  // Find 'to_mce' conversion function.
++  // The operand required conversion is always the last one.
++  const char *OpKind = getSubgroupAVCIntelOpKind(DemangledName);
++  const char *TyKind = getSubgroupAVCIntelTyKind(
++      CI->getArgOperand(CI->getNumArgOperands() - 1)->getType());
++  std::string MCETName =
++      std::string(kOCLSubgroupsAVCIntel::TypePrefix) + "mce_" + TyKind + "_t";
++  auto *MCETy =
++      PointerType::get(getSubgroupAVCIntelMCEType(M, MCETName), SPIRAS_Private);
++  std::string ToMCEFName = Prefix + OpKind + "_convert_to_mce_" + TyKind;
++  Op ToMCEOC = OpNop;
++  OCLSPIRVSubgroupAVCIntelBuiltinMap::find(ToMCEFName, &ToMCEOC);
++  assert(ToMCEOC != OpNop && "Invalid Subgroup AVC Intel built-in call");
++
++  if (std::strcmp(TyKind, "payload") == 0) {
++    // Wrapper built-ins which take the 'payload_t' argument return it as
++    // the result: two conversion calls required.
++    std::string FromMCEFName =
++        Prefix + "mce_convert_to_" + OpKind + "_" + TyKind;
++    Op FromMCEOC = OpNop;
++    OCLSPIRVSubgroupAVCIntelBuiltinMap::find(FromMCEFName, &FromMCEOC);
++    assert(FromMCEOC != OpNop && "Invalid Subgroup AVC Intel built-in call");
++
++    mutateCallInstSPIRV(
++        M, CI,
++        [=](CallInst *, std::vector<Value *> &Args, Type *&Ret) {
++          Ret = MCETy;
++          // Create conversion function call for the last operand
++          Args[Args.size() - 1] =
++              addCallInstSPIRV(M, getSPIRVFuncName(ToMCEOC), MCETy,
++                               Args[Args.size() - 1], nullptr, CI, "");
++
++          return getSPIRVFuncName(WrappedOC);
++        },
++        [=](CallInst *NewCI) -> Instruction * {
++          // Create conversion function call for the return result
++          return addCallInstSPIRV(M, getSPIRVFuncName(FromMCEOC), CI->getType(),
++                                  NewCI, nullptr, CI, "");
++        },
++        &Attrs);
++  } else {
++    // Wrapper built-ins which take the 'result_t' argument requires only one
++    // conversion for the argument
++    mutateCallInstSPIRV(M, CI,
++                        [=](CallInst *, std::vector<Value *> &Args) {
++                          // Create conversion function call for the last
++                          // operand
++                          Args[Args.size() - 1] = addCallInstSPIRV(
++                              M, getSPIRVFuncName(ToMCEOC), MCETy,
++                              Args[Args.size() - 1], nullptr, CI, "");
++
++                          return getSPIRVFuncName(WrappedOC);
++                        },
++                        &Attrs);
++  }
++}
++
++// Handles Subgroup AVC Intel extension built-ins which take sampler as
++// an argument (their SPIR-V counterparts take OpTypeVmeImageIntel instead)
++void OCL20ToSPIRV::visitSubgroupAVCBuiltinCallWithSampler(
++    CallInst *CI, StringRef MangledName, const std::string &DemangledName) {
++  std::string FName = DemangledName;
++  std::string Prefix = kOCLSubgroupsAVCIntel::Prefix;
++
++  // Update names for built-ins mapped on two or more SPIRV instructions
++  if (FName.find(Prefix + "ref_evaluate_with_multi_reference") == 0 ||
++      FName.find(Prefix + "sic_evaluate_with_multi_reference") == 0) {
++    FName += (CI->getNumArgOperands() == 5) ? "_interlaced" : "";
++  }
++
++  Op OC = OpNop;
++  OCLSPIRVSubgroupAVCIntelBuiltinMap::find(FName, &OC);
++  if (OC == OpNop)
++    return; // this is not a VME built-in
++
++  AttributeList Attrs = CI->getCalledFunction()->getAttributes();
++  mutateCallInstSPIRV(
++      M, CI,
++      [=](CallInst *, std::vector<Value *> &Args) {
++        auto SamplerIt = std::find_if(Args.begin(), Args.end(), [](Value *V) {
++          return OCLUtil::isSamplerTy(V->getType());
++        });
++        assert(SamplerIt != Args.end() &&
++               "Invalid Subgroup AVC Intel built-in call");
++        auto *SamplerVal = *SamplerIt;
++        Args.erase(SamplerIt);
++
++        for (unsigned I = 0, E = Args.size(); I < E; ++I) {
++          if (!isOCLImageType(Args[I]->getType()))
++            continue;
++
++          auto *ImageTy = getAnalysis<OCLTypeToSPIRV>().getAdaptedType(Args[I]);
++          if (isOCLImageType(ImageTy))
++            ImageTy = getSPIRVImageTypeFromOCL(M, ImageTy);
++          auto *SampledImgTy = getSPIRVTypeByChangeBaseTypeName(
++              M, ImageTy, kSPIRVTypeName::Image, kSPIRVTypeName::VmeImageINTEL);
++
++          Value *SampledImgArgs[] = {Args[I], SamplerVal};
++          Args[I] = addCallInstSPIRV(M, getSPIRVFuncName(OpVmeImageINTEL),
++                                     SampledImgTy, SampledImgArgs, nullptr, CI,
++                                     kSPIRVName::TempSampledImage);
++        }
++        return getSPIRVFuncName(OC);
++      },
++      &Attrs);
++}
++
+ } // namespace SPIRV
+ 
+ INITIALIZE_PASS_BEGIN(OCL20ToSPIRV, "cl20tospv", "Transform OCL 2.0 to SPIR-V",
+diff --git a/lib/SPIRV/OCLUtil.cpp b/lib/SPIRV/OCLUtil.cpp
+index 2854826..32b66aa 100644
+--- a/lib/SPIRV/OCLUtil.cpp
++++ b/lib/SPIRV/OCLUtil.cpp
+@@ -634,6 +634,15 @@ bool isSpecialTypeInitializer(Instruction *Inst) {
+   return isSamplerInitializer(Inst) || isPipeStorageInitializer(Inst);
+ }
+ 
++bool isSamplerTy(Type *Ty) {
++  auto PTy = dyn_cast<PointerType>(Ty);
++  if (!PTy)
++    return false;
++
++  auto STy = dyn_cast<StructType>(PTy->getElementType());
++  return STy && STy->hasName() && STy->getName() == kSPR2TypeName::Sampler;
++}
++
+ bool isPipeBI(const StringRef MangledName) {
+   return MangledName == "write_pipe_2" || MangledName == "read_pipe_2" ||
+          MangledName == "write_pipe_4" || MangledName == "read_pipe_4" ||
+diff --git a/lib/SPIRV/OCLUtil.h b/lib/SPIRV/OCLUtil.h
+index b721b71..cfba41a 100644
+--- a/lib/SPIRV/OCLUtil.h
++++ b/lib/SPIRV/OCLUtil.h
+@@ -267,6 +267,14 @@ enum Kind {
+ };
+ // clang-format on
+ } // namespace OclExt
++namespace kOCLSubgroupsAVCIntel {
++const static char Prefix[] = "intel_sub_group_avc_";
++const static char MCEPrefix[] = "intel_sub_group_avc_mce_";
++const static char IMEPrefix[] = "intel_sub_group_avc_ime_";
++const static char REFPrefix[] = "intel_sub_group_avc_ref_";
++const static char SICPrefix[] = "intel_sub_group_avc_sic_";
++const static char TypePrefix[] = "opencl.intel_sub_group_avc_";
++} // namespace kOCLSubgroupsAVCIntel
+ 
+ ///////////////////////////////////////////////////////////////////////////////
+ //
+@@ -395,6 +403,9 @@ bool isPipeBI(const StringRef MangledName);
+ bool isEnqueueKernelBI(const StringRef MangledName);
+ bool isKernelQueryBI(const StringRef MangledName);
+ 
++/// Check that the type is the sampler_t
++bool isSamplerTy(Type *Ty);
++
+ } // namespace OCLUtil
+ 
+ ///////////////////////////////////////////////////////////////////////////////
+@@ -641,6 +652,179 @@ template <> inline void SPIRVMap<std::string, Op, SPIRVInstruction>::init() {
+ #undef _SPIRV_OP
+ }
+ 
++// SPV_INTEL_device_side_avc_motion_estimation extension builtins
++class SPIRVSubgroupsAVCIntelInst;
++template <>
++inline void SPIRVMap<std::string, Op, SPIRVSubgroupsAVCIntelInst>::init() {
++  // Here is a workaround for a bug in the specification:
++  // 'avc' missed in 'intel_sub_group_avc' prefix.
++  add("intel_sub_group_ime_ref_window_size",
++      OpSubgroupAvcImeRefWindowSizeINTEL);
++
++#define _SPIRV_OP(x, y) add("intel_sub_group_avc_" #x, OpSubgroupAvc##y##INTEL);
++  // Initialization phase functions
++  _SPIRV_OP(ime_initialize, ImeInitialize)
++  _SPIRV_OP(fme_initialize, FmeInitialize)
++  _SPIRV_OP(bme_initialize, BmeInitialize)
++  _SPIRV_OP(sic_initialize, SicInitialize)
++
++  // Result and payload types conversion functions
++  _SPIRV_OP(mce_convert_to_ime_payload, MceConvertToImePayload)
++  _SPIRV_OP(mce_convert_to_ime_result, MceConvertToImeResult)
++  _SPIRV_OP(mce_convert_to_ref_payload, MceConvertToRefPayload)
++  _SPIRV_OP(mce_convert_to_ref_result, MceConvertToRefResult)
++  _SPIRV_OP(mce_convert_to_sic_payload, MceConvertToSicPayload)
++  _SPIRV_OP(mce_convert_to_sic_result, MceConvertToSicResult)
++  _SPIRV_OP(ime_convert_to_mce_payload, ImeConvertToMcePayload)
++  _SPIRV_OP(ime_convert_to_mce_result, ImeConvertToMceResult)
++  _SPIRV_OP(ref_convert_to_mce_payload, RefConvertToMcePayload)
++  _SPIRV_OP(ref_convert_to_mce_result, RefConvertToMceResult)
++  _SPIRV_OP(sic_convert_to_mce_payload, SicConvertToMcePayload)
++  _SPIRV_OP(sic_convert_to_mce_result, SicConvertToMceResult)
++#undef _SPIRV_OP
++
++// MCE instructions
++#define _SPIRV_OP(x, y)                                                        \
++  add("intel_sub_group_avc_mce_" #x, OpSubgroupAvcMce##y##INTEL);
++  _SPIRV_OP(get_default_inter_base_multi_reference_penalty,
++            GetDefaultInterBaseMultiReferencePenalty)
++  _SPIRV_OP(set_inter_base_multi_reference_penalty,
++            SetInterBaseMultiReferencePenalty)
++  _SPIRV_OP(get_default_inter_shape_penalty, GetDefaultInterShapePenalty)
++  _SPIRV_OP(set_inter_shape_penalty, SetInterShapePenalty)
++  _SPIRV_OP(get_default_inter_direction_penalty,
++            GetDefaultInterDirectionPenalty)
++  _SPIRV_OP(set_inter_direction_penalty, SetInterDirectionPenalty)
++  _SPIRV_OP(get_default_intra_luma_shape_penalty,
++            GetDefaultIntraLumaShapePenalty)
++  _SPIRV_OP(get_default_inter_motion_vector_cost_table,
++            GetDefaultInterMotionVectorCostTable)
++  _SPIRV_OP(get_default_high_penalty_cost_table, GetDefaultHighPenaltyCostTable)
++  _SPIRV_OP(get_default_medium_penalty_cost_table,
++            GetDefaultMediumPenaltyCostTable)
++  _SPIRV_OP(get_default_low_penalty_cost_table, GetDefaultLowPenaltyCostTable)
++  _SPIRV_OP(set_motion_vector_cost_function, SetMotionVectorCostFunction)
++  _SPIRV_OP(get_default_intra_luma_mode_penalty, GetDefaultIntraLumaModePenalty)
++  _SPIRV_OP(get_default_non_dc_luma_intra_penalty,
++            GetDefaultNonDcLumaIntraPenalty)
++  _SPIRV_OP(get_default_intra_chroma_mode_base_penalty,
++            GetDefaultIntraChromaModeBasePenalty)
++  _SPIRV_OP(set_ac_only_haar, SetAcOnlyHaar)
++  _SPIRV_OP(set_source_interlaced_field_polarity,
++            SetSourceInterlacedFieldPolarity)
++  _SPIRV_OP(set_single_reference_interlaced_field_polarity,
++            SetSingleReferenceInterlacedFieldPolarity)
++  _SPIRV_OP(set_dual_reference_interlaced_field_polarities,
++            SetDualReferenceInterlacedFieldPolarities)
++  _SPIRV_OP(get_motion_vectors, GetMotionVectors)
++  _SPIRV_OP(get_inter_distortions, GetInterDistortions)
++  _SPIRV_OP(get_best_inter_distortion, GetBestInterDistortions)
++  _SPIRV_OP(get_inter_major_shape, GetInterMajorShape)
++  _SPIRV_OP(get_inter_minor_shapes, GetInterMinorShape)
++  _SPIRV_OP(get_inter_directions, GetInterDirections)
++  _SPIRV_OP(get_inter_motion_vector_count, GetInterMotionVectorCount)
++  _SPIRV_OP(get_inter_reference_ids, GetInterReferenceIds)
++  _SPIRV_OP(get_inter_reference_interlaced_field_polarities,
++            GetInterReferenceInterlacedFieldPolarities)
++#undef _SPIRV_OP
++
++// IME instructions
++#define _SPIRV_OP(x, y)                                                        \
++  add("intel_sub_group_avc_ime_" #x, OpSubgroupAvcIme##y##INTEL);
++  _SPIRV_OP(set_single_reference, SetSingleReference)
++  _SPIRV_OP(set_dual_reference, SetDualReference)
++  _SPIRV_OP(ref_window_size, RefWindowSize)
++  _SPIRV_OP(adjust_ref_offset, AdjustRefOffset)
++  _SPIRV_OP(set_max_motion_vector_count, SetMaxMotionVectorCount)
++  _SPIRV_OP(set_unidirectional_mix_disable, SetUnidirectionalMixDisable)
++  _SPIRV_OP(set_early_search_termination_threshold,
++            SetEarlySearchTerminationThreshold)
++  _SPIRV_OP(set_weighted_sad, SetWeightedSad)
++  _SPIRV_OP(evaluate_with_single_reference, EvaluateWithSingleReference)
++  _SPIRV_OP(evaluate_with_dual_reference, EvaluateWithDualReference)
++  _SPIRV_OP(evaluate_with_single_reference_streamin,
++            EvaluateWithSingleReferenceStreamin)
++  _SPIRV_OP(evaluate_with_dual_reference_streamin,
++            EvaluateWithDualReferenceStreamin)
++  _SPIRV_OP(evaluate_with_single_reference_streamout,
++            EvaluateWithSingleReferenceStreamout)
++  _SPIRV_OP(evaluate_with_dual_reference_streamout,
++            EvaluateWithDualReferenceStreamout)
++  _SPIRV_OP(evaluate_with_single_reference_streaminout,
++            EvaluateWithSingleReferenceStreaminout)
++  _SPIRV_OP(evaluate_with_dual_reference_streaminout,
++            EvaluateWithDualReferenceStreaminout)
++  _SPIRV_OP(get_single_reference_streamin, GetSingleReferenceStreamin)
++  _SPIRV_OP(get_dual_reference_streamin, GetDualReferenceStreamin)
++  _SPIRV_OP(strip_single_reference_streamout, StripSingleReferenceStreamout)
++  _SPIRV_OP(strip_dual_reference_streamout, StripDualReferenceStreamout)
++  _SPIRV_OP(get_border_reached, GetBorderReached)
++  _SPIRV_OP(get_truncated_search_indication, GetTruncatedSearchIndication)
++  _SPIRV_OP(get_unidirectional_early_search_termination,
++            GetUnidirectionalEarlySearchTermination)
++  _SPIRV_OP(get_weighting_pattern_minimum_motion_vector,
++            GetWeightingPatternMinimumMotionVector)
++  _SPIRV_OP(get_weighting_pattern_minimum_distortion,
++            GetWeightingPatternMinimumDistortion)
++#undef _SPIRV_OP
++
++#define _SPIRV_OP(x, y)                                                        \
++  add("intel_sub_group_avc_ime_get_streamout_major_shape_" #x,                 \
++      OpSubgroupAvcImeGetStreamout##y##INTEL);
++  _SPIRV_OP(motion_vectors_single_reference,
++            SingleReferenceMajorShapeMotionVectors)
++  _SPIRV_OP(distortions_single_reference, SingleReferenceMajorShapeDistortions)
++  _SPIRV_OP(reference_ids_single_reference,
++            SingleReferenceMajorShapeReferenceIds)
++  _SPIRV_OP(motion_vectors_dual_reference, DualReferenceMajorShapeMotionVectors)
++  _SPIRV_OP(distortions_dual_reference, DualReferenceMajorShapeDistortions)
++  _SPIRV_OP(reference_ids_dual_reference, DualReferenceMajorShapeReferenceIds)
++#undef _SPIRV_OP
++
++// REF instructions
++#define _SPIRV_OP(x, y)                                                        \
++  add("intel_sub_group_avc_ref_" #x, OpSubgroupAvcRef##y##INTEL);
++  _SPIRV_OP(set_bidirectional_mix_disable, SetBidirectionalMixDisable)
++  _SPIRV_OP(set_bilinear_filter_enable, SetBilinearFilterEnable)
++  _SPIRV_OP(evaluate_with_single_reference, EvaluateWithSingleReference)
++  _SPIRV_OP(evaluate_with_dual_reference, EvaluateWithDualReference)
++  _SPIRV_OP(evaluate_with_multi_reference, EvaluateWithMultiReference)
++  _SPIRV_OP(evaluate_with_multi_reference_interlaced,
++            EvaluateWithMultiReferenceInterlaced)
++#undef _SPIRV_OP
++
++// SIC instructions
++#define _SPIRV_OP(x, y)                                                        \
++  add("intel_sub_group_avc_sic_" #x, OpSubgroupAvcSic##y##INTEL);
++  _SPIRV_OP(configure_skc, ConfigureSkc)
++  _SPIRV_OP(configure_ipe_luma, ConfigureIpeLuma)
++  _SPIRV_OP(configure_ipe_luma_chroma, ConfigureIpeLumaChroma)
++  _SPIRV_OP(get_motion_vector_mask, GetMotionVectorMask)
++  _SPIRV_OP(set_intra_luma_shape_penalty, SetIntraLumaShapePenalty)
++  _SPIRV_OP(set_intra_luma_mode_cost_function, SetIntraLumaModeCostFunction)
++  _SPIRV_OP(set_intra_chroma_mode_cost_function, SetIntraChromaModeCostFunction)
++  _SPIRV_OP(set_skc_bilinear_filter_enable, SetBilinearFilterEnable)
++  _SPIRV_OP(set_skc_forward_transform_enable, SetSkcForwardTransformEnable)
++  _SPIRV_OP(set_block_based_raw_skip_sad, SetBlockBasedRawSkipSad)
++  _SPIRV_OP(evaluate_ipe, EvaluateIpe)
++  _SPIRV_OP(evaluate_with_single_reference, EvaluateWithSingleReference)
++  _SPIRV_OP(evaluate_with_dual_reference, EvaluateWithDualReference)
++  _SPIRV_OP(evaluate_with_multi_reference, EvaluateWithMultiReference)
++  _SPIRV_OP(evaluate_with_multi_reference_interlaced,
++            EvaluateWithMultiReferenceInterlaced)
++  _SPIRV_OP(get_ipe_luma_shape, GetIpeLumaShape)
++  _SPIRV_OP(get_best_ipe_luma_distortion, GetBestIpeLumaDistortion)
++  _SPIRV_OP(get_best_ipe_chroma_distortion, GetBestIpeChromaDistortion)
++  _SPIRV_OP(get_packed_ipe_luma_modes, GetPackedIpeLumaModes)
++  _SPIRV_OP(get_ipe_chroma_mode, GetIpeChromaMode)
++  _SPIRV_OP(get_packed_skc_luma_count_threshold, GetPackedSkcLumaCountThreshold)
++  _SPIRV_OP(get_packed_skc_luma_sum_threshold, GetPackedSkcLumaSumThreshold)
++  _SPIRV_OP(get_inter_raw_sads, GetInterRawSads)
++#undef _SPIRV_OP
++}
++typedef SPIRVMap<std::string, Op, SPIRVSubgroupsAVCIntelInst>
++    OCLSPIRVSubgroupAVCIntelBuiltinMap;
++
+ template <> inline void SPIRVMap<std::string, Op, OCLOpaqueType>::init() {
+   add("opencl.event_t", OpTypeEvent);
+   add("opencl.pipe_t", OpTypePipe);
+diff --git a/lib/SPIRV/SPIRVInternal.h b/lib/SPIRV/SPIRVInternal.h
+index be11b41..f452c4f 100644
+--- a/lib/SPIRV/SPIRVInternal.h
++++ b/lib/SPIRV/SPIRVInternal.h
+@@ -294,6 +294,7 @@ const static char Sampler[] = "Sampler";
+ const static char ConstantSampler[] = "ConstantSampler";
+ const static char PipeStorage[] = "PipeStorage";
+ const static char ConstantPipeStorage[] = "ConstantPipeStorage";
++const static char VmeImageINTEL[] = "VmeImageINTEL";
+ } // namespace kSPIRVTypeName
+ 
+ namespace kSPR2TypeName {
+diff --git a/lib/SPIRV/SPIRVWriter.cpp b/lib/SPIRV/SPIRVWriter.cpp
+index 329e7bb..a9eb0c7 100644
+--- a/lib/SPIRV/SPIRVWriter.cpp
++++ b/lib/SPIRV/SPIRVWriter.cpp
+@@ -311,7 +311,13 @@ SPIRVType *LLVMToSPIRV::transType(Type *T) {
+         return mapType(T, transType(getSamplerType(M)));
+       if (STName.startswith(kSPIRVTypeName::PrefixAndDelim))
+         return transSPIRVOpaqueType(T);
+-      else if (OCLOpaqueTypeOpCodeMap::find(STName, &OpCode)) {
++
++      if (STName.startswith(kOCLSubgroupsAVCIntel::TypePrefix))
++        return mapType(T,
++                       BM->addSubgroupAvcINTELType(
++                           OCLSubgroupINTELTypeOpCodeMap::map(ST->getName())));
++
++      if (OCLOpaqueTypeOpCodeMap::find(STName, &OpCode)) {
+         switch (OpCode) {
+         default:
+           return mapType(T, BM->addOpaqueGenericType(OpCode));
+@@ -320,7 +326,9 @@ SPIRVType *LLVMToSPIRV::transType(Type *T) {
+         case OpTypeQueue:
+           return mapType(T, BM->addQueueType());
+         }
+-      } else if (isPointerToOpaqueStructType(T)) {
++      }
++
++      if (isPointerToOpaqueStructType(T)) {
+         return mapType(
+             T, BM->addPointerType(SPIRSPIRVAddrSpaceMap::map(
+                                       static_cast<SPIRAddressSpace>(AddrSpc)),
+@@ -437,6 +445,14 @@ SPIRVType *LLVMToSPIRV::transSPIRVOpaqueType(Type *T) {
+         T, BM->addSampledImageType(static_cast<SPIRVTypeImage *>(
+                transType(getSPIRVTypeByChangeBaseTypeName(
+                    M, T, kSPIRVTypeName::SampledImg, kSPIRVTypeName::Image)))));
++  } else if (TN == kSPIRVTypeName::VmeImageINTEL) {
++    // This type is the same as SampledImageType, but consumed by Subgroup AVC
++    // Intel extension instructions.
++    return mapType(
++        T,
++        BM->addVmeImageINTELType(static_cast<SPIRVTypeImage *>(
++            transType(getSPIRVTypeByChangeBaseTypeName(
++                M, T, kSPIRVTypeName::VmeImageINTEL, kSPIRVTypeName::Image)))));
+   } else if (TN == kSPIRVTypeName::Sampler)
+     return mapType(T, BM->addSamplerType());
+   else if (TN == kSPIRVTypeName::DeviceEvent)
+diff --git a/lib/SPIRV/libSPIRV/SPIRVEnum.h b/lib/SPIRV/libSPIRV/SPIRVEnum.h
+index e3b53bb..e477afd 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVEnum.h
+@@ -178,6 +178,11 @@ template <> inline void SPIRVMap<SPIRVCapabilityKind, SPIRVCapVec>::init() {
+   ADD_VEC_INIT(CapabilityStorageImageReadWithoutFormat, {CapabilityShader});
+   ADD_VEC_INIT(CapabilityStorageImageWriteWithoutFormat, {CapabilityShader});
+   ADD_VEC_INIT(CapabilityMultiViewport, {CapabilityGeometry});
++  ADD_VEC_INIT(CapabilitySubgroupAvcMotionEstimationINTEL, {CapabilityGroups});
++  ADD_VEC_INIT(CapabilitySubgroupAvcMotionEstimationIntraINTEL,
++               {CapabilitySubgroupAvcMotionEstimationINTEL});
++  ADD_VEC_INIT(CapabilitySubgroupAvcMotionEstimationChromaINTEL,
++               {CapabilitySubgroupAvcMotionEstimationIntraINTEL});
+ }
+ 
+ template <> inline void SPIRVMap<SPIRVExecutionModelKind, SPIRVCapVec>::init() {
+diff --git a/lib/SPIRV/libSPIRV/SPIRVInstruction.h b/lib/SPIRV/libSPIRV/SPIRVInstruction.h
+index 0b46efd..508c54c 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVInstruction.h
++++ b/lib/SPIRV/libSPIRV/SPIRVInstruction.h
+@@ -2239,6 +2239,156 @@ _SPIRV_OP(SubgroupImageMediaBlockReadINTEL, true, 7)
+ _SPIRV_OP(SubgroupImageMediaBlockWriteINTEL, false, 6)
+ #undef _SPIRV_OP
+ 
++class SPIRVSubgroupAVCIntelInstBase : public SPIRVInstTemplateBase {
++protected:
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(CapabilitySubgroupAvcMotionEstimationINTEL);
++  }
++};
++
++// Intel Subgroup AVC Motion Estimation Instructions
++typedef SPIRVInstTemplate<SPIRVSubgroupAVCIntelInstBase, OpVmeImageINTEL, true,
++                          5>
++    SPIRVVmeImageINTEL;
++
++#define _SPIRV_OP(x, ...)                                                      \
++  typedef SPIRVInstTemplate<SPIRVSubgroupAVCIntelInstBase,                     \
++                            OpSubgroupAvc##x##INTEL, __VA_ARGS__>              \
++      SPIRVSubgroupAvc##x##INTEL;
++_SPIRV_OP(MceGetDefaultInterBaseMultiReferencePenalty, true, 5)
++_SPIRV_OP(MceSetInterBaseMultiReferencePenalty, true, 5)
++_SPIRV_OP(MceGetDefaultInterShapePenalty, true, 5)
++_SPIRV_OP(MceSetInterShapePenalty, true, 5)
++_SPIRV_OP(MceGetDefaultInterDirectionPenalty, true, 5)
++_SPIRV_OP(MceSetInterDirectionPenalty, true, 5)
++_SPIRV_OP(MceGetDefaultInterMotionVectorCostTable, true, 5)
++_SPIRV_OP(MceGetDefaultHighPenaltyCostTable, true, 3)
++_SPIRV_OP(MceGetDefaultMediumPenaltyCostTable, true, 3)
++_SPIRV_OP(MceGetDefaultLowPenaltyCostTable, true, 3)
++_SPIRV_OP(MceSetMotionVectorCostFunction, true, 7)
++_SPIRV_OP(MceSetAcOnlyHaar, true, 4)
++_SPIRV_OP(MceSetSourceInterlacedFieldPolarity, true, 5)
++_SPIRV_OP(MceSetSingleReferenceInterlacedFieldPolarity, true, 5)
++_SPIRV_OP(MceSetDualReferenceInterlacedFieldPolarities, true, 6)
++_SPIRV_OP(MceConvertToImePayload, true, 4)
++_SPIRV_OP(MceConvertToImeResult, true, 4)
++_SPIRV_OP(MceConvertToRefPayload, true, 4)
++_SPIRV_OP(MceConvertToRefResult, true, 4)
++_SPIRV_OP(MceConvertToSicPayload, true, 4)
++_SPIRV_OP(MceConvertToSicResult, true, 4)
++_SPIRV_OP(MceGetMotionVectors, true, 4)
++_SPIRV_OP(MceGetInterDistortions, true, 4)
++_SPIRV_OP(MceGetBestInterDistortions, true, 4)
++_SPIRV_OP(MceGetInterMajorShape, true, 4)
++_SPIRV_OP(MceGetInterMinorShape, true, 4)
++_SPIRV_OP(MceGetInterDirections, true, 4)
++_SPIRV_OP(MceGetInterMotionVectorCount, true, 4)
++_SPIRV_OP(MceGetInterReferenceIds, true, 4)
++_SPIRV_OP(MceGetInterReferenceInterlacedFieldPolarities, true, 6)
++_SPIRV_OP(ImeInitialize, true, 6)
++_SPIRV_OP(ImeSetSingleReference, true, 6)
++_SPIRV_OP(ImeSetDualReference, true, 7)
++_SPIRV_OP(ImeRefWindowSize, true, 5)
++_SPIRV_OP(ImeAdjustRefOffset, true, 7)
++_SPIRV_OP(ImeConvertToMcePayload, true, 4)
++_SPIRV_OP(ImeSetMaxMotionVectorCount, true, 5)
++_SPIRV_OP(ImeSetUnidirectionalMixDisable, true, 4)
++_SPIRV_OP(ImeSetEarlySearchTerminationThreshold, true, 5)
++_SPIRV_OP(ImeSetWeightedSad, true, 5)
++_SPIRV_OP(ImeEvaluateWithSingleReference, true, 6)
++_SPIRV_OP(ImeEvaluateWithDualReference, true, 7)
++_SPIRV_OP(ImeEvaluateWithSingleReferenceStreamin, true, 7)
++_SPIRV_OP(ImeEvaluateWithDualReferenceStreamin, true, 8)
++_SPIRV_OP(ImeEvaluateWithSingleReferenceStreamout, true, 6)
++_SPIRV_OP(ImeEvaluateWithDualReferenceStreamout, true, 7)
++_SPIRV_OP(ImeEvaluateWithSingleReferenceStreaminout, true, 7)
++_SPIRV_OP(ImeEvaluateWithDualReferenceStreaminout, true, 8)
++_SPIRV_OP(ImeConvertToMceResult, true, 4)
++_SPIRV_OP(ImeGetSingleReferenceStreamin, true, 4)
++_SPIRV_OP(ImeGetDualReferenceStreamin, true, 4)
++_SPIRV_OP(ImeStripSingleReferenceStreamout, true, 4)
++_SPIRV_OP(ImeStripDualReferenceStreamout, true, 4)
++_SPIRV_OP(ImeGetStreamoutSingleReferenceMajorShapeMotionVectors, true, 5)
++_SPIRV_OP(ImeGetStreamoutSingleReferenceMajorShapeDistortions, true, 5)
++_SPIRV_OP(ImeGetStreamoutSingleReferenceMajorShapeReferenceIds, true, 5)
++_SPIRV_OP(ImeGetStreamoutDualReferenceMajorShapeMotionVectors, true, 6)
++_SPIRV_OP(ImeGetStreamoutDualReferenceMajorShapeDistortions, true, 6)
++_SPIRV_OP(ImeGetStreamoutDualReferenceMajorShapeReferenceIds, true, 6)
++_SPIRV_OP(ImeGetBorderReached, true, 5)
++_SPIRV_OP(ImeGetTruncatedSearchIndication, true, 4)
++_SPIRV_OP(ImeGetUnidirectionalEarlySearchTermination, true, 4)
++_SPIRV_OP(ImeGetWeightingPatternMinimumMotionVector, true, 4)
++_SPIRV_OP(ImeGetWeightingPatternMinimumDistortion, true, 4)
++_SPIRV_OP(FmeInitialize, true, 10)
++_SPIRV_OP(BmeInitialize, true, 11)
++_SPIRV_OP(RefConvertToMcePayload, true, 4)
++_SPIRV_OP(RefSetBidirectionalMixDisable, true, 4)
++_SPIRV_OP(RefSetBilinearFilterEnable, true, 4)
++_SPIRV_OP(RefEvaluateWithSingleReference, true, 6)
++_SPIRV_OP(RefEvaluateWithDualReference, true, 7)
++_SPIRV_OP(RefEvaluateWithMultiReference, true, 6)
++_SPIRV_OP(RefEvaluateWithMultiReferenceInterlaced, true, 7)
++_SPIRV_OP(RefConvertToMceResult, true, 4)
++_SPIRV_OP(SicInitialize, true, 4)
++_SPIRV_OP(SicConfigureSkc, true, 9)
++_SPIRV_OP(SicGetMotionVectorMask, true, 5)
++_SPIRV_OP(SicConvertToMcePayload, true, 4)
++_SPIRV_OP(SicSetIntraLumaShapePenalty, true, 5)
++_SPIRV_OP(SicSetBilinearFilterEnable, true, 4)
++_SPIRV_OP(SicSetSkcForwardTransformEnable, true, 5)
++_SPIRV_OP(SicSetBlockBasedRawSkipSad, true, 5)
++_SPIRV_OP(SicEvaluateWithSingleReference, true, 6)
++_SPIRV_OP(SicEvaluateWithDualReference, true, 7)
++_SPIRV_OP(SicEvaluateWithMultiReference, true, 6)
++_SPIRV_OP(SicEvaluateWithMultiReferenceInterlaced, true, 7)
++_SPIRV_OP(SicConvertToMceResult, true, 4)
++_SPIRV_OP(SicGetInterRawSads, true, 4)
++#undef _SPIRV_OP
++
++class SPIRVSubgroupAVCIntelInstBaseIntra : public SPIRVInstTemplateBase {
++protected:
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(CapabilitySubgroupAvcMotionEstimationIntraINTEL);
++  }
++};
++
++// Intel Subgroup AVC Motion Estimation Intra Instructions
++#define _SPIRV_OP(x, ...)                                                      \
++  typedef SPIRVInstTemplate<SPIRVSubgroupAVCIntelInstBaseIntra,                \
++                            OpSubgroupAvc##x##INTEL, __VA_ARGS__>              \
++      SPIRVSubgroupAvc##x##INTEL;
++_SPIRV_OP(MceGetDefaultIntraLumaShapePenalty, true, 5)
++_SPIRV_OP(MceGetDefaultIntraLumaModePenalty, true, 5)
++_SPIRV_OP(MceGetDefaultNonDcLumaIntraPenalty, true, 3)
++_SPIRV_OP(SicConfigureIpeLuma, true, 11)
++_SPIRV_OP(SicSetIntraLumaModeCostFunction, true, 7)
++_SPIRV_OP(SicEvaluateIpe, true, 5)
++_SPIRV_OP(SicGetIpeLumaShape, true, 4)
++_SPIRV_OP(SicGetBestIpeLumaDistortion, true, 4)
++_SPIRV_OP(SicGetPackedIpeLumaModes, true, 4)
++_SPIRV_OP(SicGetPackedSkcLumaCountThreshold, true, 4)
++_SPIRV_OP(SicGetPackedSkcLumaSumThreshold, true, 4)
++#undef _SPIRV_OP
++
++class SPIRVSubgroupAVCIntelInstBaseChroma : public SPIRVInstTemplateBase {
++protected:
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(CapabilitySubgroupAvcMotionEstimationChromaINTEL);
++  }
++};
++
++// Intel Subgroup AVC Motion Estimation Chroma Instructions
++#define _SPIRV_OP(x, ...)                                                      \
++  typedef SPIRVInstTemplate<SPIRVSubgroupAVCIntelInstBaseChroma,               \
++                            OpSubgroupAvc##x##INTEL, __VA_ARGS__>              \
++      SPIRVSubgroupAvc##x##INTEL;
++_SPIRV_OP(MceGetDefaultIntraChromaModeBasePenalty, true, 3)
++_SPIRV_OP(SicConfigureIpeLumaChroma, true, 14)
++_SPIRV_OP(SicSetIntraChromaModeCostFunction, true, 5)
++_SPIRV_OP(SicGetBestIpeChromaDistortion, true, 4)
++_SPIRV_OP(SicGetIpeChromaMode, true, 4)
++#undef _SPIRV_OP
++
+ SPIRVSpecConstantOp *createSpecConstantOpInst(SPIRVInstruction *Inst);
+ SPIRVInstruction *createInstFromSpecConstantOp(SPIRVSpecConstantOp *C);
+ } // namespace SPIRV
+diff --git a/lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h b/lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h
+index b9e3e14..99e4100 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h
+@@ -871,6 +871,124 @@ inline bool isValid(spv::Op V) {
+   case OpSubgroupImageBlockWriteINTEL:
+   case OpSubgroupImageMediaBlockReadINTEL:
+   case OpSubgroupImageMediaBlockWriteINTEL:
++  case OpVmeImageINTEL:
++  case OpTypeVmeImageINTEL:
++  case OpTypeAvcImePayloadINTEL:
++  case OpTypeAvcRefPayloadINTEL:
++  case OpTypeAvcSicPayloadINTEL:
++  case OpTypeAvcMcePayloadINTEL:
++  case OpTypeAvcMceResultINTEL:
++  case OpTypeAvcImeResultINTEL:
++  case OpTypeAvcImeResultSingleReferenceStreamoutINTEL:
++  case OpTypeAvcImeResultDualReferenceStreamoutINTEL:
++  case OpTypeAvcImeSingleReferenceStreaminINTEL:
++  case OpTypeAvcImeDualReferenceStreaminINTEL:
++  case OpTypeAvcRefResultINTEL:
++  case OpTypeAvcSicResultINTEL:
++  case OpSubgroupAvcMceGetDefaultInterBaseMultiReferencePenaltyINTEL:
++  case OpSubgroupAvcMceSetInterBaseMultiReferencePenaltyINTEL:
++  case OpSubgroupAvcMceGetDefaultInterShapePenaltyINTEL:
++  case OpSubgroupAvcMceSetInterShapePenaltyINTEL:
++  case OpSubgroupAvcMceGetDefaultInterDirectionPenaltyINTEL:
++  case OpSubgroupAvcMceSetInterDirectionPenaltyINTEL:
++  case OpSubgroupAvcMceGetDefaultIntraLumaShapePenaltyINTEL:
++  case OpSubgroupAvcMceGetDefaultInterMotionVectorCostTableINTEL:
++  case OpSubgroupAvcMceGetDefaultHighPenaltyCostTableINTEL:
++  case OpSubgroupAvcMceGetDefaultMediumPenaltyCostTableINTEL:
++  case OpSubgroupAvcMceGetDefaultLowPenaltyCostTableINTEL:
++  case OpSubgroupAvcMceSetMotionVectorCostFunctionINTEL:
++  case OpSubgroupAvcMceGetDefaultIntraLumaModePenaltyINTEL:
++  case OpSubgroupAvcMceGetDefaultNonDcLumaIntraPenaltyINTEL:
++  case OpSubgroupAvcMceGetDefaultIntraChromaModeBasePenaltyINTEL:
++  case OpSubgroupAvcMceSetAcOnlyHaarINTEL:
++  case OpSubgroupAvcMceSetSourceInterlacedFieldPolarityINTEL:
++  case OpSubgroupAvcMceSetSingleReferenceInterlacedFieldPolarityINTEL:
++  case OpSubgroupAvcMceSetDualReferenceInterlacedFieldPolaritiesINTEL:
++  case OpSubgroupAvcMceConvertToImePayloadINTEL:
++  case OpSubgroupAvcMceConvertToImeResultINTEL:
++  case OpSubgroupAvcMceConvertToRefPayloadINTEL:
++  case OpSubgroupAvcMceConvertToRefResultINTEL:
++  case OpSubgroupAvcMceConvertToSicPayloadINTEL:
++  case OpSubgroupAvcMceConvertToSicResultINTEL:
++  case OpSubgroupAvcMceGetMotionVectorsINTEL:
++  case OpSubgroupAvcMceGetInterDistortionsINTEL:
++  case OpSubgroupAvcMceGetBestInterDistortionsINTEL:
++  case OpSubgroupAvcMceGetInterMajorShapeINTEL:
++  case OpSubgroupAvcMceGetInterMinorShapeINTEL:
++  case OpSubgroupAvcMceGetInterDirectionsINTEL:
++  case OpSubgroupAvcMceGetInterMotionVectorCountINTEL:
++  case OpSubgroupAvcMceGetInterReferenceIdsINTEL:
++  case OpSubgroupAvcMceGetInterReferenceInterlacedFieldPolaritiesINTEL:
++  case OpSubgroupAvcImeInitializeINTEL:
++  case OpSubgroupAvcImeSetSingleReferenceINTEL:
++  case OpSubgroupAvcImeSetDualReferenceINTEL:
++  case OpSubgroupAvcImeRefWindowSizeINTEL:
++  case OpSubgroupAvcImeAdjustRefOffsetINTEL:
++  case OpSubgroupAvcImeConvertToMcePayloadINTEL:
++  case OpSubgroupAvcImeSetMaxMotionVectorCountINTEL:
++  case OpSubgroupAvcImeSetUnidirectionalMixDisableINTEL:
++  case OpSubgroupAvcImeSetEarlySearchTerminationThresholdINTEL:
++  case OpSubgroupAvcImeSetWeightedSadINTEL:
++  case OpSubgroupAvcImeEvaluateWithSingleReferenceINTEL:
++  case OpSubgroupAvcImeEvaluateWithDualReferenceINTEL:
++  case OpSubgroupAvcImeEvaluateWithSingleReferenceStreaminINTEL:
++  case OpSubgroupAvcImeEvaluateWithDualReferenceStreaminINTEL:
++  case OpSubgroupAvcImeEvaluateWithSingleReferenceStreamoutINTEL:
++  case OpSubgroupAvcImeEvaluateWithDualReferenceStreamoutINTEL:
++  case OpSubgroupAvcImeEvaluateWithSingleReferenceStreaminoutINTEL:
++  case OpSubgroupAvcImeEvaluateWithDualReferenceStreaminoutINTEL:
++  case OpSubgroupAvcImeConvertToMceResultINTEL:
++  case OpSubgroupAvcImeGetSingleReferenceStreaminINTEL:
++  case OpSubgroupAvcImeGetDualReferenceStreaminINTEL:
++  case OpSubgroupAvcImeStripSingleReferenceStreamoutINTEL:
++  case OpSubgroupAvcImeStripDualReferenceStreamoutINTEL:
++  case OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeMotionVectorsINTEL:
++  case OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeDistortionsINTEL:
++  case OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeReferenceIdsINTEL:
++  case OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeMotionVectorsINTEL:
++  case OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeDistortionsINTEL:
++  case OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeReferenceIdsINTEL:
++  case OpSubgroupAvcImeGetBorderReachedINTEL:
++  case OpSubgroupAvcImeGetTruncatedSearchIndicationINTEL:
++  case OpSubgroupAvcImeGetUnidirectionalEarlySearchTerminationINTEL:
++  case OpSubgroupAvcImeGetWeightingPatternMinimumMotionVectorINTEL:
++  case OpSubgroupAvcImeGetWeightingPatternMinimumDistortionINTEL:
++  case OpSubgroupAvcFmeInitializeINTEL:
++  case OpSubgroupAvcBmeInitializeINTEL:
++  case OpSubgroupAvcRefConvertToMcePayloadINTEL:
++  case OpSubgroupAvcRefSetBidirectionalMixDisableINTEL:
++  case OpSubgroupAvcRefSetBilinearFilterEnableINTEL:
++  case OpSubgroupAvcRefEvaluateWithSingleReferenceINTEL:
++  case OpSubgroupAvcRefEvaluateWithDualReferenceINTEL:
++  case OpSubgroupAvcRefEvaluateWithMultiReferenceINTEL:
++  case OpSubgroupAvcRefEvaluateWithMultiReferenceInterlacedINTEL:
++  case OpSubgroupAvcRefConvertToMceResultINTEL:
++  case OpSubgroupAvcSicInitializeINTEL:
++  case OpSubgroupAvcSicConfigureSkcINTEL:
++  case OpSubgroupAvcSicConfigureIpeLumaINTEL:
++  case OpSubgroupAvcSicConfigureIpeLumaChromaINTEL:
++  case OpSubgroupAvcSicGetMotionVectorMaskINTEL:
++  case OpSubgroupAvcSicConvertToMcePayloadINTEL:
++  case OpSubgroupAvcSicSetIntraLumaShapePenaltyINTEL:
++  case OpSubgroupAvcSicSetIntraLumaModeCostFunctionINTEL:
++  case OpSubgroupAvcSicSetIntraChromaModeCostFunctionINTEL:
++  case OpSubgroupAvcSicSetBilinearFilterEnableINTEL:
++  case OpSubgroupAvcSicSetSkcForwardTransformEnableINTEL:
++  case OpSubgroupAvcSicSetBlockBasedRawSkipSadINTEL:
++  case OpSubgroupAvcSicEvaluateIpeINTEL:
++  case OpSubgroupAvcSicEvaluateWithSingleReferenceINTEL:
++  case OpSubgroupAvcSicEvaluateWithDualReferenceINTEL:
++  case OpSubgroupAvcSicEvaluateWithMultiReferenceINTEL:
++  case OpSubgroupAvcSicEvaluateWithMultiReferenceInterlacedINTEL:
++  case OpSubgroupAvcSicConvertToMceResultINTEL:
++  case OpSubgroupAvcSicGetIpeLumaShapeINTEL:
++  case OpSubgroupAvcSicGetBestIpeLumaDistortionINTEL:
++  case OpSubgroupAvcSicGetBestIpeChromaDistortionINTEL:
++  case OpSubgroupAvcSicGetPackedIpeLumaModesINTEL:
++  case OpSubgroupAvcSicGetIpeChromaModeINTEL:
++  case OpSubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL:
++  case OpSubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL:
++  case OpSubgroupAvcSicGetInterRawSadsINTEL:
+     return true;
+   default:
+     return false;
+diff --git a/lib/SPIRV/libSPIRV/SPIRVModule.cpp b/lib/SPIRV/libSPIRV/SPIRVModule.cpp
+index 0506cfe..41cd83c 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVModule.cpp
++++ b/lib/SPIRV/libSPIRV/SPIRVModule.cpp
+@@ -223,6 +223,8 @@ public:
+   SPIRVTypePipe *addPipeType() override;
+   SPIRVTypeVoid *addVoidType() override;
+   void createForwardPointers() override;
++  SPIRVType *addSubgroupAvcINTELType(Op) override;
++  SPIRVTypeVmeImageINTEL *addVmeImageINTELType(SPIRVTypeImage *T) override;
+ 
+   // Constant creation functions
+   SPIRVInstruction *addBranchInst(SPIRVLabel *, SPIRVBasicBlock *) override;
+@@ -851,6 +853,15 @@ void SPIRVModuleImpl::createForwardPointers() {
+   }
+ }
+ 
++SPIRVTypeVmeImageINTEL *
++SPIRVModuleImpl::addVmeImageINTELType(SPIRVTypeImage *T) {
++  return addType(new SPIRVTypeVmeImageINTEL(this, getId(), T));
++}
++
++SPIRVType *SPIRVModuleImpl::addSubgroupAvcINTELType(Op TheOpCode) {
++  return addType(new SPIRVTypeSubgroupAvcINTEL(TheOpCode, this, getId()));
++}
++
+ SPIRVFunction *SPIRVModuleImpl::addFunction(SPIRVFunction *Func) {
+   FuncVec.push_back(add(Func));
+   return Func;
+diff --git a/lib/SPIRV/libSPIRV/SPIRVModule.h b/lib/SPIRV/libSPIRV/SPIRVModule.h
+index c45fe83..d11c8e8 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVModule.h
++++ b/lib/SPIRV/libSPIRV/SPIRVModule.h
+@@ -74,6 +74,7 @@ class SPIRVTypeVoid;
+ class SPIRVTypeDeviceEvent;
+ class SPIRVTypeQueue;
+ class SPIRVTypePipe;
++class SPIRVTypeVmeImageINTEL;
+ class SPIRVValue;
+ class SPIRVVariable;
+ class SPIRVDecorateGeneric;
+@@ -225,6 +226,8 @@ public:
+   virtual SPIRVTypeDeviceEvent *addDeviceEventType() = 0;
+   virtual SPIRVTypeQueue *addQueueType() = 0;
+   virtual SPIRVTypePipe *addPipeType() = 0;
++  virtual SPIRVType *addSubgroupAvcINTELType(Op) = 0;
++  virtual SPIRVTypeVmeImageINTEL *addVmeImageINTELType(SPIRVTypeImage *) = 0;
+   virtual void createForwardPointers() = 0;
+ 
+   // Constants creation functions
+diff --git a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+index 2252887..409d49b 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+@@ -468,6 +468,12 @@ template <> inline void SPIRVMap<Capability, std::string>::init() {
+   add(CapabilitySubgroupImageBlockIOINTEL, "SubgroupImageBlockIOINTEL");
+   add(CapabilitySubgroupImageMediaBlockIOINTEL,
+       "SubgroupImageMediaBlockIOINTEL");
++  add(CapabilitySubgroupAvcMotionEstimationINTEL,
++      "SubgroupAvcMotionEstimationINTEL");
++  add(CapabilitySubgroupAvcMotionEstimationIntraINTEL,
++      "SubgroupAvcMotionEstimationIntraINTEL");
++  add(CapabilitySubgroupAvcMotionEstimationChromaINTEL,
++      "SubgroupAvcMotionEstimationChromaINTEL");
+ }
+ SPIRV_DEF_NAMEMAP(Capability, SPIRVCapabilityNameMap)
+ 
+diff --git a/lib/SPIRV/libSPIRV/SPIRVOpCode.h b/lib/SPIRV/libSPIRV/SPIRVOpCode.h
+index 896cd69..2868be7 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVOpCode.h
++++ b/lib/SPIRV/libSPIRV/SPIRVOpCode.h
+@@ -138,9 +138,16 @@ inline bool isPipeOpCode(Op OpCode) {
+   unsigned OC = OpCode;
+   return OpReadPipe <= OC && OC <= OpGroupCommitWritePipe;
+ }
++
++inline bool isSubgroupAvcINTELTypeOpCode(Op OpCode) {
++  unsigned OC = OpCode;
++  return OpTypeAvcImePayloadINTEL <= OC && OC <= OpTypeAvcSicResultINTEL;
++}
++
+ inline bool isTypeOpCode(Op OpCode) {
+   unsigned OC = OpCode;
+-  return (OpTypeVoid <= OC && OC <= OpTypePipe) || OC == OpTypePipeStorage;
++  return (OpTypeVoid <= OC && OC <= OpTypePipe) || OC == OpTypePipeStorage ||
++         isSubgroupAvcINTELTypeOpCode(OpCode) || OC == OpTypeVmeImageINTEL;
+ }
+ 
+ inline bool isConstantOpCode(Op OpCode) {
+diff --git a/lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h b/lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h
+index b0d2dc4..ef6779d 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h
+@@ -305,3 +305,127 @@ _SPIRV_OP(SubgroupImageBlockReadINTEL, 5577)
+ _SPIRV_OP(SubgroupImageBlockWriteINTEL, 5578)
+ _SPIRV_OP(SubgroupImageMediaBlockReadINTEL, 5580)
+ _SPIRV_OP(SubgroupImageMediaBlockWriteINTEL, 5581)
++_SPIRV_OP(VmeImageINTEL, 5699)
++_SPIRV_OP(TypeVmeImageINTEL, 5700)
++_SPIRV_OP(TypeAvcImePayloadINTEL, 5701)
++_SPIRV_OP(TypeAvcRefPayloadINTEL, 5702)
++_SPIRV_OP(TypeAvcSicPayloadINTEL, 5703)
++_SPIRV_OP(TypeAvcMcePayloadINTEL, 5704)
++_SPIRV_OP(TypeAvcMceResultINTEL, 5705)
++_SPIRV_OP(TypeAvcImeResultINTEL, 5706)
++_SPIRV_OP(TypeAvcImeResultSingleReferenceStreamoutINTEL, 5707)
++_SPIRV_OP(TypeAvcImeResultDualReferenceStreamoutINTEL, 5708)
++_SPIRV_OP(TypeAvcImeSingleReferenceStreaminINTEL, 5709)
++_SPIRV_OP(TypeAvcImeDualReferenceStreaminINTEL, 5710)
++_SPIRV_OP(TypeAvcRefResultINTEL, 5711)
++_SPIRV_OP(TypeAvcSicResultINTEL, 5712)
++_SPIRV_OP(SubgroupAvcMceGetDefaultInterBaseMultiReferencePenaltyINTEL, 5713)
++_SPIRV_OP(SubgroupAvcMceSetInterBaseMultiReferencePenaltyINTEL, 5714)
++_SPIRV_OP(SubgroupAvcMceGetDefaultInterShapePenaltyINTEL, 5715)
++_SPIRV_OP(SubgroupAvcMceSetInterShapePenaltyINTEL, 5716)
++_SPIRV_OP(SubgroupAvcMceGetDefaultInterDirectionPenaltyINTEL, 5717)
++_SPIRV_OP(SubgroupAvcMceSetInterDirectionPenaltyINTEL, 5718)
++_SPIRV_OP(SubgroupAvcMceGetDefaultIntraLumaShapePenaltyINTEL, 5719)
++_SPIRV_OP(SubgroupAvcMceGetDefaultInterMotionVectorCostTableINTEL, 5720)
++_SPIRV_OP(SubgroupAvcMceGetDefaultHighPenaltyCostTableINTEL, 5721)
++_SPIRV_OP(SubgroupAvcMceGetDefaultMediumPenaltyCostTableINTEL, 5722)
++_SPIRV_OP(SubgroupAvcMceGetDefaultLowPenaltyCostTableINTEL, 5723)
++_SPIRV_OP(SubgroupAvcMceSetMotionVectorCostFunctionINTEL, 5724)
++_SPIRV_OP(SubgroupAvcMceGetDefaultIntraLumaModePenaltyINTEL, 5725)
++_SPIRV_OP(SubgroupAvcMceGetDefaultNonDcLumaIntraPenaltyINTEL, 5726)
++_SPIRV_OP(SubgroupAvcMceGetDefaultIntraChromaModeBasePenaltyINTEL, 5727)
++_SPIRV_OP(SubgroupAvcMceSetAcOnlyHaarINTEL, 5728)
++_SPIRV_OP(SubgroupAvcMceSetSourceInterlacedFieldPolarityINTEL, 5729)
++_SPIRV_OP(SubgroupAvcMceSetSingleReferenceInterlacedFieldPolarityINTEL, 5730)
++_SPIRV_OP(SubgroupAvcMceSetDualReferenceInterlacedFieldPolaritiesINTEL, 5731)
++_SPIRV_OP(SubgroupAvcMceConvertToImePayloadINTEL, 5732)
++_SPIRV_OP(SubgroupAvcMceConvertToImeResultINTEL, 5733)
++_SPIRV_OP(SubgroupAvcMceConvertToRefPayloadINTEL, 5734)
++_SPIRV_OP(SubgroupAvcMceConvertToRefResultINTEL, 5735)
++_SPIRV_OP(SubgroupAvcMceConvertToSicPayloadINTEL, 5736)
++_SPIRV_OP(SubgroupAvcMceConvertToSicResultINTEL, 5737)
++_SPIRV_OP(SubgroupAvcMceGetMotionVectorsINTEL, 5738)
++_SPIRV_OP(SubgroupAvcMceGetInterDistortionsINTEL, 5739)
++_SPIRV_OP(SubgroupAvcMceGetBestInterDistortionsINTEL, 5740)
++_SPIRV_OP(SubgroupAvcMceGetInterMajorShapeINTEL, 5741)
++_SPIRV_OP(SubgroupAvcMceGetInterMinorShapeINTEL, 5742)
++_SPIRV_OP(SubgroupAvcMceGetInterDirectionsINTEL, 5743)
++_SPIRV_OP(SubgroupAvcMceGetInterMotionVectorCountINTEL, 5744)
++_SPIRV_OP(SubgroupAvcMceGetInterReferenceIdsINTEL, 5745)
++_SPIRV_OP(SubgroupAvcMceGetInterReferenceInterlacedFieldPolaritiesINTEL, 5746)
++_SPIRV_OP(SubgroupAvcImeInitializeINTEL, 5747)
++_SPIRV_OP(SubgroupAvcImeSetSingleReferenceINTEL, 5748)
++_SPIRV_OP(SubgroupAvcImeSetDualReferenceINTEL, 5749)
++_SPIRV_OP(SubgroupAvcImeRefWindowSizeINTEL, 5750)
++_SPIRV_OP(SubgroupAvcImeAdjustRefOffsetINTEL, 5751)
++_SPIRV_OP(SubgroupAvcImeConvertToMcePayloadINTEL, 5752)
++_SPIRV_OP(SubgroupAvcImeSetMaxMotionVectorCountINTEL, 5753)
++_SPIRV_OP(SubgroupAvcImeSetUnidirectionalMixDisableINTEL, 5754)
++_SPIRV_OP(SubgroupAvcImeSetEarlySearchTerminationThresholdINTEL, 5755)
++_SPIRV_OP(SubgroupAvcImeSetWeightedSadINTEL, 5756)
++_SPIRV_OP(SubgroupAvcImeEvaluateWithSingleReferenceINTEL, 5757)
++_SPIRV_OP(SubgroupAvcImeEvaluateWithDualReferenceINTEL, 5758)
++_SPIRV_OP(SubgroupAvcImeEvaluateWithSingleReferenceStreaminINTEL, 5759)
++_SPIRV_OP(SubgroupAvcImeEvaluateWithDualReferenceStreaminINTEL, 5760)
++_SPIRV_OP(SubgroupAvcImeEvaluateWithSingleReferenceStreamoutINTEL, 5761)
++_SPIRV_OP(SubgroupAvcImeEvaluateWithDualReferenceStreamoutINTEL, 5762)
++_SPIRV_OP(SubgroupAvcImeEvaluateWithSingleReferenceStreaminoutINTEL, 5763)
++_SPIRV_OP(SubgroupAvcImeEvaluateWithDualReferenceStreaminoutINTEL, 5764)
++_SPIRV_OP(SubgroupAvcImeConvertToMceResultINTEL, 5765)
++_SPIRV_OP(SubgroupAvcImeGetSingleReferenceStreaminINTEL, 5766)
++_SPIRV_OP(SubgroupAvcImeGetDualReferenceStreaminINTEL, 5767)
++_SPIRV_OP(SubgroupAvcImeStripSingleReferenceStreamoutINTEL, 5768)
++_SPIRV_OP(SubgroupAvcImeStripDualReferenceStreamoutINTEL, 5769)
++_SPIRV_OP(SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeMotionVectorsINTEL,
++          5770)
++_SPIRV_OP(SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeDistortionsINTEL,
++          5771)
++_SPIRV_OP(SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeReferenceIdsINTEL,
++          5772)
++_SPIRV_OP(SubgroupAvcImeGetStreamoutDualReferenceMajorShapeMotionVectorsINTEL,
++          5773)
++_SPIRV_OP(SubgroupAvcImeGetStreamoutDualReferenceMajorShapeDistortionsINTEL,
++          5774)
++_SPIRV_OP(SubgroupAvcImeGetStreamoutDualReferenceMajorShapeReferenceIdsINTEL,
++          5775)
++_SPIRV_OP(SubgroupAvcImeGetBorderReachedINTEL, 5776)
++_SPIRV_OP(SubgroupAvcImeGetTruncatedSearchIndicationINTEL, 5777)
++_SPIRV_OP(SubgroupAvcImeGetUnidirectionalEarlySearchTerminationINTEL, 5778)
++_SPIRV_OP(SubgroupAvcImeGetWeightingPatternMinimumMotionVectorINTEL, 5779)
++_SPIRV_OP(SubgroupAvcImeGetWeightingPatternMinimumDistortionINTEL, 5780)
++_SPIRV_OP(SubgroupAvcFmeInitializeINTEL, 5781)
++_SPIRV_OP(SubgroupAvcBmeInitializeINTEL, 5782)
++_SPIRV_OP(SubgroupAvcRefConvertToMcePayloadINTEL, 5783)
++_SPIRV_OP(SubgroupAvcRefSetBidirectionalMixDisableINTEL, 5784)
++_SPIRV_OP(SubgroupAvcRefSetBilinearFilterEnableINTEL, 5785)
++_SPIRV_OP(SubgroupAvcRefEvaluateWithSingleReferenceINTEL, 5786)
++_SPIRV_OP(SubgroupAvcRefEvaluateWithDualReferenceINTEL, 5787)
++_SPIRV_OP(SubgroupAvcRefEvaluateWithMultiReferenceINTEL, 5788)
++_SPIRV_OP(SubgroupAvcRefEvaluateWithMultiReferenceInterlacedINTEL, 5789)
++_SPIRV_OP(SubgroupAvcRefConvertToMceResultINTEL, 5790)
++_SPIRV_OP(SubgroupAvcSicInitializeINTEL, 5791)
++_SPIRV_OP(SubgroupAvcSicConfigureSkcINTEL, 5792)
++_SPIRV_OP(SubgroupAvcSicConfigureIpeLumaINTEL, 5793)
++_SPIRV_OP(SubgroupAvcSicConfigureIpeLumaChromaINTEL, 5794)
++_SPIRV_OP(SubgroupAvcSicGetMotionVectorMaskINTEL, 5795)
++_SPIRV_OP(SubgroupAvcSicConvertToMcePayloadINTEL, 5796)
++_SPIRV_OP(SubgroupAvcSicSetIntraLumaShapePenaltyINTEL, 5797)
++_SPIRV_OP(SubgroupAvcSicSetIntraLumaModeCostFunctionINTEL, 5798)
++_SPIRV_OP(SubgroupAvcSicSetIntraChromaModeCostFunctionINTEL, 5799)
++_SPIRV_OP(SubgroupAvcSicSetBilinearFilterEnableINTEL, 5800)
++_SPIRV_OP(SubgroupAvcSicSetSkcForwardTransformEnableINTEL, 5801)
++_SPIRV_OP(SubgroupAvcSicSetBlockBasedRawSkipSadINTEL, 5802)
++_SPIRV_OP(SubgroupAvcSicEvaluateIpeINTEL, 5803)
++_SPIRV_OP(SubgroupAvcSicEvaluateWithSingleReferenceINTEL, 5804)
++_SPIRV_OP(SubgroupAvcSicEvaluateWithDualReferenceINTEL, 5805)
++_SPIRV_OP(SubgroupAvcSicEvaluateWithMultiReferenceINTEL, 5806)
++_SPIRV_OP(SubgroupAvcSicEvaluateWithMultiReferenceInterlacedINTEL, 5807)
++_SPIRV_OP(SubgroupAvcSicConvertToMceResultINTEL, 5808)
++_SPIRV_OP(SubgroupAvcSicGetIpeLumaShapeINTEL, 5809)
++_SPIRV_OP(SubgroupAvcSicGetBestIpeLumaDistortionINTEL, 5810)
++_SPIRV_OP(SubgroupAvcSicGetBestIpeChromaDistortionINTEL, 5811)
++_SPIRV_OP(SubgroupAvcSicGetPackedIpeLumaModesINTEL, 5812)
++_SPIRV_OP(SubgroupAvcSicGetIpeChromaModeINTEL, 5813)
++_SPIRV_OP(SubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL, 5814)
++_SPIRV_OP(SubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL, 5815)
++_SPIRV_OP(SubgroupAvcSicGetInterRawSadsINTEL, 5816)
+diff --git a/lib/SPIRV/libSPIRV/SPIRVType.cpp b/lib/SPIRV/libSPIRV/SPIRVType.cpp
+index 313628a..8340b4f 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVType.cpp
++++ b/lib/SPIRV/libSPIRV/SPIRVType.cpp
+@@ -178,6 +178,15 @@ bool SPIRVType::isTypeVectorOrScalarBool() const {
+   return isTypeBool() || isTypeVectorBool();
+ }
+ 
++bool SPIRVType::isTypeSubgroupAvcINTEL() const {
++  return isSubgroupAvcINTELTypeOpCode(OpCode);
++}
++
++bool SPIRVType::isTypeSubgroupAvcMceINTEL() const {
++  return OpCode == OpTypeAvcMcePayloadINTEL ||
++         OpCode == OpTypeAvcMceResultINTEL;
++}
++
+ bool SPIRVType::isTypeVectorOrScalarInt() const {
+   return isTypeInt() || isTypeVectorInt();
+ }
+diff --git a/lib/SPIRV/libSPIRV/SPIRVType.h b/lib/SPIRV/libSPIRV/SPIRVType.h
+index 18c35c9..f63b92c 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVType.h
++++ b/lib/SPIRV/libSPIRV/SPIRVType.h
+@@ -100,6 +100,8 @@ public:
+   bool isTypeVectorOrScalarInt() const;
+   bool isTypeVectorOrScalarFloat() const;
+   bool isTypeVectorOrScalarBool() const;
++  bool isTypeSubgroupAvcINTEL() const;
++  bool isTypeSubgroupAvcMceINTEL() const;
+ };
+ 
+ class SPIRVTypeVoid : public SPIRVType {
+@@ -753,5 +755,114 @@ bool isType(const T1 *Ty, unsigned Bits = 0) {
+   return static_cast<const T2 *>(Ty)->getBitWidth() == Bits;
+ }
+ 
++// SPV_INTEL_device_side_avc_motion_estimation extension types
++class SPIRVTypeVmeImageINTEL : public SPIRVType {
++public:
++  const static Op OC = OpTypeVmeImageINTEL;
++  const static SPIRVWord FixedWC = 3;
++  SPIRVTypeVmeImageINTEL(SPIRVModule *M, SPIRVId TheId,
++                         SPIRVTypeImage *TheImgTy)
++      : SPIRVType(M, FixedWC, OC, TheId), ImgTy(TheImgTy) {
++    validate();
++  }
++
++  SPIRVTypeVmeImageINTEL() : SPIRVType(OC), ImgTy(nullptr) {}
++
++  const SPIRVTypeImage *getImageType() const { return ImgTy; }
++  void setImageType(SPIRVTypeImage *TheImgTy) { ImgTy = TheImgTy; }
++
++  virtual std::vector<SPIRVEntry *> getNonLiteralOperands() const override {
++    return std::vector<SPIRVEntry *>(1, ImgTy);
++  }
++
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(CapabilitySubgroupAvcMotionEstimationINTEL);
++  }
++
++protected:
++  SPIRVTypeImage *ImgTy;
++  _SPIRV_DEF_ENCDEC2(Id, ImgTy)
++
++  void validate() const override {
++    assert(OpCode == OC);
++    assert(WordCount == FixedWC);
++    assert(ImgTy && ImgTy->isTypeImage());
++  }
++};
++
++class SPIRVTypeSubgroupINTEL;
++template <>
++inline void SPIRVMap<std::string, Op, SPIRVTypeSubgroupINTEL>::init() {
++#define _SPIRV_OP(x, y)                                                        \
++  add("opencl.intel_sub_group_avc_" #x, OpTypeAvc##y##INTEL);
++  _SPIRV_OP(mce_payload_t, McePayload)
++  _SPIRV_OP(mce_result_t, MceResult)
++  _SPIRV_OP(sic_payload_t, SicPayload)
++  _SPIRV_OP(sic_result_t, SicResult)
++  _SPIRV_OP(ime_result_single_reference_streamout_t,
++            ImeResultSingleReferenceStreamout)
++  _SPIRV_OP(ime_result_dual_reference_streamout_t,
++            ImeResultDualReferenceStreamout)
++  _SPIRV_OP(ime_single_reference_streamin_t, ImeSingleReferenceStreamin)
++  _SPIRV_OP(ime_dual_reference_streamin_t, ImeDualReferenceStreamin)
++  _SPIRV_OP(ime_payload_t, ImePayload)
++  _SPIRV_OP(ime_result_t, ImeResult)
++  _SPIRV_OP(ref_payload_t, RefPayload)
++  _SPIRV_OP(ref_result_t, RefResult);
++#undef _SPIRV_OP
++}
++typedef SPIRVMap<std::string, Op, SPIRVTypeSubgroupINTEL>
++    OCLSubgroupINTELTypeOpCodeMap;
++
++class SPIRVTypeSubgroupAvcINTEL : public SPIRVType {
++public:
++  // Complete constructor
++  SPIRVTypeSubgroupAvcINTEL(Op TheOpCode, SPIRVModule *M, SPIRVId TheId)
++      : SPIRVType(M, 2, TheOpCode, TheId) {
++    validate();
++  }
++
++  // Incomplete constructor
++  SPIRVTypeSubgroupAvcINTEL(Op TheOpCode)
++      : SPIRVType(TheOpCode), Opn(SPIRVID_INVALID) {}
++
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(CapabilitySubgroupAvcMotionEstimationINTEL);
++  }
++
++  SPIRVValue *getOperand() { return getValue(Opn); }
++
++protected:
++  _SPIRV_DEF_ENCDEC1(Id)
++  void validate() const override { SPIRVEntry::validate(); }
++  SPIRVId Opn;
++};
++
++template <Op TheOpCode>
++class SPIRVSubgroupAvcINTELType : public SPIRVTypeSubgroupAvcINTEL {
++public:
++  // Complete constructor
++  SPIRVSubgroupAvcINTELType(SPIRVModule *M, SPIRVId TheId)
++      : SPIRVTypeSubgroupAvcINTEL(TheOpCode, M, TheId) {}
++
++  // Incomplete constructor
++  SPIRVSubgroupAvcINTELType() : SPIRVTypeSubgroupAvcINTEL(TheOpCode) {}
++};
++
++#define _SPIRV_OP(x)                                                           \
++  typedef SPIRVSubgroupAvcINTELType<OpType##x##INTEL> SPIRVType##x##INTEL;
++_SPIRV_OP(AvcMcePayload)
++_SPIRV_OP(AvcImePayload)
++_SPIRV_OP(AvcRefPayload)
++_SPIRV_OP(AvcSicPayload)
++_SPIRV_OP(AvcMceResult)
++_SPIRV_OP(AvcImeResult)
++_SPIRV_OP(AvcImeResultSingleReferenceStreamout)
++_SPIRV_OP(AvcImeResultDualReferenceStreamout)
++_SPIRV_OP(AvcImeSingleReferenceStreamin)
++_SPIRV_OP(AvcImeDualReferenceStreamin)
++_SPIRV_OP(AvcRefResult)
++_SPIRV_OP(AvcSicResult)
++#undef _SPIRV_OP
+ } // namespace SPIRV
+ #endif // SPIRV_LIBSPIRV_SPIRVTYPE_H
+diff --git a/lib/SPIRV/libSPIRV/SPIRVValue.h b/lib/SPIRV/libSPIRV/SPIRVValue.h
+index 5c0ae29..8d58fce 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVValue.h
++++ b/lib/SPIRV/libSPIRV/SPIRVValue.h
+@@ -239,7 +239,9 @@ protected:
+     SPIRVConstantEmpty::validate();
+     assert((Type->isTypeComposite() || Type->isTypeOpaque() ||
+             Type->isTypeEvent() || Type->isTypePointer() ||
+-            Type->isTypeReserveId() || Type->isTypeDeviceEvent()) &&
++            Type->isTypeReserveId() || Type->isTypeDeviceEvent() ||
++            (Type->isTypeSubgroupAvcINTEL() &&
++             !Type->isTypeSubgroupAvcMceINTEL())) &&
+            "Invalid type");
+   }
+ };
+diff --git a/lib/SPIRV/libSPIRV/spirv.hpp b/lib/SPIRV/libSPIRV/spirv.hpp
+index 9792006..e8536d3 100644
+--- a/lib/SPIRV/libSPIRV/spirv.hpp
++++ b/lib/SPIRV/libSPIRV/spirv.hpp
+@@ -569,414 +569,536 @@ enum KernelProfilingInfoMask {
+ };
+ 
+ enum Capability {
+-    CapabilityMatrix = 0,
+-    CapabilityShader = 1,
+-    CapabilityGeometry = 2,
+-    CapabilityTessellation = 3,
+-    CapabilityAddresses = 4,
+-    CapabilityLinkage = 5,
+-    CapabilityKernel = 6,
+-    CapabilityVector16 = 7,
+-    CapabilityFloat16Buffer = 8,
+-    CapabilityFloat16 = 9,
+-    CapabilityFloat64 = 10,
+-    CapabilityInt64 = 11,
+-    CapabilityInt64Atomics = 12,
+-    CapabilityImageBasic = 13,
+-    CapabilityImageReadWrite = 14,
+-    CapabilityImageMipmap = 15,
+-    CapabilityPipes = 17,
+-    CapabilityGroups = 18,
+-    CapabilityDeviceEnqueue = 19,
+-    CapabilityLiteralSampler = 20,
+-    CapabilityAtomicStorage = 21,
+-    CapabilityInt16 = 22,
+-    CapabilityTessellationPointSize = 23,
+-    CapabilityGeometryPointSize = 24,
+-    CapabilityImageGatherExtended = 25,
+-    CapabilityStorageImageMultisample = 27,
+-    CapabilityUniformBufferArrayDynamicIndexing = 28,
+-    CapabilitySampledImageArrayDynamicIndexing = 29,
+-    CapabilityStorageBufferArrayDynamicIndexing = 30,
+-    CapabilityStorageImageArrayDynamicIndexing = 31,
+-    CapabilityClipDistance = 32,
+-    CapabilityCullDistance = 33,
+-    CapabilityImageCubeArray = 34,
+-    CapabilitySampleRateShading = 35,
+-    CapabilityImageRect = 36,
+-    CapabilitySampledRect = 37,
+-    CapabilityGenericPointer = 38,
+-    CapabilityInt8 = 39,
+-    CapabilityInputAttachment = 40,
+-    CapabilitySparseResidency = 41,
+-    CapabilityMinLod = 42,
+-    CapabilitySampled1D = 43,
+-    CapabilityImage1D = 44,
+-    CapabilitySampledCubeArray = 45,
+-    CapabilitySampledBuffer = 46,
+-    CapabilityImageBuffer = 47,
+-    CapabilityImageMSArray = 48,
+-    CapabilityStorageImageExtendedFormats = 49,
+-    CapabilityImageQuery = 50,
+-    CapabilityDerivativeControl = 51,
+-    CapabilityInterpolationFunction = 52,
+-    CapabilityTransformFeedback = 53,
+-    CapabilityGeometryStreams = 54,
+-    CapabilityStorageImageReadWithoutFormat = 55,
+-    CapabilityStorageImageWriteWithoutFormat = 56,
+-    CapabilityMultiViewport = 57,
+-    CapabilitySubgroupDispatch = 58,
+-    CapabilityNamedBarrier = 59,
+-    CapabilityPipeStorage = 60,
+-    CapabilitySubgroupBallotKHR = 4423,
+-    CapabilityDrawParameters = 4427,
+-    CapabilitySubgroupVoteKHR = 4431,
+-    CapabilityStorageBuffer16BitAccess = 4433,
+-    CapabilityStorageUniformBufferBlock16 = 4433,
+-    CapabilityStorageUniform16 = 4434,
+-    CapabilityUniformAndStorageBuffer16BitAccess = 4434,
+-    CapabilityStoragePushConstant16 = 4435,
+-    CapabilityStorageInputOutput16 = 4436,
+-    CapabilityDeviceGroup = 4437,
+-    CapabilityMultiView = 4439,
+-    CapabilityVariablePointersStorageBuffer = 4441,
+-    CapabilityVariablePointers = 4442,
+-    CapabilitySampleMaskOverrideCoverageNV = 5249,
+-    CapabilityGeometryShaderPassthroughNV = 5251,
+-    CapabilityShaderViewportIndexLayerNV = 5254,
+-    CapabilityShaderViewportMaskNV = 5255,
+-    CapabilityShaderStereoViewNV = 5259,
+-    CapabilityPerViewAttributesNV = 5260,
+-    CapabilitySubgroupShuffleINTEL = 5568,
+-    CapabilitySubgroupBufferBlockIOINTEL = 5569,
+-    CapabilitySubgroupImageBlockIOINTEL = 5570,
+-    CapabilitySubgroupImageMediaBlockIOINTEL = 5579,
+-    CapabilityMax = 0x7fffffff,
++  CapabilityMatrix = 0,
++  CapabilityShader = 1,
++  CapabilityGeometry = 2,
++  CapabilityTessellation = 3,
++  CapabilityAddresses = 4,
++  CapabilityLinkage = 5,
++  CapabilityKernel = 6,
++  CapabilityVector16 = 7,
++  CapabilityFloat16Buffer = 8,
++  CapabilityFloat16 = 9,
++  CapabilityFloat64 = 10,
++  CapabilityInt64 = 11,
++  CapabilityInt64Atomics = 12,
++  CapabilityImageBasic = 13,
++  CapabilityImageReadWrite = 14,
++  CapabilityImageMipmap = 15,
++  CapabilityPipes = 17,
++  CapabilityGroups = 18,
++  CapabilityDeviceEnqueue = 19,
++  CapabilityLiteralSampler = 20,
++  CapabilityAtomicStorage = 21,
++  CapabilityInt16 = 22,
++  CapabilityTessellationPointSize = 23,
++  CapabilityGeometryPointSize = 24,
++  CapabilityImageGatherExtended = 25,
++  CapabilityStorageImageMultisample = 27,
++  CapabilityUniformBufferArrayDynamicIndexing = 28,
++  CapabilitySampledImageArrayDynamicIndexing = 29,
++  CapabilityStorageBufferArrayDynamicIndexing = 30,
++  CapabilityStorageImageArrayDynamicIndexing = 31,
++  CapabilityClipDistance = 32,
++  CapabilityCullDistance = 33,
++  CapabilityImageCubeArray = 34,
++  CapabilitySampleRateShading = 35,
++  CapabilityImageRect = 36,
++  CapabilitySampledRect = 37,
++  CapabilityGenericPointer = 38,
++  CapabilityInt8 = 39,
++  CapabilityInputAttachment = 40,
++  CapabilitySparseResidency = 41,
++  CapabilityMinLod = 42,
++  CapabilitySampled1D = 43,
++  CapabilityImage1D = 44,
++  CapabilitySampledCubeArray = 45,
++  CapabilitySampledBuffer = 46,
++  CapabilityImageBuffer = 47,
++  CapabilityImageMSArray = 48,
++  CapabilityStorageImageExtendedFormats = 49,
++  CapabilityImageQuery = 50,
++  CapabilityDerivativeControl = 51,
++  CapabilityInterpolationFunction = 52,
++  CapabilityTransformFeedback = 53,
++  CapabilityGeometryStreams = 54,
++  CapabilityStorageImageReadWithoutFormat = 55,
++  CapabilityStorageImageWriteWithoutFormat = 56,
++  CapabilityMultiViewport = 57,
++  CapabilitySubgroupDispatch = 58,
++  CapabilityNamedBarrier = 59,
++  CapabilityPipeStorage = 60,
++  CapabilitySubgroupBallotKHR = 4423,
++  CapabilityDrawParameters = 4427,
++  CapabilitySubgroupVoteKHR = 4431,
++  CapabilityStorageBuffer16BitAccess = 4433,
++  CapabilityStorageUniformBufferBlock16 = 4433,
++  CapabilityStorageUniform16 = 4434,
++  CapabilityUniformAndStorageBuffer16BitAccess = 4434,
++  CapabilityStoragePushConstant16 = 4435,
++  CapabilityStorageInputOutput16 = 4436,
++  CapabilityDeviceGroup = 4437,
++  CapabilityMultiView = 4439,
++  CapabilityVariablePointersStorageBuffer = 4441,
++  CapabilityVariablePointers = 4442,
++  CapabilitySampleMaskOverrideCoverageNV = 5249,
++  CapabilityGeometryShaderPassthroughNV = 5251,
++  CapabilityShaderViewportIndexLayerNV = 5254,
++  CapabilityShaderViewportMaskNV = 5255,
++  CapabilityShaderStereoViewNV = 5259,
++  CapabilityPerViewAttributesNV = 5260,
++  CapabilitySubgroupShuffleINTEL = 5568,
++  CapabilitySubgroupBufferBlockIOINTEL = 5569,
++  CapabilitySubgroupImageBlockIOINTEL = 5570,
++  CapabilitySubgroupImageMediaBlockIOINTEL = 5579,
++  CapabilitySubgroupAvcMotionEstimationINTEL = 5696,
++  CapabilitySubgroupAvcMotionEstimationIntraINTEL = 5697,
++  CapabilitySubgroupAvcMotionEstimationChromaINTEL = 5698,
++  CapabilityMax = 0x7fffffff,
+ };
+ 
+ enum Op {
+-    OpNop = 0,
+-    OpUndef = 1,
+-    OpSourceContinued = 2,
+-    OpSource = 3,
+-    OpSourceExtension = 4,
+-    OpName = 5,
+-    OpMemberName = 6,
+-    OpString = 7,
+-    OpLine = 8,
+-    OpExtension = 10,
+-    OpExtInstImport = 11,
+-    OpExtInst = 12,
+-    OpMemoryModel = 14,
+-    OpEntryPoint = 15,
+-    OpExecutionMode = 16,
+-    OpCapability = 17,
+-    OpTypeVoid = 19,
+-    OpTypeBool = 20,
+-    OpTypeInt = 21,
+-    OpTypeFloat = 22,
+-    OpTypeVector = 23,
+-    OpTypeMatrix = 24,
+-    OpTypeImage = 25,
+-    OpTypeSampler = 26,
+-    OpTypeSampledImage = 27,
+-    OpTypeArray = 28,
+-    OpTypeRuntimeArray = 29,
+-    OpTypeStruct = 30,
+-    OpTypeOpaque = 31,
+-    OpTypePointer = 32,
+-    OpTypeFunction = 33,
+-    OpTypeEvent = 34,
+-    OpTypeDeviceEvent = 35,
+-    OpTypeReserveId = 36,
+-    OpTypeQueue = 37,
+-    OpTypePipe = 38,
+-    OpTypeForwardPointer = 39,
+-    OpConstantTrue = 41,
+-    OpConstantFalse = 42,
+-    OpConstant = 43,
+-    OpConstantComposite = 44,
+-    OpConstantSampler = 45,
+-    OpConstantNull = 46,
+-    OpSpecConstantTrue = 48,
+-    OpSpecConstantFalse = 49,
+-    OpSpecConstant = 50,
+-    OpSpecConstantComposite = 51,
+-    OpSpecConstantOp = 52,
+-    OpFunction = 54,
+-    OpFunctionParameter = 55,
+-    OpFunctionEnd = 56,
+-    OpFunctionCall = 57,
+-    OpVariable = 59,
+-    OpImageTexelPointer = 60,
+-    OpLoad = 61,
+-    OpStore = 62,
+-    OpCopyMemory = 63,
+-    OpCopyMemorySized = 64,
+-    OpAccessChain = 65,
+-    OpInBoundsAccessChain = 66,
+-    OpPtrAccessChain = 67,
+-    OpArrayLength = 68,
+-    OpGenericPtrMemSemantics = 69,
+-    OpInBoundsPtrAccessChain = 70,
+-    OpDecorate = 71,
+-    OpMemberDecorate = 72,
+-    OpDecorationGroup = 73,
+-    OpGroupDecorate = 74,
+-    OpGroupMemberDecorate = 75,
+-    OpVectorExtractDynamic = 77,
+-    OpVectorInsertDynamic = 78,
+-    OpVectorShuffle = 79,
+-    OpCompositeConstruct = 80,
+-    OpCompositeExtract = 81,
+-    OpCompositeInsert = 82,
+-    OpCopyObject = 83,
+-    OpTranspose = 84,
+-    OpSampledImage = 86,
+-    OpImageSampleImplicitLod = 87,
+-    OpImageSampleExplicitLod = 88,
+-    OpImageSampleDrefImplicitLod = 89,
+-    OpImageSampleDrefExplicitLod = 90,
+-    OpImageSampleProjImplicitLod = 91,
+-    OpImageSampleProjExplicitLod = 92,
+-    OpImageSampleProjDrefImplicitLod = 93,
+-    OpImageSampleProjDrefExplicitLod = 94,
+-    OpImageFetch = 95,
+-    OpImageGather = 96,
+-    OpImageDrefGather = 97,
+-    OpImageRead = 98,
+-    OpImageWrite = 99,
+-    OpImage = 100,
+-    OpImageQueryFormat = 101,
+-    OpImageQueryOrder = 102,
+-    OpImageQuerySizeLod = 103,
+-    OpImageQuerySize = 104,
+-    OpImageQueryLod = 105,
+-    OpImageQueryLevels = 106,
+-    OpImageQuerySamples = 107,
+-    OpConvertFToU = 109,
+-    OpConvertFToS = 110,
+-    OpConvertSToF = 111,
+-    OpConvertUToF = 112,
+-    OpUConvert = 113,
+-    OpSConvert = 114,
+-    OpFConvert = 115,
+-    OpQuantizeToF16 = 116,
+-    OpConvertPtrToU = 117,
+-    OpSatConvertSToU = 118,
+-    OpSatConvertUToS = 119,
+-    OpConvertUToPtr = 120,
+-    OpPtrCastToGeneric = 121,
+-    OpGenericCastToPtr = 122,
+-    OpGenericCastToPtrExplicit = 123,
+-    OpBitcast = 124,
+-    OpSNegate = 126,
+-    OpFNegate = 127,
+-    OpIAdd = 128,
+-    OpFAdd = 129,
+-    OpISub = 130,
+-    OpFSub = 131,
+-    OpIMul = 132,
+-    OpFMul = 133,
+-    OpUDiv = 134,
+-    OpSDiv = 135,
+-    OpFDiv = 136,
+-    OpUMod = 137,
+-    OpSRem = 138,
+-    OpSMod = 139,
+-    OpFRem = 140,
+-    OpFMod = 141,
+-    OpVectorTimesScalar = 142,
+-    OpMatrixTimesScalar = 143,
+-    OpVectorTimesMatrix = 144,
+-    OpMatrixTimesVector = 145,
+-    OpMatrixTimesMatrix = 146,
+-    OpOuterProduct = 147,
+-    OpDot = 148,
+-    OpIAddCarry = 149,
+-    OpISubBorrow = 150,
+-    OpUMulExtended = 151,
+-    OpSMulExtended = 152,
+-    OpAny = 154,
+-    OpAll = 155,
+-    OpIsNan = 156,
+-    OpIsInf = 157,
+-    OpIsFinite = 158,
+-    OpIsNormal = 159,
+-    OpSignBitSet = 160,
+-    OpLessOrGreater = 161,
+-    OpOrdered = 162,
+-    OpUnordered = 163,
+-    OpLogicalEqual = 164,
+-    OpLogicalNotEqual = 165,
+-    OpLogicalOr = 166,
+-    OpLogicalAnd = 167,
+-    OpLogicalNot = 168,
+-    OpSelect = 169,
+-    OpIEqual = 170,
+-    OpINotEqual = 171,
+-    OpUGreaterThan = 172,
+-    OpSGreaterThan = 173,
+-    OpUGreaterThanEqual = 174,
+-    OpSGreaterThanEqual = 175,
+-    OpULessThan = 176,
+-    OpSLessThan = 177,
+-    OpULessThanEqual = 178,
+-    OpSLessThanEqual = 179,
+-    OpFOrdEqual = 180,
+-    OpFUnordEqual = 181,
+-    OpFOrdNotEqual = 182,
+-    OpFUnordNotEqual = 183,
+-    OpFOrdLessThan = 184,
+-    OpFUnordLessThan = 185,
+-    OpFOrdGreaterThan = 186,
+-    OpFUnordGreaterThan = 187,
+-    OpFOrdLessThanEqual = 188,
+-    OpFUnordLessThanEqual = 189,
+-    OpFOrdGreaterThanEqual = 190,
+-    OpFUnordGreaterThanEqual = 191,
+-    OpShiftRightLogical = 194,
+-    OpShiftRightArithmetic = 195,
+-    OpShiftLeftLogical = 196,
+-    OpBitwiseOr = 197,
+-    OpBitwiseXor = 198,
+-    OpBitwiseAnd = 199,
+-    OpNot = 200,
+-    OpBitFieldInsert = 201,
+-    OpBitFieldSExtract = 202,
+-    OpBitFieldUExtract = 203,
+-    OpBitReverse = 204,
+-    OpBitCount = 205,
+-    OpDPdx = 207,
+-    OpDPdy = 208,
+-    OpFwidth = 209,
+-    OpDPdxFine = 210,
+-    OpDPdyFine = 211,
+-    OpFwidthFine = 212,
+-    OpDPdxCoarse = 213,
+-    OpDPdyCoarse = 214,
+-    OpFwidthCoarse = 215,
+-    OpEmitVertex = 218,
+-    OpEndPrimitive = 219,
+-    OpEmitStreamVertex = 220,
+-    OpEndStreamPrimitive = 221,
+-    OpControlBarrier = 224,
+-    OpMemoryBarrier = 225,
+-    OpAtomicLoad = 227,
+-    OpAtomicStore = 228,
+-    OpAtomicExchange = 229,
+-    OpAtomicCompareExchange = 230,
+-    OpAtomicCompareExchangeWeak = 231,
+-    OpAtomicIIncrement = 232,
+-    OpAtomicIDecrement = 233,
+-    OpAtomicIAdd = 234,
+-    OpAtomicISub = 235,
+-    OpAtomicSMin = 236,
+-    OpAtomicUMin = 237,
+-    OpAtomicSMax = 238,
+-    OpAtomicUMax = 239,
+-    OpAtomicAnd = 240,
+-    OpAtomicOr = 241,
+-    OpAtomicXor = 242,
+-    OpPhi = 245,
+-    OpLoopMerge = 246,
+-    OpSelectionMerge = 247,
+-    OpLabel = 248,
+-    OpBranch = 249,
+-    OpBranchConditional = 250,
+-    OpSwitch = 251,
+-    OpKill = 252,
+-    OpReturn = 253,
+-    OpReturnValue = 254,
+-    OpUnreachable = 255,
+-    OpLifetimeStart = 256,
+-    OpLifetimeStop = 257,
+-    OpGroupAsyncCopy = 259,
+-    OpGroupWaitEvents = 260,
+-    OpGroupAll = 261,
+-    OpGroupAny = 262,
+-    OpGroupBroadcast = 263,
+-    OpGroupIAdd = 264,
+-    OpGroupFAdd = 265,
+-    OpGroupFMin = 266,
+-    OpGroupUMin = 267,
+-    OpGroupSMin = 268,
+-    OpGroupFMax = 269,
+-    OpGroupUMax = 270,
+-    OpGroupSMax = 271,
+-    OpReadPipe = 274,
+-    OpWritePipe = 275,
+-    OpReservedReadPipe = 276,
+-    OpReservedWritePipe = 277,
+-    OpReserveReadPipePackets = 278,
+-    OpReserveWritePipePackets = 279,
+-    OpCommitReadPipe = 280,
+-    OpCommitWritePipe = 281,
+-    OpIsValidReserveId = 282,
+-    OpGetNumPipePackets = 283,
+-    OpGetMaxPipePackets = 284,
+-    OpGroupReserveReadPipePackets = 285,
+-    OpGroupReserveWritePipePackets = 286,
+-    OpGroupCommitReadPipe = 287,
+-    OpGroupCommitWritePipe = 288,
+-    OpEnqueueMarker = 291,
+-    OpEnqueueKernel = 292,
+-    OpGetKernelNDrangeSubGroupCount = 293,
+-    OpGetKernelNDrangeMaxSubGroupSize = 294,
+-    OpGetKernelWorkGroupSize = 295,
+-    OpGetKernelPreferredWorkGroupSizeMultiple = 296,
+-    OpRetainEvent = 297,
+-    OpReleaseEvent = 298,
+-    OpCreateUserEvent = 299,
+-    OpIsValidEvent = 300,
+-    OpSetUserEventStatus = 301,
+-    OpCaptureEventProfilingInfo = 302,
+-    OpGetDefaultQueue = 303,
+-    OpBuildNDRange = 304,
+-    OpImageSparseSampleImplicitLod = 305,
+-    OpImageSparseSampleExplicitLod = 306,
+-    OpImageSparseSampleDrefImplicitLod = 307,
+-    OpImageSparseSampleDrefExplicitLod = 308,
+-    OpImageSparseSampleProjImplicitLod = 309,
+-    OpImageSparseSampleProjExplicitLod = 310,
+-    OpImageSparseSampleProjDrefImplicitLod = 311,
+-    OpImageSparseSampleProjDrefExplicitLod = 312,
+-    OpImageSparseFetch = 313,
+-    OpImageSparseGather = 314,
+-    OpImageSparseDrefGather = 315,
+-    OpImageSparseTexelsResident = 316,
+-    OpNoLine = 317,
+-    OpAtomicFlagTestAndSet = 318,
+-    OpAtomicFlagClear = 319,
+-    OpImageSparseRead = 320,
+-    OpSizeOf = 321,
+-    OpTypePipeStorage = 322,
+-    OpConstantPipeStorage = 323,
+-    OpCreatePipeFromPipeStorage = 324,
+-    OpGetKernelLocalSizeForSubgroupCount = 325,
+-    OpGetKernelMaxNumSubgroups = 326,
+-    OpTypeNamedBarrier = 327,
+-    OpNamedBarrierInitialize = 328,
+-    OpMemoryNamedBarrier = 329,
+-    OpModuleProcessed = 330,
+-    OpForward = 1024, /* internal use only */
+-    OpSubgroupBallotKHR = 4421,
+-    OpSubgroupFirstInvocationKHR = 4422,
+-    OpSubgroupAllKHR = 4428,
+-    OpSubgroupAnyKHR = 4429,
+-    OpSubgroupAllEqualKHR = 4430,
+-    OpSubgroupReadInvocationKHR = 4432,
+-    OpSubgroupShuffleINTEL = 5571,
+-    OpSubgroupShuffleDownINTEL = 5572,
+-    OpSubgroupShuffleUpINTEL = 5573,
+-    OpSubgroupShuffleXorINTEL = 5574,
+-    OpSubgroupBlockReadINTEL = 5575,
+-    OpSubgroupBlockWriteINTEL = 5576,
+-    OpSubgroupImageBlockReadINTEL = 5577,
+-    OpSubgroupImageBlockWriteINTEL = 5578,
+-    OpSubgroupImageMediaBlockReadINTEL = 5580,
+-    OpSubgroupImageMediaBlockWriteINTEL = 5581,
+-    OpMax = 0x7fffffff,
++  OpNop = 0,
++  OpUndef = 1,
++  OpSourceContinued = 2,
++  OpSource = 3,
++  OpSourceExtension = 4,
++  OpName = 5,
++  OpMemberName = 6,
++  OpString = 7,
++  OpLine = 8,
++  OpExtension = 10,
++  OpExtInstImport = 11,
++  OpExtInst = 12,
++  OpMemoryModel = 14,
++  OpEntryPoint = 15,
++  OpExecutionMode = 16,
++  OpCapability = 17,
++  OpTypeVoid = 19,
++  OpTypeBool = 20,
++  OpTypeInt = 21,
++  OpTypeFloat = 22,
++  OpTypeVector = 23,
++  OpTypeMatrix = 24,
++  OpTypeImage = 25,
++  OpTypeSampler = 26,
++  OpTypeSampledImage = 27,
++  OpTypeArray = 28,
++  OpTypeRuntimeArray = 29,
++  OpTypeStruct = 30,
++  OpTypeOpaque = 31,
++  OpTypePointer = 32,
++  OpTypeFunction = 33,
++  OpTypeEvent = 34,
++  OpTypeDeviceEvent = 35,
++  OpTypeReserveId = 36,
++  OpTypeQueue = 37,
++  OpTypePipe = 38,
++  OpTypeForwardPointer = 39,
++  OpConstantTrue = 41,
++  OpConstantFalse = 42,
++  OpConstant = 43,
++  OpConstantComposite = 44,
++  OpConstantSampler = 45,
++  OpConstantNull = 46,
++  OpSpecConstantTrue = 48,
++  OpSpecConstantFalse = 49,
++  OpSpecConstant = 50,
++  OpSpecConstantComposite = 51,
++  OpSpecConstantOp = 52,
++  OpFunction = 54,
++  OpFunctionParameter = 55,
++  OpFunctionEnd = 56,
++  OpFunctionCall = 57,
++  OpVariable = 59,
++  OpImageTexelPointer = 60,
++  OpLoad = 61,
++  OpStore = 62,
++  OpCopyMemory = 63,
++  OpCopyMemorySized = 64,
++  OpAccessChain = 65,
++  OpInBoundsAccessChain = 66,
++  OpPtrAccessChain = 67,
++  OpArrayLength = 68,
++  OpGenericPtrMemSemantics = 69,
++  OpInBoundsPtrAccessChain = 70,
++  OpDecorate = 71,
++  OpMemberDecorate = 72,
++  OpDecorationGroup = 73,
++  OpGroupDecorate = 74,
++  OpGroupMemberDecorate = 75,
++  OpVectorExtractDynamic = 77,
++  OpVectorInsertDynamic = 78,
++  OpVectorShuffle = 79,
++  OpCompositeConstruct = 80,
++  OpCompositeExtract = 81,
++  OpCompositeInsert = 82,
++  OpCopyObject = 83,
++  OpTranspose = 84,
++  OpSampledImage = 86,
++  OpImageSampleImplicitLod = 87,
++  OpImageSampleExplicitLod = 88,
++  OpImageSampleDrefImplicitLod = 89,
++  OpImageSampleDrefExplicitLod = 90,
++  OpImageSampleProjImplicitLod = 91,
++  OpImageSampleProjExplicitLod = 92,
++  OpImageSampleProjDrefImplicitLod = 93,
++  OpImageSampleProjDrefExplicitLod = 94,
++  OpImageFetch = 95,
++  OpImageGather = 96,
++  OpImageDrefGather = 97,
++  OpImageRead = 98,
++  OpImageWrite = 99,
++  OpImage = 100,
++  OpImageQueryFormat = 101,
++  OpImageQueryOrder = 102,
++  OpImageQuerySizeLod = 103,
++  OpImageQuerySize = 104,
++  OpImageQueryLod = 105,
++  OpImageQueryLevels = 106,
++  OpImageQuerySamples = 107,
++  OpConvertFToU = 109,
++  OpConvertFToS = 110,
++  OpConvertSToF = 111,
++  OpConvertUToF = 112,
++  OpUConvert = 113,
++  OpSConvert = 114,
++  OpFConvert = 115,
++  OpQuantizeToF16 = 116,
++  OpConvertPtrToU = 117,
++  OpSatConvertSToU = 118,
++  OpSatConvertUToS = 119,
++  OpConvertUToPtr = 120,
++  OpPtrCastToGeneric = 121,
++  OpGenericCastToPtr = 122,
++  OpGenericCastToPtrExplicit = 123,
++  OpBitcast = 124,
++  OpSNegate = 126,
++  OpFNegate = 127,
++  OpIAdd = 128,
++  OpFAdd = 129,
++  OpISub = 130,
++  OpFSub = 131,
++  OpIMul = 132,
++  OpFMul = 133,
++  OpUDiv = 134,
++  OpSDiv = 135,
++  OpFDiv = 136,
++  OpUMod = 137,
++  OpSRem = 138,
++  OpSMod = 139,
++  OpFRem = 140,
++  OpFMod = 141,
++  OpVectorTimesScalar = 142,
++  OpMatrixTimesScalar = 143,
++  OpVectorTimesMatrix = 144,
++  OpMatrixTimesVector = 145,
++  OpMatrixTimesMatrix = 146,
++  OpOuterProduct = 147,
++  OpDot = 148,
++  OpIAddCarry = 149,
++  OpISubBorrow = 150,
++  OpUMulExtended = 151,
++  OpSMulExtended = 152,
++  OpAny = 154,
++  OpAll = 155,
++  OpIsNan = 156,
++  OpIsInf = 157,
++  OpIsFinite = 158,
++  OpIsNormal = 159,
++  OpSignBitSet = 160,
++  OpLessOrGreater = 161,
++  OpOrdered = 162,
++  OpUnordered = 163,
++  OpLogicalEqual = 164,
++  OpLogicalNotEqual = 165,
++  OpLogicalOr = 166,
++  OpLogicalAnd = 167,
++  OpLogicalNot = 168,
++  OpSelect = 169,
++  OpIEqual = 170,
++  OpINotEqual = 171,
++  OpUGreaterThan = 172,
++  OpSGreaterThan = 173,
++  OpUGreaterThanEqual = 174,
++  OpSGreaterThanEqual = 175,
++  OpULessThan = 176,
++  OpSLessThan = 177,
++  OpULessThanEqual = 178,
++  OpSLessThanEqual = 179,
++  OpFOrdEqual = 180,
++  OpFUnordEqual = 181,
++  OpFOrdNotEqual = 182,
++  OpFUnordNotEqual = 183,
++  OpFOrdLessThan = 184,
++  OpFUnordLessThan = 185,
++  OpFOrdGreaterThan = 186,
++  OpFUnordGreaterThan = 187,
++  OpFOrdLessThanEqual = 188,
++  OpFUnordLessThanEqual = 189,
++  OpFOrdGreaterThanEqual = 190,
++  OpFUnordGreaterThanEqual = 191,
++  OpShiftRightLogical = 194,
++  OpShiftRightArithmetic = 195,
++  OpShiftLeftLogical = 196,
++  OpBitwiseOr = 197,
++  OpBitwiseXor = 198,
++  OpBitwiseAnd = 199,
++  OpNot = 200,
++  OpBitFieldInsert = 201,
++  OpBitFieldSExtract = 202,
++  OpBitFieldUExtract = 203,
++  OpBitReverse = 204,
++  OpBitCount = 205,
++  OpDPdx = 207,
++  OpDPdy = 208,
++  OpFwidth = 209,
++  OpDPdxFine = 210,
++  OpDPdyFine = 211,
++  OpFwidthFine = 212,
++  OpDPdxCoarse = 213,
++  OpDPdyCoarse = 214,
++  OpFwidthCoarse = 215,
++  OpEmitVertex = 218,
++  OpEndPrimitive = 219,
++  OpEmitStreamVertex = 220,
++  OpEndStreamPrimitive = 221,
++  OpControlBarrier = 224,
++  OpMemoryBarrier = 225,
++  OpAtomicLoad = 227,
++  OpAtomicStore = 228,
++  OpAtomicExchange = 229,
++  OpAtomicCompareExchange = 230,
++  OpAtomicCompareExchangeWeak = 231,
++  OpAtomicIIncrement = 232,
++  OpAtomicIDecrement = 233,
++  OpAtomicIAdd = 234,
++  OpAtomicISub = 235,
++  OpAtomicSMin = 236,
++  OpAtomicUMin = 237,
++  OpAtomicSMax = 238,
++  OpAtomicUMax = 239,
++  OpAtomicAnd = 240,
++  OpAtomicOr = 241,
++  OpAtomicXor = 242,
++  OpPhi = 245,
++  OpLoopMerge = 246,
++  OpSelectionMerge = 247,
++  OpLabel = 248,
++  OpBranch = 249,
++  OpBranchConditional = 250,
++  OpSwitch = 251,
++  OpKill = 252,
++  OpReturn = 253,
++  OpReturnValue = 254,
++  OpUnreachable = 255,
++  OpLifetimeStart = 256,
++  OpLifetimeStop = 257,
++  OpGroupAsyncCopy = 259,
++  OpGroupWaitEvents = 260,
++  OpGroupAll = 261,
++  OpGroupAny = 262,
++  OpGroupBroadcast = 263,
++  OpGroupIAdd = 264,
++  OpGroupFAdd = 265,
++  OpGroupFMin = 266,
++  OpGroupUMin = 267,
++  OpGroupSMin = 268,
++  OpGroupFMax = 269,
++  OpGroupUMax = 270,
++  OpGroupSMax = 271,
++  OpReadPipe = 274,
++  OpWritePipe = 275,
++  OpReservedReadPipe = 276,
++  OpReservedWritePipe = 277,
++  OpReserveReadPipePackets = 278,
++  OpReserveWritePipePackets = 279,
++  OpCommitReadPipe = 280,
++  OpCommitWritePipe = 281,
++  OpIsValidReserveId = 282,
++  OpGetNumPipePackets = 283,
++  OpGetMaxPipePackets = 284,
++  OpGroupReserveReadPipePackets = 285,
++  OpGroupReserveWritePipePackets = 286,
++  OpGroupCommitReadPipe = 287,
++  OpGroupCommitWritePipe = 288,
++  OpEnqueueMarker = 291,
++  OpEnqueueKernel = 292,
++  OpGetKernelNDrangeSubGroupCount = 293,
++  OpGetKernelNDrangeMaxSubGroupSize = 294,
++  OpGetKernelWorkGroupSize = 295,
++  OpGetKernelPreferredWorkGroupSizeMultiple = 296,
++  OpRetainEvent = 297,
++  OpReleaseEvent = 298,
++  OpCreateUserEvent = 299,
++  OpIsValidEvent = 300,
++  OpSetUserEventStatus = 301,
++  OpCaptureEventProfilingInfo = 302,
++  OpGetDefaultQueue = 303,
++  OpBuildNDRange = 304,
++  OpImageSparseSampleImplicitLod = 305,
++  OpImageSparseSampleExplicitLod = 306,
++  OpImageSparseSampleDrefImplicitLod = 307,
++  OpImageSparseSampleDrefExplicitLod = 308,
++  OpImageSparseSampleProjImplicitLod = 309,
++  OpImageSparseSampleProjExplicitLod = 310,
++  OpImageSparseSampleProjDrefImplicitLod = 311,
++  OpImageSparseSampleProjDrefExplicitLod = 312,
++  OpImageSparseFetch = 313,
++  OpImageSparseGather = 314,
++  OpImageSparseDrefGather = 315,
++  OpImageSparseTexelsResident = 316,
++  OpNoLine = 317,
++  OpAtomicFlagTestAndSet = 318,
++  OpAtomicFlagClear = 319,
++  OpImageSparseRead = 320,
++  OpSizeOf = 321,
++  OpTypePipeStorage = 322,
++  OpConstantPipeStorage = 323,
++  OpCreatePipeFromPipeStorage = 324,
++  OpGetKernelLocalSizeForSubgroupCount = 325,
++  OpGetKernelMaxNumSubgroups = 326,
++  OpTypeNamedBarrier = 327,
++  OpNamedBarrierInitialize = 328,
++  OpMemoryNamedBarrier = 329,
++  OpModuleProcessed = 330,
++  OpForward = 1024, /* internal use only */
++  OpSubgroupBallotKHR = 4421,
++  OpSubgroupFirstInvocationKHR = 4422,
++  OpSubgroupAllKHR = 4428,
++  OpSubgroupAnyKHR = 4429,
++  OpSubgroupAllEqualKHR = 4430,
++  OpSubgroupReadInvocationKHR = 4432,
++  OpSubgroupShuffleINTEL = 5571,
++  OpSubgroupShuffleDownINTEL = 5572,
++  OpSubgroupShuffleUpINTEL = 5573,
++  OpSubgroupShuffleXorINTEL = 5574,
++  OpSubgroupBlockReadINTEL = 5575,
++  OpSubgroupBlockWriteINTEL = 5576,
++  OpSubgroupImageBlockReadINTEL = 5577,
++  OpSubgroupImageBlockWriteINTEL = 5578,
++  OpSubgroupImageMediaBlockReadINTEL = 5580,
++  OpSubgroupImageMediaBlockWriteINTEL = 5581,
++  OpVmeImageINTEL = 5699,
++  OpTypeVmeImageINTEL = 5700,
++  OpTypeAvcImePayloadINTEL = 5701,
++  OpTypeAvcRefPayloadINTEL = 5702,
++  OpTypeAvcSicPayloadINTEL = 5703,
++  OpTypeAvcMcePayloadINTEL = 5704,
++  OpTypeAvcMceResultINTEL = 5705,
++  OpTypeAvcImeResultINTEL = 5706,
++  OpTypeAvcImeResultSingleReferenceStreamoutINTEL = 5707,
++  OpTypeAvcImeResultDualReferenceStreamoutINTEL = 5708,
++  OpTypeAvcImeSingleReferenceStreaminINTEL = 5709,
++  OpTypeAvcImeDualReferenceStreaminINTEL = 5710,
++  OpTypeAvcRefResultINTEL = 5711,
++  OpTypeAvcSicResultINTEL = 5712,
++  OpSubgroupAvcMceGetDefaultInterBaseMultiReferencePenaltyINTEL = 5713,
++  OpSubgroupAvcMceSetInterBaseMultiReferencePenaltyINTEL = 5714,
++  OpSubgroupAvcMceGetDefaultInterShapePenaltyINTEL = 5715,
++  OpSubgroupAvcMceSetInterShapePenaltyINTEL = 5716,
++  OpSubgroupAvcMceGetDefaultInterDirectionPenaltyINTEL = 5717,
++  OpSubgroupAvcMceSetInterDirectionPenaltyINTEL = 5718,
++  OpSubgroupAvcMceGetDefaultIntraLumaShapePenaltyINTEL = 5719,
++  OpSubgroupAvcMceGetDefaultInterMotionVectorCostTableINTEL = 5720,
++  OpSubgroupAvcMceGetDefaultHighPenaltyCostTableINTEL = 5721,
++  OpSubgroupAvcMceGetDefaultMediumPenaltyCostTableINTEL = 5722,
++  OpSubgroupAvcMceGetDefaultLowPenaltyCostTableINTEL = 5723,
++  OpSubgroupAvcMceSetMotionVectorCostFunctionINTEL = 5724,
++  OpSubgroupAvcMceGetDefaultIntraLumaModePenaltyINTEL = 5725,
++  OpSubgroupAvcMceGetDefaultNonDcLumaIntraPenaltyINTEL = 5726,
++  OpSubgroupAvcMceGetDefaultIntraChromaModeBasePenaltyINTEL = 5727,
++  OpSubgroupAvcMceSetAcOnlyHaarINTEL = 5728,
++  OpSubgroupAvcMceSetSourceInterlacedFieldPolarityINTEL = 5729,
++  OpSubgroupAvcMceSetSingleReferenceInterlacedFieldPolarityINTEL = 5730,
++  OpSubgroupAvcMceSetDualReferenceInterlacedFieldPolaritiesINTEL = 5731,
++  OpSubgroupAvcMceConvertToImePayloadINTEL = 5732,
++  OpSubgroupAvcMceConvertToImeResultINTEL = 5733,
++  OpSubgroupAvcMceConvertToRefPayloadINTEL = 5734,
++  OpSubgroupAvcMceConvertToRefResultINTEL = 5735,
++  OpSubgroupAvcMceConvertToSicPayloadINTEL = 5736,
++  OpSubgroupAvcMceConvertToSicResultINTEL = 5737,
++  OpSubgroupAvcMceGetMotionVectorsINTEL = 5738,
++  OpSubgroupAvcMceGetInterDistortionsINTEL = 5739,
++  OpSubgroupAvcMceGetBestInterDistortionsINTEL = 5740,
++  OpSubgroupAvcMceGetInterMajorShapeINTEL = 5741,
++  OpSubgroupAvcMceGetInterMinorShapeINTEL = 5742,
++  OpSubgroupAvcMceGetInterDirectionsINTEL = 5743,
++  OpSubgroupAvcMceGetInterMotionVectorCountINTEL = 5744,
++  OpSubgroupAvcMceGetInterReferenceIdsINTEL = 5745,
++  OpSubgroupAvcMceGetInterReferenceInterlacedFieldPolaritiesINTEL = 5746,
++  OpSubgroupAvcImeInitializeINTEL = 5747,
++  OpSubgroupAvcImeSetSingleReferenceINTEL = 5748,
++  OpSubgroupAvcImeSetDualReferenceINTEL = 5749,
++  OpSubgroupAvcImeRefWindowSizeINTEL = 5750,
++  OpSubgroupAvcImeAdjustRefOffsetINTEL = 5751,
++  OpSubgroupAvcImeConvertToMcePayloadINTEL = 5752,
++  OpSubgroupAvcImeSetMaxMotionVectorCountINTEL = 5753,
++  OpSubgroupAvcImeSetUnidirectionalMixDisableINTEL = 5754,
++  OpSubgroupAvcImeSetEarlySearchTerminationThresholdINTEL = 5755,
++  OpSubgroupAvcImeSetWeightedSadINTEL = 5756,
++  OpSubgroupAvcImeEvaluateWithSingleReferenceINTEL = 5757,
++  OpSubgroupAvcImeEvaluateWithDualReferenceINTEL = 5758,
++  OpSubgroupAvcImeEvaluateWithSingleReferenceStreaminINTEL = 5759,
++  OpSubgroupAvcImeEvaluateWithDualReferenceStreaminINTEL = 5760,
++  OpSubgroupAvcImeEvaluateWithSingleReferenceStreamoutINTEL = 5761,
++  OpSubgroupAvcImeEvaluateWithDualReferenceStreamoutINTEL = 5762,
++  OpSubgroupAvcImeEvaluateWithSingleReferenceStreaminoutINTEL = 5763,
++  OpSubgroupAvcImeEvaluateWithDualReferenceStreaminoutINTEL = 5764,
++  OpSubgroupAvcImeConvertToMceResultINTEL = 5765,
++  OpSubgroupAvcImeGetSingleReferenceStreaminINTEL = 5766,
++  OpSubgroupAvcImeGetDualReferenceStreaminINTEL = 5767,
++  OpSubgroupAvcImeStripSingleReferenceStreamoutINTEL = 5768,
++  OpSubgroupAvcImeStripDualReferenceStreamoutINTEL = 5769,
++  OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeMotionVectorsINTEL =
++      5770,
++  OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeDistortionsINTEL = 5771,
++  OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeReferenceIdsINTEL = 5772,
++  OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeMotionVectorsINTEL = 5773,
++  OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeDistortionsINTEL = 5774,
++  OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeReferenceIdsINTEL = 5775,
++  OpSubgroupAvcImeGetBorderReachedINTEL = 5776,
++  OpSubgroupAvcImeGetTruncatedSearchIndicationINTEL = 5777,
++  OpSubgroupAvcImeGetUnidirectionalEarlySearchTerminationINTEL = 5778,
++  OpSubgroupAvcImeGetWeightingPatternMinimumMotionVectorINTEL = 5779,
++  OpSubgroupAvcImeGetWeightingPatternMinimumDistortionINTEL = 5780,
++  OpSubgroupAvcFmeInitializeINTEL = 5781,
++  OpSubgroupAvcBmeInitializeINTEL = 5782,
++  OpSubgroupAvcRefConvertToMcePayloadINTEL = 5783,
++  OpSubgroupAvcRefSetBidirectionalMixDisableINTEL = 5784,
++  OpSubgroupAvcRefSetBilinearFilterEnableINTEL = 5785,
++  OpSubgroupAvcRefEvaluateWithSingleReferenceINTEL = 5786,
++  OpSubgroupAvcRefEvaluateWithDualReferenceINTEL = 5787,
++  OpSubgroupAvcRefEvaluateWithMultiReferenceINTEL = 5788,
++  OpSubgroupAvcRefEvaluateWithMultiReferenceInterlacedINTEL = 5789,
++  OpSubgroupAvcRefConvertToMceResultINTEL = 5790,
++  OpSubgroupAvcSicInitializeINTEL = 5791,
++  OpSubgroupAvcSicConfigureSkcINTEL = 5792,
++  OpSubgroupAvcSicConfigureIpeLumaINTEL = 5793,
++  OpSubgroupAvcSicConfigureIpeLumaChromaINTEL = 5794,
++  OpSubgroupAvcSicGetMotionVectorMaskINTEL = 5795,
++  OpSubgroupAvcSicConvertToMcePayloadINTEL = 5796,
++  OpSubgroupAvcSicSetIntraLumaShapePenaltyINTEL = 5797,
++  OpSubgroupAvcSicSetIntraLumaModeCostFunctionINTEL = 5798,
++  OpSubgroupAvcSicSetIntraChromaModeCostFunctionINTEL = 5799,
++  OpSubgroupAvcSicSetBilinearFilterEnableINTEL = 5800,
++  OpSubgroupAvcSicSetSkcForwardTransformEnableINTEL = 5801,
++  OpSubgroupAvcSicSetBlockBasedRawSkipSadINTEL = 5802,
++  OpSubgroupAvcSicEvaluateIpeINTEL = 5803,
++  OpSubgroupAvcSicEvaluateWithSingleReferenceINTEL = 5804,
++  OpSubgroupAvcSicEvaluateWithDualReferenceINTEL = 5805,
++  OpSubgroupAvcSicEvaluateWithMultiReferenceINTEL = 5806,
++  OpSubgroupAvcSicEvaluateWithMultiReferenceInterlacedINTEL = 5807,
++  OpSubgroupAvcSicConvertToMceResultINTEL = 5808,
++  OpSubgroupAvcSicGetIpeLumaShapeINTEL = 5809,
++  OpSubgroupAvcSicGetBestIpeLumaDistortionINTEL = 5810,
++  OpSubgroupAvcSicGetBestIpeChromaDistortionINTEL = 5811,
++  OpSubgroupAvcSicGetPackedIpeLumaModesINTEL = 5812,
++  OpSubgroupAvcSicGetIpeChromaModeINTEL = 5813,
++  OpSubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL = 5814,
++  OpSubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL = 5815,
++  OpSubgroupAvcSicGetInterRawSadsINTEL = 5816,
++  OpMax = 0x7fffffff,
+ };
+ 
+ // Overload operator| for mask bit combining
+diff --git a/test/transcoding/subgroup_avc_intel_generic.ll b/test/transcoding/subgroup_avc_intel_generic.ll
+new file mode 100644
+index 0000000..24c4f8d
+--- /dev/null
++++ b/test/transcoding/subgroup_avc_intel_generic.ll
+@@ -0,0 +1,241 @@
++; Source:
++; #pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
++; void foo() {
++;   intel_sub_group_avc_mce_get_default_inter_base_multi_reference_penalty(0, 0);
++;   intel_sub_group_avc_mce_get_default_inter_shape_penalty(0, 0);
++;   intel_sub_group_avc_mce_get_default_intra_luma_shape_penalty(0, 0);
++;   intel_sub_group_avc_mce_get_default_inter_motion_vector_cost_table(0, 0);
++;
++;   intel_sub_group_avc_ime_payload_t ime_payload;
++;   intel_sub_group_avc_ime_initialize(0, 0, 0);
++;   intel_sub_group_avc_ime_set_single_reference(0, 0, ime_payload);
++;   intel_sub_group_avc_ime_ref_window_size(0, 0);
++;   intel_sub_group_ime_ref_window_size(0, 0); // This function defined in the spec
++;   intel_sub_group_avc_ime_adjust_ref_offset(0, 0, 0, 0);
++;   intel_sub_group_avc_ime_set_max_motion_vector_count(0, ime_payload);
++;
++;   intel_sub_group_avc_ime_result_single_reference_streamout_t sstreamout;
++;   intel_sub_group_avc_ime_get_single_reference_streamin(sstreamout);
++;
++;   intel_sub_group_avc_ime_result_dual_reference_streamout_t dstreamout;
++;   intel_sub_group_avc_ime_get_dual_reference_streamin(dstreamout);
++;
++;   intel_sub_group_avc_ime_result_t ime_result;
++;   intel_sub_group_avc_ime_get_border_reached(0i, ime_result);
++;
++;   intel_sub_group_avc_fme_initialize(0, 0, 0, 0, 0, 0, 0);
++;   intel_sub_group_avc_bme_initialize(0, 0, 0, 0, 0, 0, 0, 0);
++;
++;   intel_sub_group_avc_ref_payload_t ref_payload;
++;   intel_sub_group_avc_ref_set_bidirectional_mix_disable(ref_payload);
++;
++;   intel_sub_group_avc_sic_initialize(0);
++;   intel_sub_group_avc_sic_payload_t sic_payload;
++;   intel_sub_group_avc_sic_configure_ipe(0, 0, 0, 0, 0, 0, 0, sic_payload);
++;   intel_sub_group_avc_sic_configure_ipe(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, sic_payload);
++;
++;   intel_sub_group_avc_sic_result_t sic_result;
++;   intel_sub_group_avc_sic_get_best_ipe_luma_distortion(sic_result);
++; }
++
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc -o - -spirv-text | FileCheck %s
++
++; The test checks several (not all) 'cl_intel_device_side_avc_motion_estimation'
++; extension built-ins.
++; Checks that both spelling for 'intel_sub_group_avc_ime_ref_window_size' are
++; accepted by the SPIRVWriter:
++; 'intel_sub_group_avc_ime_ref_window_size()' (correct name)
++; 'intel_sub_group_ime_ref_window_size()' (name defined in the spec).
++
++; CHECK: Capability Groups
++; CHECK: Capability SubgroupAvcMotionEstimationINTEL
++; CHECK: Capability SubgroupAvcMotionEstimationIntraINTEL
++; CHECK: Capability SubgroupAvcMotionEstimationChromaINTEL
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir64"
++
++; CHECK: TypeAvcImePayloadINTEL                        [[ImePayloadTy:[0-9]+]]
++; CHECK: TypeAvcImeSingleReferenceStreaminINTEL        [[ImeSRefInTy:[0-9]+]]
++; CHECK: TypeAvcImeDualReferenceStreaminINTEL          [[ImeDRefInTy:[0-9]+]]
++; CHECK: TypeAvcImeResultSingleReferenceStreamoutINTEL [[ImeSRefOutTy:[0-9]+]]
++; CHECK: TypeAvcImeResultDualReferenceStreamoutINTEL   [[ImeDRefOutTy:[0-9]+]]
++; CHECK: TypeAvcImeResultINTEL                         [[ImeResultTy:[0-9]+]]
++; CHECK: TypeAvcRefPayloadINTEL                        [[RefPayloadTy:[0-9]+]]
++; CHECK: TypeAvcSicPayloadINTEL                        [[SicPayloadTy:[0-9]+]]
++; CHECK: TypeAvcSicResultINTEL                         [[SicResultTy:[0-9]+]]
++
++%opencl.intel_sub_group_avc_ime_payload_t = type opaque
++%opencl.intel_sub_group_avc_ime_single_reference_streamin_t = type opaque
++%opencl.intel_sub_group_avc_ime_dual_reference_streamin_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_t = type opaque
++%opencl.intel_sub_group_avc_ref_payload_t = type opaque
++%opencl.intel_sub_group_avc_sic_payload_t = type opaque
++%opencl.intel_sub_group_avc_sic_result_t = type opaque
++%opencl.intel_sub_group_avc_ref_result_t = type opaque
++
++; Function Attrs: convergent noinline nounwind optnone
++define spir_func void @foo() #0 {
++entry:
++  %ime_payload = alloca %opencl.intel_sub_group_avc_ime_payload_t*, align 8
++  %sstreamin = alloca %opencl.intel_sub_group_avc_ime_single_reference_streamin_t*, align 8
++  %dstreamin = alloca %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t*, align 8
++  %sstreamout = alloca %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t*, align 8
++  %dstreamout = alloca %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t*, align 8
++  %ime_result = alloca %opencl.intel_sub_group_avc_ime_result_t*, align 8
++  %ref_payload = alloca %opencl.intel_sub_group_avc_ref_payload_t*, align 8
++  %sic_payload = alloca %opencl.intel_sub_group_avc_sic_payload_t*, align 8
++  %sic_result = alloca %opencl.intel_sub_group_avc_sic_result_t*, align 8
++
++; CHECK:  Load [[ImePayloadTy]] [[ImePayload:[0-9]+]]
++; CHECK:  Load [[ImeSRefOutTy]] [[ImeSRefOut:[0-9]+]]
++; CHECK:  Load [[ImeDRefOutTy]] [[ImeDRefOut:[0-9]+]]
++; CHECK:  Load [[ImeResultTy]]  [[ImeResult:[0-9]+]]
++; CHECK:  Load [[RefPayloadTy]] [[RefPayload:[0-9]+]]
++; CHECK:  Load [[SicPayloadTy]] [[SicPayload:[0-9]+]]
++; CHECK:  Load [[SicResultTy]]  [[SicResult:[0-9]+]]
++
++  %0 = load %opencl.intel_sub_group_avc_ime_payload_t*, %opencl.intel_sub_group_avc_ime_payload_t** %ime_payload, align 8
++  %1 = load %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t*, %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t** %sstreamout, align 8
++  %2 = load %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t*, %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t** %dstreamout, align 8
++  %3 = load %opencl.intel_sub_group_avc_ime_result_t*, %opencl.intel_sub_group_avc_ime_result_t** %ime_result, align 8
++  %4 = load %opencl.intel_sub_group_avc_ref_payload_t*, %opencl.intel_sub_group_avc_ref_payload_t** %ref_payload, align 8
++  %5 = load %opencl.intel_sub_group_avc_sic_payload_t*, %opencl.intel_sub_group_avc_sic_payload_t** %sic_payload, align 8
++  %6 = load %opencl.intel_sub_group_avc_sic_result_t*, %opencl.intel_sub_group_avc_sic_result_t** %sic_result, align 8
++
++; CHECK:  SubgroupAvcMceGetDefaultInterBaseMultiReferencePenaltyINTEL
++; CHECK:  SubgroupAvcMceGetDefaultInterShapePenaltyINTEL
++; CHECK:  SubgroupAvcMceGetDefaultIntraLumaShapePenaltyINTEL
++; CHECK:  SubgroupAvcMceGetDefaultInterMotionVectorCostTableINTEL
++
++  %call = call spir_func zeroext i8 @_Z70intel_sub_group_avc_mce_get_default_inter_base_multi_reference_penaltyhh(i8 zeroext 0, i8 zeroext 0) #2
++  %call1 = call spir_func i64 @_Z55intel_sub_group_avc_mce_get_default_inter_shape_penaltyhh(i8 zeroext 0, i8 zeroext 0) #2
++  %call2 = call spir_func i32 @_Z60intel_sub_group_avc_mce_get_default_intra_luma_shape_penaltyhh(i8 zeroext 0, i8 zeroext 0) #2
++  %call3 = call spir_func <2 x i32> @_Z66intel_sub_group_avc_mce_get_default_inter_motion_vector_cost_tablehh(i8 zeroext 0, i8 zeroext 0) #2
++
++; CHECK:  SubgroupAvcImeInitializeINTEL [[ImePayloadTy]]
++  %call4 = call spir_func %opencl.intel_sub_group_avc_ime_payload_t* @_Z34intel_sub_group_avc_ime_initializeDv2_thh(<2 x i16> zeroinitializer, i8 zeroext 0, i8 zeroext 0) #2
++
++; CHECK:  SubgroupAvcImeSetSingleReferenceINTEL [[ImePayloadTy]] {{.*}} [[ImePayload]]
++  %call5 = call spir_func %opencl.intel_sub_group_avc_ime_payload_t* @_Z44intel_sub_group_avc_ime_set_single_referenceDv2_sh37ocl_intel_sub_group_avc_ime_payload_t(<2 x i16> zeroinitializer, i8 zeroext 0, %opencl.intel_sub_group_avc_ime_payload_t* %0) #2
++
++; CHECK:  SubgroupAvcImeRefWindowSizeINTEL
++; CHECK:  SubgroupAvcImeRefWindowSizeINTEL
++; CHECK:  SubgroupAvcImeAdjustRefOffsetINTEL
++  %call6 = call spir_func <2 x i16> @_Z39intel_sub_group_avc_ime_ref_window_sizehc(i8 zeroext 0, i8 signext 0) #2
++  %call6i = call spir_func <2 x i16> @_Z35intel_sub_group_ime_ref_window_sizehc(i8 zeroext 0, i8 signext 0) #2
++  %call7 = call spir_func <2 x i16> @_Z41intel_sub_group_avc_ime_adjust_ref_offsetDv2_sDv2_tS0_S0_(<2 x i16> zeroinitializer, <2 x i16> zeroinitializer, <2 x i16> zeroinitializer, <2 x i16> zeroinitializer) #2
++
++; CHECK:  SubgroupAvcImeSetMaxMotionVectorCountINTEL [[ImePayloadTy]] {{.*}} [[ImePayload]]
++  %call8 = call spir_func %opencl.intel_sub_group_avc_ime_payload_t* @_Z51intel_sub_group_avc_ime_set_max_motion_vector_counth37ocl_intel_sub_group_avc_ime_payload_t(i8 zeroext 0, %opencl.intel_sub_group_avc_ime_payload_t* %0) #2
++
++; CHECK:  SubgroupAvcImeGetSingleReferenceStreaminINTEL [[ImeSRefInTy]] {{.*}} [[ImeSRefOut]]
++; CHECK:  SubgroupAvcImeGetDualReferenceStreaminINTEL [[ImeDRefInTy]] {{.*}} [[ImeDRefOut]]
++  %call9 = call spir_func %opencl.intel_sub_group_avc_ime_single_reference_streamin_t* @_Z53intel_sub_group_avc_ime_get_single_reference_streamin63ocl_intel_sub_group_avc_ime_result_single_reference_streamout_t(%opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t* %1) #2
++  %call10 = call spir_func %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t* @_Z51intel_sub_group_avc_ime_get_dual_reference_streamin61ocl_intel_sub_group_avc_ime_result_dual_reference_streamout_t(%opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t* %2) #2
++
++; CHECK:  SubgroupAvcImeGetBorderReachedINTEL {{.*}} [[ImeResult]]
++  %call11 = call spir_func zeroext i8 @_Z42intel_sub_group_avc_ime_get_border_reachedh36ocl_intel_sub_group_avc_ime_result_t(i8 zeroext 0, %opencl.intel_sub_group_avc_ime_result_t* %3) #2
++
++; CHECK:  SubgroupAvcFmeInitializeINTEL [[RefPayloadTy]]
++; CHECK:  SubgroupAvcBmeInitializeINTEL [[RefPayloadTy]]
++  %call12 = call spir_func %opencl.intel_sub_group_avc_ref_payload_t* @_Z34intel_sub_group_avc_fme_initializeDv2_tmhhhhh(<2 x i16> zeroinitializer, i64 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0) #2
++  %call13 = call spir_func %opencl.intel_sub_group_avc_ref_payload_t* @_Z34intel_sub_group_avc_bme_initializeDv2_tmhhhhhh(<2 x i16> zeroinitializer, i64 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0) #2
++
++; CHECK:  SubgroupAvcRefSetBidirectionalMixDisableINTEL [[RefPayloadTy]] {{.*}} [[RefPayload]]
++  %call14 = call spir_func %opencl.intel_sub_group_avc_ref_payload_t* @_Z53intel_sub_group_avc_ref_set_bidirectional_mix_disable37ocl_intel_sub_group_avc_ref_payload_t(%opencl.intel_sub_group_avc_ref_payload_t* %4) #2
++
++; CHECK:  SubgroupAvcSicInitializeINTEL [[SicPayloadTy]]
++  %call15 = call spir_func %opencl.intel_sub_group_avc_sic_payload_t* @_Z34intel_sub_group_avc_sic_initializeDv2_t(<2 x i16> zeroinitializer) #2
++
++; CHECK:  SubgroupAvcSicConfigureIpeLumaINTEL [[SicPayloadTy]] {{.*}} [[SicPayload]]
++; CHECK:  SubgroupAvcSicConfigureIpeLumaChromaINTEL [[SicPayloadTy]] {{.*}} [[SicPayload]]
++  %call16 = call spir_func %opencl.intel_sub_group_avc_sic_payload_t* @_Z37intel_sub_group_avc_sic_configure_ipehhhhhhh37ocl_intel_sub_group_avc_sic_payload_t(i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, %opencl.intel_sub_group_avc_sic_payload_t* %5) #2
++  %call17 = call spir_func %opencl.intel_sub_group_avc_sic_payload_t* @_Z37intel_sub_group_avc_sic_configure_ipehhhhhhttth37ocl_intel_sub_group_avc_sic_payload_t(i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i8 zeroext 0, i16 zeroext 0, i16 zeroext 0, i16 zeroext 0, i8 zeroext 0, %opencl.intel_sub_group_avc_sic_payload_t* %5) #2
++
++; CHECK:  SubgroupAvcSicGetBestIpeLumaDistortionINTEL {{.*}} [[SicResult]]
++  %call18 = call spir_func zeroext i16 @_Z52intel_sub_group_avc_sic_get_best_ipe_luma_distortion36ocl_intel_sub_group_avc_sic_result_t(%opencl.intel_sub_group_avc_sic_result_t* %6) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func zeroext i8 @_Z70intel_sub_group_avc_mce_get_default_inter_base_multi_reference_penaltyhh(i8 zeroext, i8 zeroext) #1
++
++; Function Attrs: convergent
++declare spir_func i64 @_Z55intel_sub_group_avc_mce_get_default_inter_shape_penaltyhh(i8 zeroext, i8 zeroext) #1
++
++; Function Attrs: convergent
++declare spir_func i32 @_Z60intel_sub_group_avc_mce_get_default_intra_luma_shape_penaltyhh(i8 zeroext, i8 zeroext) #1
++
++; Function Attrs: convergent
++declare spir_func <2 x i32> @_Z66intel_sub_group_avc_mce_get_default_inter_motion_vector_cost_tablehh(i8 zeroext, i8 zeroext) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_payload_t* @_Z34intel_sub_group_avc_ime_initializeDv2_thh(<2 x i16>, i8 zeroext, i8 zeroext) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_payload_t* @_Z44intel_sub_group_avc_ime_set_single_referenceDv2_sh37ocl_intel_sub_group_avc_ime_payload_t(<2 x i16>, i8 zeroext, %opencl.intel_sub_group_avc_ime_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func <2 x i16> @_Z39intel_sub_group_avc_ime_ref_window_sizehc(i8 zeroext, i8 signext) #1
++
++; Function Attrs: convergent
++declare spir_func <2 x i16> @_Z35intel_sub_group_ime_ref_window_sizehc(i8 zeroext, i8 signext) #1
++
++; Function Attrs: convergent
++declare spir_func <2 x i16> @_Z41intel_sub_group_avc_ime_adjust_ref_offsetDv2_sDv2_tS0_S0_(<2 x i16>, <2 x i16>, <2 x i16>, <2 x i16>) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_payload_t* @_Z51intel_sub_group_avc_ime_set_max_motion_vector_counth37ocl_intel_sub_group_avc_ime_payload_t(i8 zeroext, %opencl.intel_sub_group_avc_ime_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_single_reference_streamin_t* @_Z53intel_sub_group_avc_ime_get_single_reference_streamin63ocl_intel_sub_group_avc_ime_result_single_reference_streamout_t(%opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t* @_Z51intel_sub_group_avc_ime_get_dual_reference_streamin61ocl_intel_sub_group_avc_ime_result_dual_reference_streamout_t(%opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t*) #1
++
++; Function Attrs: convergent
++declare spir_func zeroext i8 @_Z42intel_sub_group_avc_ime_get_border_reachedh36ocl_intel_sub_group_avc_ime_result_t(i8 zeroext, %opencl.intel_sub_group_avc_ime_result_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ref_payload_t* @_Z34intel_sub_group_avc_fme_initializeDv2_tmhhhhh(<2 x i16>, i64, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ref_payload_t* @_Z34intel_sub_group_avc_bme_initializeDv2_tmhhhhhh(<2 x i16>, i64, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ref_payload_t* @_Z53intel_sub_group_avc_ref_set_bidirectional_mix_disable37ocl_intel_sub_group_avc_ref_payload_t(%opencl.intel_sub_group_avc_ref_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_sic_payload_t* @_Z34intel_sub_group_avc_sic_initializeDv2_t(<2 x i16>) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_sic_payload_t* @_Z37intel_sub_group_avc_sic_configure_ipehhhhhhh37ocl_intel_sub_group_avc_sic_payload_t(i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, %opencl.intel_sub_group_avc_sic_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_sic_payload_t* @_Z37intel_sub_group_avc_sic_configure_ipehhhhhhttth37ocl_intel_sub_group_avc_sic_payload_t(i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i8 zeroext, i16 zeroext, i16 zeroext, i16 zeroext, i8 zeroext, %opencl.intel_sub_group_avc_sic_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func zeroext i16 @_Z52intel_sub_group_avc_sic_get_best_ipe_luma_distortion36ocl_intel_sub_group_avc_sic_result_t(%opencl.intel_sub_group_avc_sic_result_t*) #1
++
++attributes #0 = { convergent noinline nounwind optnone "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #1 = { convergent "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #2 = { convergent }
++
++!llvm.module.flags = !{!0}
++!opencl.enable.FP_CONTRACT = !{}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!1}
++!opencl.used.extensions = !{!2}
++!opencl.used.optional.core.features = !{!3}
++!opencl.compiler.options = !{!2}
++!llvm.ident = !{!4}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 1, i32 2}
++!2 = !{}
++!3 = !{!"cl_images"}
++!4 = !{!"clang version 6.0.0"}
+diff --git a/test/transcoding/subgroup_avc_intel_not_builtin.ll b/test/transcoding/subgroup_avc_intel_not_builtin.ll
+new file mode 100644
+index 0000000..4178727
+--- /dev/null
++++ b/test/transcoding/subgroup_avc_intel_not_builtin.ll
+@@ -0,0 +1,43 @@
++; Source:
++; void __attribute__((overloadable)) intel_sub_group_avc_mce_ime_boo();
++; void foo() {
++;   intel_sub_group_avc_mce_ime_boo();
++; }
++
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc -o - -spirv-text | FileCheck %s
++
++; Checks that a function with a name started from 'intel_sub_group_avc_' prefix,
++; but which is not a part of 'cl_intel_device_side_avc_motion_estimation'
++; extension specification, is being translated to a regular FunctionCall.
++
++; CHECK: Name [[Name:[0-9]+]] "_Z31intel_sub_group_avc_mce_ime_boo"
++; CHECK: FunctionCall {{[0-9]+}} {{[0-9]+}} [[Name]]
++
++target triple = "spir"
++
++; Function Attrs: noinline nounwind optnone
++define spir_func void @foo() #0 {
++entry:
++  call spir_func void @_Z31intel_sub_group_avc_mce_ime_boo()
++  ret void
++}
++
++declare spir_func void @_Z31intel_sub_group_avc_mce_ime_boo() #1
++
++attributes #0 = { noinline nounwind optnone "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #1 = { "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++
++!llvm.module.flags = !{!0}
++!opencl.enable.FP_CONTRACT = !{}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!1}
++!opencl.used.extensions = !{!2}
++!opencl.used.optional.core.features = !{!2}
++!opencl.compiler.options = !{!2}
++!llvm.ident = !{!3}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 2, i32 0}
++!2 = !{}
++!3 = !{!"clang version 5.0.1 (cfe/trunk)"}
+diff --git a/test/transcoding/subgroup_avc_intel_types.ll b/test/transcoding/subgroup_avc_intel_types.ll
+new file mode 100644
+index 0000000..2df3b05
+--- /dev/null
++++ b/test/transcoding/subgroup_avc_intel_types.ll
+@@ -0,0 +1,110 @@
++; Source:
++;
++; #pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
++;
++; void foo() {
++;   intel_sub_group_avc_mce_payload_t payload_mce; // No literal initializer for mce types
++;   intel_sub_group_avc_ime_payload_t payload_ime = CLK_AVC_IME_PAYLOAD_INITIALIZE_INTEL;
++;   intel_sub_group_avc_ref_payload_t payload_ref = CLK_AVC_REF_PAYLOAD_INITIALIZE_INTEL;
++;   intel_sub_group_avc_sic_payload_t payload_sic = CLK_AVC_SIC_PAYLOAD_INITIALIZE_INTEL;
++;
++;   intel_sub_group_avc_mce_result_t result_mce; // No literal initializer for mce types
++;   intel_sub_group_avc_ime_result_t result_ime = CLK_AVC_IME_RESULT_INITIALIZE_INTEL;
++;   intel_sub_group_avc_ref_result_t result_ref = CLK_AVC_REF_RESULT_INITIALIZE_INTEL;
++;   intel_sub_group_avc_sic_result_t result_sic = CLK_AVC_SIC_RESULT_INITIALIZE_INTEL;
++;
++;   intel_sub_group_avc_ime_result_single_reference_streamout_t sstreamout = 0x0;
++;   intel_sub_group_avc_ime_result_dual_reference_streamout_t dstreamout = 0x0;
++;   intel_sub_group_avc_ime_single_reference_streamin_t sstreamin = 0x0;
++;   intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin = 0x0;
++; }
++
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc -o - -spirv-text | FileCheck %s
++
++; CHECK: Capability Groups
++; CHECK: Capability SubgroupAvcMotionEstimationINTEL
++
++; CHECK: TypeAvcMcePayloadINTEL
++; CHECK: TypeAvcImePayloadINTEL [[IME_PAYLOAD:[0-9]]]
++; CHECK: TypeAvcRefPayloadINTEL [[REF_PAYLOAD:[0-9]]]
++; CHECK: TypeAvcSicPayloadINTEL [[SIC_PAYLOAD:[0-9]]]
++; CHECK: TypeAvcMceResultINTEL
++; CHECK: TypeAvcImeResultINTEL [[IME_RESULT:[0-9]]]
++; CHECK: TypeAvcRefResultINTEL [[REF_RESULT:[0-9]]]
++; CHECK: TypeAvcSicResultINTEL [[SIC_RESULT:[0-9]]]
++; CHECK: TypeAvcImeResultSingleReferenceStreamoutINTEL [[SSTREAMOUT:[0-9]]]
++; CHECK: TypeAvcImeResultDualReferenceStreamoutINTEL [[DSTREAMOUT:[0-9]]]
++; CHECK: TypeAvcImeSingleReferenceStreaminINTEL [[SSTREAMIN:[0-9]]]
++; CHECK: TypeAvcImeDualReferenceStreaminINTEL [[DSTREAMIN:[0-9]]]
++
++; CHECK: ConstantNull [[IME_PAYLOAD]]
++; CHECK: ConstantNull [[REF_PAYLOAD]]
++; CHECK: ConstantNull [[SIC_PAYLOAD]]
++; CHECK: ConstantNull [[IME_RESULT]]
++; CHECK: ConstantNull [[REF_RESULT]]
++; CHECK: ConstantNull [[SIC_RESULT]]
++; CHECK: ConstantNull [[SSTREAMOUT]]
++; CHECK: ConstantNull [[DSTREAMOUT]]
++; CHECK: ConstantNull [[SSTREAMIN]]
++; CHECK: ConstantNull [[DSTREAMIN]]
++
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir"
++
++%opencl.intel_sub_group_avc_mce_payload_t = type opaque
++%opencl.intel_sub_group_avc_ime_payload_t = type opaque
++%opencl.intel_sub_group_avc_ref_payload_t = type opaque
++%opencl.intel_sub_group_avc_sic_payload_t = type opaque
++%opencl.intel_sub_group_avc_mce_result_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_t = type opaque
++%opencl.intel_sub_group_avc_ref_result_t = type opaque
++%opencl.intel_sub_group_avc_sic_result_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t = type opaque
++%opencl.intel_sub_group_avc_ime_single_reference_streamin_t = type opaque
++%opencl.intel_sub_group_avc_ime_dual_reference_streamin_t = type opaque
++
++; Function Attrs: noinline nounwind optnone
++define spir_func void @foo() #0 {
++entry:
++  %payload_mce = alloca %opencl.intel_sub_group_avc_mce_payload_t*, align 4
++  %payload_ime = alloca %opencl.intel_sub_group_avc_ime_payload_t*, align 4
++  %payload_ref = alloca %opencl.intel_sub_group_avc_ref_payload_t*, align 4
++  %payload_sic = alloca %opencl.intel_sub_group_avc_sic_payload_t*, align 4
++  %result_mce = alloca %opencl.intel_sub_group_avc_mce_result_t*, align 4
++  %result_ime = alloca %opencl.intel_sub_group_avc_ime_result_t*, align 4
++  %result_ref = alloca %opencl.intel_sub_group_avc_ref_result_t*, align 4
++  %result_sic = alloca %opencl.intel_sub_group_avc_sic_result_t*, align 4
++  %sstreamout = alloca %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t*, align 4
++  %dstreamout = alloca %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t*, align 4
++  %sstreamin = alloca %opencl.intel_sub_group_avc_ime_single_reference_streamin_t*, align 4
++  %dstreamin = alloca %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t*, align 4
++  store %opencl.intel_sub_group_avc_ime_payload_t* null, %opencl.intel_sub_group_avc_ime_payload_t** %payload_ime, align 4
++  store %opencl.intel_sub_group_avc_ref_payload_t* null, %opencl.intel_sub_group_avc_ref_payload_t** %payload_ref, align 4
++  store %opencl.intel_sub_group_avc_sic_payload_t* null, %opencl.intel_sub_group_avc_sic_payload_t** %payload_sic, align 4
++  store %opencl.intel_sub_group_avc_ime_result_t* null, %opencl.intel_sub_group_avc_ime_result_t** %result_ime, align 4
++  store %opencl.intel_sub_group_avc_ref_result_t* null, %opencl.intel_sub_group_avc_ref_result_t** %result_ref, align 4
++  store %opencl.intel_sub_group_avc_sic_result_t* null, %opencl.intel_sub_group_avc_sic_result_t** %result_sic, align 4
++  store %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t* null, %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t** %sstreamout, align 4
++  store %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t* null, %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t** %dstreamout, align 4
++  store %opencl.intel_sub_group_avc_ime_single_reference_streamin_t* null, %opencl.intel_sub_group_avc_ime_single_reference_streamin_t** %sstreamin, align 4
++  store %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t* null, %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t** %dstreamin, align 4
++  ret void
++}
++
++attributes #0 = { noinline nounwind optnone "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++
++!llvm.module.flags = !{!0}
++!opencl.enable.FP_CONTRACT = !{}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!1}
++!opencl.used.extensions = !{!2}
++!opencl.used.optional.core.features = !{!2}
++!opencl.compiler.options = !{!2}
++!llvm.ident = !{!3}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 1, i32 2}
++!2 = !{}
++!3 = !{!"clang version 5.0.1 (cfe/trunk)"}
+diff --git a/test/transcoding/subgroup_avc_intel_vme_image.ll b/test/transcoding/subgroup_avc_intel_vme_image.ll
+new file mode 100644
+index 0000000..c207c5d
+--- /dev/null
++++ b/test/transcoding/subgroup_avc_intel_vme_image.ll
+@@ -0,0 +1,246 @@
++; Source:
++; #pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
++;
++; void foo(__read_only image2d_t src,
++;          __read_only image2d_t ref,
++;          sampler_t sampler) {
++;   intel_sub_group_avc_ime_payload_t ime_payload;
++;   intel_sub_group_avc_ime_single_reference_streamin_t sstreamin;
++;   intel_sub_group_avc_ime_dual_reference_streamin_t dstreamin;
++;
++;   intel_sub_group_avc_ime_evaluate_with_single_reference(
++;     src, ref, sampler, ime_payload);
++;   intel_sub_group_avc_ime_evaluate_with_dual_reference(
++;     src, ref, ref, sampler, ime_payload);
++;   intel_sub_group_avc_ime_evaluate_with_single_reference_streamout(
++;     src, ref, sampler, ime_payload);
++;   intel_sub_group_avc_ime_evaluate_with_dual_reference_streamout(
++;     src, ref, ref, sampler, ime_payload);
++;   intel_sub_group_avc_ime_evaluate_with_single_reference_streamin(
++;     src, ref, sampler, ime_payload, sstreamin);
++;   intel_sub_group_avc_ime_evaluate_with_dual_reference_streamin(
++;     src, ref, ref, sampler, ime_payload, dstreamin);
++;
++;   intel_sub_group_avc_ref_payload_t ref_payload;
++;
++;   intel_sub_group_avc_ref_evaluate_with_single_reference(
++;     src, ref, sampler, ref_payload);
++;   intel_sub_group_avc_ref_evaluate_with_dual_reference(
++;     src, ref, ref, sampler, ref_payload);
++;   intel_sub_group_avc_ref_evaluate_with_multi_reference(
++;     src, 0, sampler, ref_payload);
++;   intel_sub_group_avc_ref_evaluate_with_multi_reference(
++;     src, 0, 0, sampler, ref_payload);
++;
++;   intel_sub_group_avc_sic_payload_t sic_payload;
++;  intel_sub_group_avc_sic_evaluate_with_single_reference(
++;     src, ref, sampler, sic_payload);
++;   intel_sub_group_avc_sic_evaluate_with_dual_reference(
++;     src, ref, ref, sampler, sic_payload);
++;   intel_sub_group_avc_sic_evaluate_with_multi_reference(
++;     src, 0, sampler, sic_payload);
++;   intel_sub_group_avc_sic_evaluate_with_multi_reference(
++;     src, 0, 0, sampler, sic_payload);
++; }
++
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc -o - -spirv-text | FileCheck %s
++
++; CHECK: Capability Groups
++; CHECK: Capability SubgroupAvcMotionEstimationINTEL
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir64"
++
++; CHECK: TypeImage              [[ImageTy:[0-9]+]]
++; CHECK: TypeSampler            [[SamplerTy:[0-9]+]]
++; CHECK: TypeAvcImePayloadINTEL [[ImePayloadTy:[0-9]+]]
++; CHECK: TypeAvcImeSingleReferenceStreaminINTEL        [[ImeSRefInTy:[0-9]+]]
++; CHECK: TypeAvcImeDualReferenceStreaminINTEL          [[ImeDRefInTy:[0-9]+]]
++; CHECK: TypeAvcRefPayloadINTEL [[RefPayloadTy:[0-9]+]]
++; CHECK: TypeAvcSicPayloadINTEL [[SicPayloadTy:[0-9]+]]
++; CHECK: TypeVmeImageINTEL      [[VmeImageTy:[0-9]+]] [[ImageTy]]
++; CHECK: TypeAvcImeResultINTEL  [[ImeResultTy:[0-9]+]]
++; CHECK: TypeAvcImeResultSingleReferenceStreamoutINTEL [[ImeSRefOutTy:[0-9]+]]
++; CHECK: TypeAvcImeResultDualReferenceStreamoutINTEL   [[ImeDRefOutTy:[0-9]+]]
++; CHECK: TypeAvcRefResultINTEL  [[RefResultTy:[0-9]+]]
++; CHECK: TypeAvcSicResultINTEL  [[SicResultTy:[0-9]+]]
++
++%opencl.image2d_ro_t = type opaque
++%opencl.sampler_t = type opaque
++%opencl.intel_sub_group_avc_ime_payload_t = type opaque
++%opencl.intel_sub_group_avc_ime_single_reference_streamin_t = type opaque
++%opencl.intel_sub_group_avc_ime_dual_reference_streamin_t = type opaque
++%opencl.intel_sub_group_avc_ref_payload_t = type opaque
++%opencl.intel_sub_group_avc_sic_payload_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t = type opaque
++%opencl.intel_sub_group_avc_ref_result_t = type opaque
++%opencl.intel_sub_group_avc_sic_result_t = type opaque
++
++; Function Attrs: convergent noinline nounwind optnone
++define spir_func void @foo(%opencl.image2d_ro_t addrspace(1)* %src, %opencl.image2d_ro_t addrspace(1)* %ref, %opencl.sampler_t addrspace(2)* %sampler) #0 {
++entry:
++  %src.addr = alloca %opencl.image2d_ro_t addrspace(1)*, align 8
++  %ref.addr = alloca %opencl.image2d_ro_t addrspace(1)*, align 8
++  %sampler.addr = alloca %opencl.sampler_t addrspace(2)*, align 8
++  %ime_payload = alloca %opencl.intel_sub_group_avc_ime_payload_t*, align 8
++  %sstreamin = alloca %opencl.intel_sub_group_avc_ime_single_reference_streamin_t*, align 8
++  %dstreamin = alloca %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t*, align 8
++  %ref_payload = alloca %opencl.intel_sub_group_avc_ref_payload_t*, align 8
++  %sic_payload = alloca %opencl.intel_sub_group_avc_sic_payload_t*, align 8
++  store %opencl.image2d_ro_t addrspace(1)* %src, %opencl.image2d_ro_t addrspace(1)** %src.addr, align 8
++  store %opencl.image2d_ro_t addrspace(1)* %ref, %opencl.image2d_ro_t addrspace(1)** %ref.addr, align 8
++  store %opencl.sampler_t addrspace(2)* %sampler, %opencl.sampler_t addrspace(2)** %sampler.addr, align 8
++
++; CHECK: Load [[ImageTy]] [[Image0:[0-9]+]]
++; CHECK: Load [[ImageTy]] [[Image1:[0-9]+]]
++; CHECK: Load [[SamplerTy]] [[Sampler:[0-9]+]]
++; CHECK: Load [[ImePayloadTy]] [[ImePayload:[0-9]+]]
++; CHECK: Load [[ImeSRefInTy]] [[ImeSRefIn:[0-9]+]]
++; CHECK: Load [[ImeDRefInTy]] [[ImeDRefIn:[0-9]+]]
++; CHECK: Load [[RefPayloadTy]] [[RefPayload:[0-9]+]]
++; CHECK: Load [[SicPayloadTy]] [[SicPayload:[0-9]+]]
++  %0 = load %opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)** %src.addr, align 8
++  %1 = load %opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)** %ref.addr, align 8
++  %2 = load %opencl.sampler_t addrspace(2)*, %opencl.sampler_t addrspace(2)** %sampler.addr, align 8
++  %3 = load %opencl.intel_sub_group_avc_ime_payload_t*, %opencl.intel_sub_group_avc_ime_payload_t** %ime_payload, align 8
++  %4 = load %opencl.intel_sub_group_avc_ime_single_reference_streamin_t*, %opencl.intel_sub_group_avc_ime_single_reference_streamin_t** %sstreamin, align 8
++  %5 = load %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t*, %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t** %dstreamin, align 8
++  %6 = load %opencl.intel_sub_group_avc_ref_payload_t*, %opencl.intel_sub_group_avc_ref_payload_t** %ref_payload, align 8
++  %7 = load %opencl.intel_sub_group_avc_sic_payload_t*, %opencl.intel_sub_group_avc_sic_payload_t** %sic_payload, align 8
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg0:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg1:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcImeEvaluateWithSingleReferenceINTEL [[ImeResultTy]] {{.*}} [[VmeImg0]] [[VmeImg1]] [[ImePayload]]
++  %call = call spir_func %opencl.intel_sub_group_avc_ime_result_t* @_Z54intel_sub_group_avc_ime_evaluate_with_single_reference14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ime_payload_t* %3) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg2:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg3:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg4:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcImeEvaluateWithDualReferenceINTEL [[ImeResultTy]] {{.*}} [[VmeImg2]] [[VmeImg3]] [[VmeImg4]] [[ImePayload]]
++  %call1 = call spir_func %opencl.intel_sub_group_avc_ime_result_t* @_Z52intel_sub_group_avc_ime_evaluate_with_dual_reference14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ime_payload_t* %3) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg5:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg6:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcImeEvaluateWithSingleReferenceStreamoutINTEL [[ImeSRefOutTy]] {{.*}} [[VmeImg5]] [[VmeImg6]] [[ImePayload]]
++  %call2 = call spir_func %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t* @_Z64intel_sub_group_avc_ime_evaluate_with_single_reference_streamout14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ime_payload_t* %3) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg7:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg8:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg9:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcImeEvaluateWithDualReferenceStreamoutINTEL [[ImeDRefOutTy]] {{.*}} [[VmeImg7]] [[VmeImg8]] [[VmeImg9]] [[ImePayload]]
++  %call3 = call spir_func %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t* @_Z62intel_sub_group_avc_ime_evaluate_with_dual_reference_streamout14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ime_payload_t* %3) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg10:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg11:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcImeEvaluateWithSingleReferenceStreaminINTEL [[ImeResultTy]] {{.*}} [[VmeImg10]] [[VmeImg11]] [[ImePayload]] [[ImeSRefIn]]
++  %call4 = call spir_func %opencl.intel_sub_group_avc_ime_result_t* @_Z63intel_sub_group_avc_ime_evaluate_with_single_reference_streamin14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t55ocl_intel_sub_group_avc_ime_single_reference_streamin_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ime_payload_t* %3, %opencl.intel_sub_group_avc_ime_single_reference_streamin_t* %4) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg12:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg13:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg14:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcImeEvaluateWithDualReferenceStreaminINTEL [[ImeResultTy]] {{.*}} [[VmeImg12]] [[VmeImg13]] [[VmeImg14]] [[ImePayload]] [[ImeDRefIn]]
++  %call5 = call spir_func %opencl.intel_sub_group_avc_ime_result_t* @_Z61intel_sub_group_avc_ime_evaluate_with_dual_reference_streamin14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t53ocl_intel_sub_group_avc_ime_dual_reference_streamin_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ime_payload_t* %3, %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t* %5) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg15:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg16:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcRefEvaluateWithSingleReferenceINTEL [[RefResultTy]] {{.*}} [[VmeImg15]] [[VmeImg16]] [[RefPayload]]
++  %call6 = call spir_func %opencl.intel_sub_group_avc_ref_result_t* @_Z54intel_sub_group_avc_ref_evaluate_with_single_reference14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_ref_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ref_payload_t* %6) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg17:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg18:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg19:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcRefEvaluateWithDualReferenceINTEL [[RefResultTy]] {{.*}} [[VmeImg17]] [[VmeImg18]] [[VmeImg19]] [[RefPayload]]
++  %call7 = call spir_func %opencl.intel_sub_group_avc_ref_result_t* @_Z52intel_sub_group_avc_ref_evaluate_with_dual_reference14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_ref_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ref_payload_t* %6) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg20:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: SubgroupAvcRefEvaluateWithMultiReferenceINTEL [[RefResultTy]] {{.*}} [[VmeImg20]] {{.*}} [[RefPayload]]
++  %call8 = call spir_func %opencl.intel_sub_group_avc_ref_result_t* @_Z53intel_sub_group_avc_ref_evaluate_with_multi_reference14ocl_image2d_roj11ocl_sampler37ocl_intel_sub_group_avc_ref_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, i32 0, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ref_payload_t* %6) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg21:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: SubgroupAvcRefEvaluateWithMultiReferenceInterlacedINTEL [[RefResultTy]] {{.*}} [[VmeImg21]] {{.*}} [[RefPayload]]
++  %call9 = call spir_func %opencl.intel_sub_group_avc_ref_result_t* @_Z53intel_sub_group_avc_ref_evaluate_with_multi_reference14ocl_image2d_rojh11ocl_sampler37ocl_intel_sub_group_avc_ref_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, i32 0, i8 zeroext 0, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_ref_payload_t* %6) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg23:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg24:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcSicEvaluateWithSingleReferenceINTEL [[SicResultTy]] {{.*}} [[VmeImg23]] [[VmeImg24]] [[SicPayload]]
++  %call10 = call spir_func %opencl.intel_sub_group_avc_sic_result_t* @_Z54intel_sub_group_avc_sic_evaluate_with_single_reference14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_sic_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_sic_payload_t* %7) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg25:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg26:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg27:[0-9]+]] [[Image1]] [[Sampler]]
++; CHECK: SubgroupAvcSicEvaluateWithDualReferenceINTEL [[SicResultTy]] {{.*}} [[VmeImg25]] [[VmeImg26]] [[VmeImg27]] [[SicPayload]]
++  %call11 = call spir_func %opencl.intel_sub_group_avc_sic_result_t* @_Z52intel_sub_group_avc_sic_evaluate_with_dual_reference14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_sic_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.image2d_ro_t addrspace(1)* %1, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_sic_payload_t* %7) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg28:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: SubgroupAvcSicEvaluateWithMultiReferenceINTEL [[SicResultTy]] {{.*}} [[VmeImg28]] {{.*}} [[SicPayload]]
++  %call12 = call spir_func %opencl.intel_sub_group_avc_sic_result_t* @_Z53intel_sub_group_avc_sic_evaluate_with_multi_reference14ocl_image2d_roj11ocl_sampler37ocl_intel_sub_group_avc_sic_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, i32 0, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_sic_payload_t* %7) #2
++
++; CHECK: VmeImageINTEL [[VmeImageTy]] [[VmeImg29:[0-9]+]] [[Image0]] [[Sampler]]
++; CHECK: SubgroupAvcSicEvaluateWithMultiReferenceInterlacedINTEL [[SicResultTy]] {{.*}} [[VmeImg29]] {{.*}} [[SicPayload]]
++  %call13 = call spir_func %opencl.intel_sub_group_avc_sic_result_t* @_Z53intel_sub_group_avc_sic_evaluate_with_multi_reference14ocl_image2d_rojh11ocl_sampler37ocl_intel_sub_group_avc_sic_payload_t(%opencl.image2d_ro_t addrspace(1)* %0, i32 0, i8 zeroext 0, %opencl.sampler_t addrspace(2)* %2, %opencl.intel_sub_group_avc_sic_payload_t* %7) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_result_t* @_Z54intel_sub_group_avc_ime_evaluate_with_single_reference14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ime_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_result_t* @_Z52intel_sub_group_avc_ime_evaluate_with_dual_reference14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ime_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_result_single_reference_streamout_t* @_Z64intel_sub_group_avc_ime_evaluate_with_single_reference_streamout14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ime_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_result_dual_reference_streamout_t* @_Z62intel_sub_group_avc_ime_evaluate_with_dual_reference_streamout14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ime_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_result_t* @_Z63intel_sub_group_avc_ime_evaluate_with_single_reference_streamin14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t55ocl_intel_sub_group_avc_ime_single_reference_streamin_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ime_payload_t*, %opencl.intel_sub_group_avc_ime_single_reference_streamin_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_result_t* @_Z61intel_sub_group_avc_ime_evaluate_with_dual_reference_streamin14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_ime_payload_t53ocl_intel_sub_group_avc_ime_dual_reference_streamin_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ime_payload_t*, %opencl.intel_sub_group_avc_ime_dual_reference_streamin_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ref_result_t* @_Z54intel_sub_group_avc_ref_evaluate_with_single_reference14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_ref_payload_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ref_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ref_result_t* @_Z52intel_sub_group_avc_ref_evaluate_with_dual_reference14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_ref_payload_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ref_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ref_result_t* @_Z53intel_sub_group_avc_ref_evaluate_with_multi_reference14ocl_image2d_roj11ocl_sampler37ocl_intel_sub_group_avc_ref_payload_t(%opencl.image2d_ro_t addrspace(1)*, i32, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ref_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ref_result_t* @_Z53intel_sub_group_avc_ref_evaluate_with_multi_reference14ocl_image2d_rojh11ocl_sampler37ocl_intel_sub_group_avc_ref_payload_t(%opencl.image2d_ro_t addrspace(1)*, i32, i8 zeroext, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_ref_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_sic_result_t* @_Z54intel_sub_group_avc_sic_evaluate_with_single_reference14ocl_image2d_roS_11ocl_sampler37ocl_intel_sub_group_avc_sic_payload_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_sic_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_sic_result_t* @_Z52intel_sub_group_avc_sic_evaluate_with_dual_reference14ocl_image2d_roS_S_11ocl_sampler37ocl_intel_sub_group_avc_sic_payload_t(%opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.image2d_ro_t addrspace(1)*, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_sic_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_sic_result_t* @_Z53intel_sub_group_avc_sic_evaluate_with_multi_reference14ocl_image2d_roj11ocl_sampler37ocl_intel_sub_group_avc_sic_payload_t(%opencl.image2d_ro_t addrspace(1)*, i32, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_sic_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_sic_result_t* @_Z53intel_sub_group_avc_sic_evaluate_with_multi_reference14ocl_image2d_rojh11ocl_sampler37ocl_intel_sub_group_avc_sic_payload_t(%opencl.image2d_ro_t addrspace(1)*, i32, i8 zeroext, %opencl.sampler_t addrspace(2)*, %opencl.intel_sub_group_avc_sic_payload_t*) #1
++
++attributes #0 = { convergent noinline nounwind optnone "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #1 = { convergent "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #2 = { convergent }
++
++!llvm.module.flags = !{!0}
++!opencl.enable.FP_CONTRACT = !{}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!1}
++!opencl.used.extensions = !{!2}
++!opencl.used.optional.core.features = !{!3}
++!opencl.compiler.options = !{!2}
++!llvm.ident = !{!4}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 1, i32 2}
++!2 = !{}
++!3 = !{!"cl_images"}
++!4 = !{!"clang version 6.0.0"}
+diff --git a/test/transcoding/subgroup_avc_intel_wrappers.ll b/test/transcoding/subgroup_avc_intel_wrappers.ll
+new file mode 100644
+index 0000000..d767a15
+--- /dev/null
++++ b/test/transcoding/subgroup_avc_intel_wrappers.ll
+@@ -0,0 +1,158 @@
++; Source:
++;
++; #pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
++; void  test(__read_only image2d_t src,
++;            __read_only image2d_t ref,
++;            sampler_t sampler) {
++;
++;   intel_sub_group_avc_ime_payload_t ime_payload;
++;   ime_payload = intel_sub_group_avc_ime_set_inter_base_multi_reference_penalty(
++;     0, ime_payload);
++;
++;   intel_sub_group_avc_ime_result_t ime_result;
++;   intel_sub_group_avc_ime_get_motion_vectors(ime_result);
++;
++;   intel_sub_group_avc_ref_payload_t ref_payload;
++;   ref_payload = intel_sub_group_avc_ref_set_inter_shape_penalty(0, ref_payload);
++;
++;   intel_sub_group_avc_ref_result_t ref_result;
++;   intel_sub_group_avc_ref_get_inter_distortions(ref_result);
++;
++;   intel_sub_group_avc_sic_payload_t sic_payload;
++;   sic_payload = intel_sub_group_avc_sic_set_motion_vector_cost_function(
++;     0, 0, 0, sic_payload);
++;
++;   intel_sub_group_avc_sic_result_t sic_result;
++;   intel_sub_group_avc_sic_get_inter_distortions(sic_result);
++; }
++
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc -o - -spirv-text | FileCheck %s
++
++; The test checks that 'cl_intel_device_side_avc_motion_estimation' wrapper built-ins correctly
++; translated to 'SPV_INTEL_device_side_avc_motion_estimation' extension instructions.
++
++; CHECK: Capability Groups
++; CHECK: Capability SubgroupAvcMotionEstimationINTEL
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir64"
++
++; CHECK: TypeAvcImePayloadINTEL [[ImePayloadTy:[0-9]+]]
++; CHECK: TypeAvcImeResultINTEL  [[ImeResultTy:[0-9]+]]
++; CHECK: TypeAvcRefPayloadINTEL [[RefPayloadTy:[0-9]+]]
++; CHECK: TypeAvcRefResultINTEL  [[RefResultTy:[0-9]+]]
++; CHECK: TypeAvcSicPayloadINTEL [[SicPayloadTy:[0-9]+]]
++; CHECK: TypeAvcSicResultINTEL  [[SicResultTy:[0-9]+]]
++; CHECK: TypeAvcMcePayloadINTEL [[McePayloadTy:[0-9]+]]
++; CHECK: TypeAvcMceResultINTEL  [[MceResultTy:[0-9]+]]
++
++%opencl.intel_sub_group_avc_ime_payload_t = type opaque
++%opencl.intel_sub_group_avc_ime_result_t = type opaque
++%opencl.intel_sub_group_avc_ref_payload_t = type opaque
++%opencl.intel_sub_group_avc_ref_result_t = type opaque
++%opencl.intel_sub_group_avc_sic_payload_t = type opaque
++%opencl.intel_sub_group_avc_sic_result_t = type opaque
++
++; Function Attrs: convergent noinline nounwind optnone
++define spir_func void @test() #0 {
++entry:
++
++  %ime_payload = alloca %opencl.intel_sub_group_avc_ime_payload_t*, align 8
++  %ime_result = alloca %opencl.intel_sub_group_avc_ime_result_t*, align 8
++  %ref_payload = alloca %opencl.intel_sub_group_avc_ref_payload_t*, align 8
++  %ref_result = alloca %opencl.intel_sub_group_avc_ref_result_t*, align 8
++  %sic_payload = alloca %opencl.intel_sub_group_avc_sic_payload_t*, align 8
++  %sic_result = alloca %opencl.intel_sub_group_avc_sic_result_t*, align 8
++
++; CHECK:  Load [[ImePayloadTy]] [[ImePayload:[0-9]+]]
++; CHECK:  Load [[ImeResultTy]]  [[ImeResult:[0-9]+]]
++; CHECK:  Load [[RefPayloadTy]] [[RefPayload:[0-9]+]]
++; CHECK:  Load [[RefResultTy]]  [[RefResult:[0-9]+]]
++; CHECK:  Load [[SicPayloadTy]] [[SicPayload:[0-9]+]]
++; CHECK:  Load [[SicResultTy]]  [[SicResult:[0-9]+]]
++
++  %0 = load %opencl.intel_sub_group_avc_ime_payload_t*, %opencl.intel_sub_group_avc_ime_payload_t** %ime_payload, align 8
++  %1 = load %opencl.intel_sub_group_avc_ime_result_t*, %opencl.intel_sub_group_avc_ime_result_t** %ime_result, align 8
++  %2 = load %opencl.intel_sub_group_avc_ref_payload_t*, %opencl.intel_sub_group_avc_ref_payload_t** %ref_payload, align 8
++  %3 = load %opencl.intel_sub_group_avc_ref_result_t*, %opencl.intel_sub_group_avc_ref_result_t** %ref_result, align 8
++  %4 = load %opencl.intel_sub_group_avc_sic_payload_t*, %opencl.intel_sub_group_avc_sic_payload_t** %sic_payload, align 8
++  %5 = load %opencl.intel_sub_group_avc_sic_result_t*, %opencl.intel_sub_group_avc_sic_result_t** %sic_result, align 8
++
++; CHECK:      SubgroupAvcImeConvertToMcePayloadINTEL
++; CHECK-SAME:     [[McePayloadTy]] [[ImeMcePayloadConv:[0-9]+]] [[ImePayload]]
++; CHECK:      SubgroupAvcMceSetInterBaseMultiReferencePenaltyINTEL
++; CHECK-SAME:     [[McePayloadTy]] [[McePayloadRet0:[0-9]+]] {{.*}} [[ImeMcePayloadConv]]
++; CHECK:      SubgroupAvcMceConvertToImePayloadINTEL
++; CHECK-SAME:     [[ImePayloadTy]] {{.*}} [[McePayloadRet0]]
++  %call0 = call spir_func %opencl.intel_sub_group_avc_ime_payload_t* @_Z62intel_sub_group_avc_ime_set_inter_base_multi_reference_penaltyh37ocl_intel_sub_group_avc_ime_payload_t(i8 zeroext 0, %opencl.intel_sub_group_avc_ime_payload_t* %0) #2
++
++; CHECK:      SubgroupAvcImeConvertToMceResultINTEL
++; CHECK-SAME:     [[MceResultTy]] [[ImeMceResultConv:[0-9]+]] [[ImeResult]]
++; CHECK:      SubgroupAvcMceGetMotionVectorsINTEL {{.*}} [[ImeMceResultConv]]
++  %call1 = call spir_func i64 @_Z42intel_sub_group_avc_ime_get_motion_vectors36ocl_intel_sub_group_avc_ime_result_t(%opencl.intel_sub_group_avc_ime_result_t* %1) #2
++
++; CHECK:      SubgroupAvcRefConvertToMcePayloadINTEL
++; CHECK-SAME:     [[McePayloadTy]] [[RefMcePayloadConv:[0-9]+]] [[RefPayload]]
++; CHECK:      SubgroupAvcMceSetInterShapePenaltyINTEL
++; CHECK-SAME:     [[McePayloadTy]] [[McePayloadRet1:[0-9]+]] {{.*}} [[RefMcePayloadConv]]
++; CHECK:      SubgroupAvcMceConvertToRefPayloadINTEL
++; CHECK-SAME:     [[RefPayloadTy]] {{.*}} [[McePayloadRet1]]
++  %call2 = call spir_func %opencl.intel_sub_group_avc_ref_payload_t* @_Z47intel_sub_group_avc_ref_set_inter_shape_penaltym37ocl_intel_sub_group_avc_ref_payload_t(i64 0, %opencl.intel_sub_group_avc_ref_payload_t* %2) #2
++
++; CHECK:      SubgroupAvcRefConvertToMceResultINTEL
++; CHECK-SAME:     [[MceResultTy]] [[RefMceResultConv:[0-9]+]] [[RefResult]]
++; CHECK:      SubgroupAvcMceGetInterDistortionsINTEL {{.*}} [[RefMceResultConv]]
++  %call3 = call spir_func zeroext i16 @_Z45intel_sub_group_avc_ref_get_inter_distortions36ocl_intel_sub_group_avc_ref_result_t(%opencl.intel_sub_group_avc_ref_result_t* %3) #2
++
++; CHECK:      SubgroupAvcSicConvertToMcePayloadINTEL
++; CHECK-SAME:     [[McePayloadTy]] [[SicMcePayloadConv:[0-9]+]] [[SicPayload]]
++; CHECK:      SubgroupAvcMceSetMotionVectorCostFunctionINTEL
++; CHECK-SAME:     [[McePayloadTy]] [[McePayloadRet2:[0-9]+]] {{.*}} [[SicMcePayloadConv]]
++; CHECK:      SubgroupAvcMceConvertToSicPayloadINTEL
++; CHECK-SAME:     [[SicPayloadTy]] {{.*}} [[McePayloadRet2]]
++  %call4 = call spir_func %opencl.intel_sub_group_avc_sic_payload_t* @_Z55intel_sub_group_avc_sic_set_motion_vector_cost_functionmDv2_jh37ocl_intel_sub_group_avc_sic_payload_t(i64 0, <2 x i32> zeroinitializer, i8 zeroext 0, %opencl.intel_sub_group_avc_sic_payload_t* %4) #2
++
++; CHECK:      SubgroupAvcSicConvertToMceResultINTEL
++; CHECK-SAME:     [[MceResultTy]] [[SicMceResultConv:[0-9]+]] [[SicResult]]
++; CHECK:      SubgroupAvcMceGetInterDistortionsINTEL {{.*}} [[SicMceResultConv]]
++  %call5 = call spir_func zeroext i16 @_Z45intel_sub_group_avc_sic_get_inter_distortions36ocl_intel_sub_group_avc_sic_result_t(%opencl.intel_sub_group_avc_sic_result_t* %5) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ime_payload_t* @_Z62intel_sub_group_avc_ime_set_inter_base_multi_reference_penaltyh37ocl_intel_sub_group_avc_ime_payload_t(i8 zeroext, %opencl.intel_sub_group_avc_ime_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func i64 @_Z42intel_sub_group_avc_ime_get_motion_vectors36ocl_intel_sub_group_avc_ime_result_t(%opencl.intel_sub_group_avc_ime_result_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_ref_payload_t* @_Z47intel_sub_group_avc_ref_set_inter_shape_penaltym37ocl_intel_sub_group_avc_ref_payload_t(i64, %opencl.intel_sub_group_avc_ref_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func zeroext i16 @_Z45intel_sub_group_avc_ref_get_inter_distortions36ocl_intel_sub_group_avc_ref_result_t(%opencl.intel_sub_group_avc_ref_result_t*) #1
++
++; Function Attrs: convergent
++declare spir_func %opencl.intel_sub_group_avc_sic_payload_t* @_Z55intel_sub_group_avc_sic_set_motion_vector_cost_functionmDv2_jh37ocl_intel_sub_group_avc_sic_payload_t(i64, <2 x i32>, i8 zeroext, %opencl.intel_sub_group_avc_sic_payload_t*) #1
++
++; Function Attrs: convergent
++declare spir_func zeroext i16 @_Z45intel_sub_group_avc_sic_get_inter_distortions36ocl_intel_sub_group_avc_sic_result_t(%opencl.intel_sub_group_avc_sic_result_t*) #1
++
++attributes #0 = { convergent noinline nounwind optnone "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #1 = { convergent "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #2 = { convergent }
++
++!llvm.module.flags = !{!0}
++!opencl.enable.FP_CONTRACT = !{}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!1}
++!opencl.used.extensions = !{!2}
++!opencl.used.optional.core.features = !{!3}
++!opencl.compiler.options = !{!2}
++!llvm.ident = !{!4}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 1, i32 2}
++!2 = !{}
++!3 = !{!"cl_images"}
++!4 = !{!"clang version 6.0.0"}
+-- 
+1.8.3.1
+

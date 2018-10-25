@@ -1,0 +1,279 @@
+From 142ff8135b042ea62ac23df92e18c711fb5349e7 Mon Sep 17 00:00:00 2001
+From: Alexey Sotkin <alexey.sotkin@intel.com>
+Date: Mon, 29 Oct 2018 20:35:31 +0300
+Subject: [PATCH 2/2] Make it possible to keep typedef'ed type names in SPIRV
+
+In LLVM IR information about typedef'ed type name stored only in
+kernel_arg_type metadata, but it is missed while translating in SPIRV.
+There is no possibility to store typedef's in SPIRV.
+
+As a workaround we store information about type names from
+kernel_arg_type metadata in an OpString instruction and restore it
+while translating from SPIRV to LLVM.
+---
+ lib/SPIRV/SPIRVReader.cpp          | 38 ++++++++++++++++++---
+ lib/SPIRV/SPIRVWriter.cpp          | 11 ++++++
+ lib/SPIRV/libSPIRV/SPIRVModule.cpp |  9 +++--
+ lib/SPIRV/libSPIRV/SPIRVModule.h   |  1 +
+ test/KernelArgTypeInOpString.ll    | 70 ++++++++++++++++++++++++++++++++++++++
+ test/layout.ll                     |  2 +-
+ test/transcoding/cl-types.ll       |  5 +--
+ test/transcoding/spirv-types.ll    |  5 +--
+ 8 files changed, 130 insertions(+), 11 deletions(-)
+ create mode 100644 test/KernelArgTypeInOpString.ll
+
+diff --git a/lib/SPIRV/SPIRVReader.cpp b/lib/SPIRV/SPIRVReader.cpp
+index a48e42a..5535340 100644
+--- a/lib/SPIRV/SPIRVReader.cpp
++++ b/lib/SPIRV/SPIRVReader.cpp
+@@ -2207,6 +2207,35 @@ bool SPIRVToLLVM::transNonTemporalMetadata(Instruction *I) {
+   return true;
+ }
+ 
++// Information of types of kernel arguments may be additionally stored in
++// 'OpString "kernel_arg_type.%kernel_name%.type1,type2,type3,..' instruction.
++// Try to find such instruction and generate metadata based on it.
++// Return 'true' if 'OpString' was found and 'kernel_arg_type' metadata
++// generated and 'false' otherwise.
++static bool transKernelArgTypeMedataFromString(LLVMContext *Ctx,
++                                               SPIRVModule *BM,
++                                               Function *Kernel) {
++  std::string ArgTypePrefix = std::string(SPIR_MD_KERNEL_ARG_TYPE) + "." +
++                              Kernel->getName().str() + ".";
++  auto ArgTypeStrIt = std::find_if(
++      BM->getStringVec().begin(), BM->getStringVec().end(),
++      [=](SPIRVString *S) { return S->getStr().find(ArgTypePrefix) == 0; });
++
++  if (ArgTypeStrIt == BM->getStringVec().end())
++    return false;
++
++  std::string ArgTypeStr =
++      (*ArgTypeStrIt)->getStr().substr(ArgTypePrefix.size());
++  std::vector<Metadata *> TypeMDs;
++  std::string::size_type Start = 0, End = 0;
++  while ((Start = ArgTypeStr.find(',', End)) != std::string::npos) {
++    TypeMDs.push_back(MDString::get(*Ctx, ArgTypeStr.substr(End, Start - End)));
++    End = ++Start;
++  }
++  Kernel->setMetadata(SPIR_MD_KERNEL_ARG_TYPE, MDNode::get(*Ctx, TypeMDs));
++  return true;
++}
++
+ bool SPIRVToLLVM::transKernelMetadata() {
+   for (unsigned I = 0, E = BM->getNumFunctions(); I != E; ++I) {
+     SPIRVFunction *BF = BM->getFunction(I);
+@@ -2245,10 +2274,11 @@ bool SPIRVToLLVM::transKernelMetadata() {
+                                    return MDString::get(*Context, Qual);
+                                  });
+     // Generate metadata for kernel_arg_type
+-    addOCLKernelArgumentMetadata(Context, SPIR_MD_KERNEL_ARG_TYPE, BF, F,
+-                                 [=](SPIRVFunctionParameter *Arg) {
+-                                   return transOCLKernelArgTypeName(Arg);
+-                                 });
++    if (!transKernelArgTypeMedataFromString(Context, BM, F))
++      addOCLKernelArgumentMetadata(Context, SPIR_MD_KERNEL_ARG_TYPE, BF, F,
++                                   [=](SPIRVFunctionParameter *Arg) {
++                                     return transOCLKernelArgTypeName(Arg);
++                                   });
+     // Generate metadata for kernel_arg_type_qual
+     addOCLKernelArgumentMetadata(
+         Context, SPIR_MD_KERNEL_ARG_TYPE_QUAL, BF, F,
+diff --git a/lib/SPIRV/SPIRVWriter.cpp b/lib/SPIRV/SPIRVWriter.cpp
+index a9eb0c7..8cc3a7d 100644
+--- a/lib/SPIRV/SPIRVWriter.cpp
++++ b/lib/SPIRV/SPIRVWriter.cpp
+@@ -1469,6 +1469,17 @@ bool LLVMToSPIRV::transOCLKernelMetadata() {
+     SPIRVFunction *BF = static_cast<SPIRVFunction *>(getTranslatedValue(&F));
+     assert(BF && "Kernel function should be translated first");
+ 
++    // Create 'OpString' as a workaround to store information about
++    // *orignal* (typedef'ed, unsigned integers) type names of kernel arguments.
++    // OpString "kernel_arg_type.%kernel_name%.typename0,typename1,..."
++    if (auto *KernelArgType = F.getMetadata(SPIR_MD_KERNEL_ARG_TYPE)) {
++      std::string KernelArgTypesStr =
++          std::string(SPIR_MD_KERNEL_ARG_TYPE) + "." + F.getName().str() + ".";
++      for (const auto &TyOp : KernelArgType->operands())
++        KernelArgTypesStr += cast<MDString>(TyOp)->getString().str() + ",";
++      BM->getString(KernelArgTypesStr);
++    }
++
+     if (auto *KernelArgTypeQual = F.getMetadata(SPIR_MD_KERNEL_ARG_TYPE_QUAL)) {
+       foreachKernelArgMD(
+           KernelArgTypeQual, BF,
+diff --git a/lib/SPIRV/libSPIRV/SPIRVModule.cpp b/lib/SPIRV/libSPIRV/SPIRVModule.cpp
+index 41cd83c..dcabd0c 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVModule.cpp
++++ b/lib/SPIRV/libSPIRV/SPIRVModule.cpp
+@@ -77,7 +77,10 @@ public:
+   bool exist(SPIRVId, SPIRVEntry **) const override;
+   SPIRVId getId(SPIRVId Id = SPIRVID_INVALID, unsigned Increment = 1);
+   SPIRVEntry *getEntry(SPIRVId Id) const override;
+-  bool hasDebugInfo() const override { return !StringVec.empty(); }
++  // If we have at least on OpLine in the module the CurrentLine is non-empty
++  bool hasDebugInfo() const override {
++    return CurrentLine.get() || !DebugInstVec.empty();
++  }
+ 
+   // Error handling functions
+   SPIRVErrorLog &getErrorLog() override { return ErrLog; }
+@@ -136,7 +139,9 @@ public:
+   const std::vector<SPIRVExtInst *> &getDebugInstVec() const override {
+     return DebugInstVec;
+   }
+-
++  const std::vector<SPIRVString *> &getStringVec() const override {
++    return StringVec;
++  }
+   // Module changing functions
+   bool importBuiltinSet(const std::string &, SPIRVId *) override;
+   bool importBuiltinSetWithId(const std::string &, SPIRVId) override;
+diff --git a/lib/SPIRV/libSPIRV/SPIRVModule.h b/lib/SPIRV/libSPIRV/SPIRVModule.h
+index d11c8e8..d88c850 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVModule.h
++++ b/lib/SPIRV/libSPIRV/SPIRVModule.h
+@@ -140,6 +140,7 @@ public:
+   virtual unsigned short getGeneratorVer() const = 0;
+   virtual SPIRVWord getSPIRVVersion() const = 0;
+   virtual const std::vector<SPIRVExtInst *> &getDebugInstVec() const = 0;
++  virtual const std::vector<SPIRVString *> &getStringVec() const = 0;
+ 
+   // Module changing functions
+   virtual bool importBuiltinSet(const std::string &, SPIRVId *) = 0;
+diff --git a/test/KernelArgTypeInOpString.ll b/test/KernelArgTypeInOpString.ll
+new file mode 100644
+index 0000000..ead0920
+--- /dev/null
++++ b/test/KernelArgTypeInOpString.ll
+@@ -0,0 +1,70 @@
++; Source:
++;
++; typedef int myInt;
++;
++; typedef struct {
++;   int width;
++;   int height;
++; } image_kernel_data;
++;
++; struct struct_name {
++;   int i;
++;   int y;
++; };
++; void kernel foo(__global image_kernel_data* in,
++;                 __global struct struct_name *outData,
++;                 myInt out) {}
++
++; In LLVM -> SPIRV translation original names of types (typedefs) are missed,
++; there is no defined possibility to keep a typedef name by SPIR-V spec.
++; As a workaround we store original names in OpString instruction:
++; OpString "kernel_arg_type.%kernel_name%.typename0,typename1,..."
++
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc -spirv-text -o %t.spv.txt
++; RUN: FileCheck < %t.spv.txt %s --check-prefix=CHECK-SPIRV
++; RUN: llvm-spirv %t.bc -o %t.spv
++; RUN: llvm-spirv -r %t.spv -o %t.rev.bc
++; RUN: llvm-dis %t.rev.bc
++; RUN: FileCheck < %t.rev.ll %s --check-prefix=CHECK-LLVM
++
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir-unknown-unknown"
++
++; CHECK-SPIRV: String 14 "kernel_arg_type.foo.image_kernel_data*,myInt,struct struct_name*,"
++
++; CHECK-LLVM: !kernel_arg_type [[TYPE:![0-9]+]]
++; CHECK-LLVM: [[TYPE]] = !{!"image_kernel_data*", !"myInt", !"struct struct_name*"}
++
++%struct.image_kernel_data = type { i32, i32, i32, i32, i32 }
++%struct.struct_name = type { i32, i32 }
++
++; Function Attrs: convergent noinline nounwind optnone
++define spir_kernel void @foo(%struct.image_kernel_data addrspace(1)* %in, i32 %out, %struct.struct_name addrspace(1)* %outData) #0 !kernel_arg_addr_space !5 !kernel_arg_access_qual !6 !kernel_arg_type !7 !kernel_arg_base_type !8 !kernel_arg_type_qual !9 {
++entry:
++  ret void
++}
++
++attributes #0 = { convergent noinline nounwind optnone "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++
++!llvm.module.flags = !{!0}
++!opencl.enable.FP_CONTRACT = !{}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!2}
++!opencl.used.extensions = !{!3}
++!opencl.used.optional.core.features = !{!3}
++!opencl.compiler.options = !{!3}
++!llvm.ident = !{!4}
++!opencl.kernels = !{!10}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 1, i32 0}
++!2 = !{i32 1, i32 2}
++!3 = !{}
++!4 = !{!"clang version 6.0.0"}
++!5 = !{i32 1, i32 0, i32 1}
++!6 = !{!"none", !"none", !"none"}
++!7 = !{!"image_kernel_data*", !"myInt", !"struct struct_name*"}
++!8 = !{!"image_kernel_data*", !"int", !"struct struct_name*"}
++!9 = !{!"", !"", !""}
++!10 = !{void (%struct.image_kernel_data addrspace(1)*, i32, %struct.struct_name addrspace(1)*)* @foo}
+diff --git a/test/layout.ll b/test/layout.ll
+index a663dd8..e9636dc 100644
+--- a/test/layout.ll
++++ b/test/layout.ll
+@@ -6,7 +6,7 @@
+ ; CHECK: {{[0-9]*}} ExtInstImport
+ ; CHECK-NEXT: {{[0-9]*}} MemoryModel
+ ; CHECK-NEXT: {{[0-9]*}} EntryPoint
+-; CHECK-NEXT: {{[0-9]*}} Source
++; CHECK: {{[0-9]*}} Source
+ 
+ ; CHECK-NOT: {{[0-9]*}} Capability
+ ; CHECK-NOT: {{[0-9]*}} ExtInstImport
+diff --git a/test/transcoding/cl-types.ll b/test/transcoding/cl-types.ll
+index aac39f8..3361ab2 100644
+--- a/test/transcoding/cl-types.ll
++++ b/test/transcoding/cl-types.ll
+@@ -89,7 +89,7 @@ target triple = "spir-unknown-unknown"
+ ; CHECK-LLVM-SAME:   !kernel_arg_access_qual [[AQ:![0-9]+]]
+ ; CHECK-LLVM-SAME:   !kernel_arg_type [[TYPE:![0-9]+]]
+ ; CHECK-LLVM-SAME:   !kernel_arg_type_qual [[TQ:![0-9]+]]
+-; CHECK-LLVM-SAME:   !kernel_arg_base_type [[TYPE]]
++; CHECK-LLVM-SAME:   !kernel_arg_base_type [[BT:![0-9]+]]
+ 
+ ; Function Attrs: nounwind readnone
+ define spir_kernel void @foo(
+@@ -129,7 +129,8 @@ attributes #0 = { nounwind readnone "less-precise-fpmad"="false" "no-frame-point
+ 
+ ; CHECK-LLVM-DAG: [[AS]] = !{i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 0}
+ ; CHECK-LLVM-DAG: [[AQ]] = !{!"read_only", !"write_only", !"read_only", !"read_only", !"read_only", !"read_only", !"read_only", !"write_only", !"read_write", !"none"}
+-; CHECK-LLVM-DAG: [[TYPE]] = !{!"pipe", !"pipe", !"image1d_t", !"image2d_t", !"image3d_t", !"image2d_array_t", !"image1d_buffer_t", !"image1d_t", !"image2d_t", !"sampler_t"}
++; CHECK-LLVM-DAG: [[TYPE]] = !{!"int", !"int", !"image1d_t", !"image2d_t", !"image3d_t", !"image2d_array_t", !"image1d_buffer_t", !"image1d_t", !"image2d_t", !"sampler_t"}
++; CHECK-LLVM-DAG: [[BT]] = !{!"pipe", !"pipe", !"image1d_t", !"image2d_t", !"image3d_t", !"image2d_array_t", !"image1d_buffer_t", !"image1d_t", !"image2d_t", !"sampler_t"}
+ ; CHECK-LLVM-DAG: [[TQ]] = !{!"pipe", !"pipe", !"", !"", !"", !"", !"", !"", !"", !""}
+ 
+ !1 = !{i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 0}
+diff --git a/test/transcoding/spirv-types.ll b/test/transcoding/spirv-types.ll
+index 5bb7a0a..92b6bc4 100644
+--- a/test/transcoding/spirv-types.ll
++++ b/test/transcoding/spirv-types.ll
+@@ -97,7 +97,7 @@ target triple = "spir-unknown-unknown"
+ ; CHECK-LLVM-SAME:     !kernel_arg_access_qual [[AQ:![0-9]+]]
+ ; CHECK-LLVM-SAME:     !kernel_arg_type [[TYPE:![0-9]+]]
+ ; CHECK-LLVM-SAME:     !kernel_arg_type_qual [[TQ:![0-9]+]]
+-; CHECK-LLVM-SAME:     !kernel_arg_base_type [[TYPE]]
++; CHECK-LLVM-SAME:     !kernel_arg_base_type [[BT:![0-9]+]]
+ 
+ ; Function Attrs: nounwind readnone
+ define spir_kernel void @foo(
+@@ -167,7 +167,8 @@ attributes #0 = { nounwind readnone "less-precise-fpmad"="false" "no-frame-point
+ 
+ ; CHECK-LLVM-DAG: [[AS]] = !{i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1}
+ ; CHECK-LLVM-DAG: [[AQ]] = !{!"read_only", !"write_only", !"read_only", !"read_only", !"read_only", !"read_only", !"read_only", !"write_only", !"read_write"}
+-; CHECK-LLVM-DAG: [[TYPE]] = !{!"pipe", !"pipe", !"image1d_t", !"image2d_t", !"image3d_t", !"image2d_array_t", !"image1d_buffer_t", !"image1d_t", !"image2d_t"}
++; CHECK-LLVM-DAG: [[TYPE]] = !{!"int", !"int", !"image1d_t", !"image2d_t", !"image3d_t", !"image2d_array_t", !"image1d_buffer_t", !"image1d_t", !"image2d_t"}
++; CHECK-LLVM-DAG: [[BT]] = !{!"pipe", !"pipe", !"image1d_t", !"image2d_t", !"image3d_t", !"image2d_array_t", !"image1d_buffer_t", !"image1d_t", !"image2d_t"}
+ ; CHECK-LLVM-DAG: [[TQ]] = !{!"pipe", !"pipe", !"", !"", !"", !"", !"", !"", !""}
+ 
+ !1 = !{i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1}
+-- 
+1.8.3.1
+
