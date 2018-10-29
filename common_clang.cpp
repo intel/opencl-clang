@@ -48,8 +48,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/FrontendTool/Utils.h"
 #include "clang/Driver/DriverDiagnostic.h"
-#include "clang/CodeGen/CodeGenAction.h"
-#include "clang/Serialization/ASTReader.h"
 #include "clang/Serialization/ModuleManager.h"
 #include "LLVMSPIRVLib.h"
 
