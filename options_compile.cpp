@@ -135,13 +135,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     case OPT_COMPILE_spir_std_1_2:       // ignore for now
     case OPT_COMPILE_cl_kernel_arg_info: // For SPIR, we always create kernel
                                          // arg info, so ignoring it here
-    case OPT_COMPILE_dump_opt_asm:
-    case OPT_COMPILE_dump_opt_llvm: // Dump file must be attached to the flag,
-                                    // but we ignore it for now
-    case OPT_COMPILE_auto_prefetch_level0:
-    case OPT_COMPILE_auto_prefetch_level1:
-    case OPT_COMPILE_auto_prefetch_level2:
-    case OPT_COMPILE_auto_prefetch_level3:
       break;
     case OPT_COMPILE_x:
       // ensure that the value is spir
@@ -231,64 +224,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   return sourceName;
 }
 
-///
-// Options filter that is responsible for building the
-// '-cl-spir-compile-options' value
-//
-void SPIROptionsFilter::processOptions(const OpenCLArgList &args,
-                                       ArgsVector &effectiveArgs) {
-  std::stringstream spirArgs;
-
-  for (OpenCLArgList::const_iterator it = args.begin(), ie = args.end();
-       it != ie; ++it) {
-    switch ((*it)->getOption().getID()) {
-    case OPT_COMPILE_w:
-    case OPT_COMPILE_D:
-    case OPT_COMPILE_I:
-    case OPT_COMPILE_auto_prefetch_level0:
-    case OPT_COMPILE_auto_prefetch_level1:
-    case OPT_COMPILE_auto_prefetch_level2:
-    case OPT_COMPILE_auto_prefetch_level3:
-    case OPT_COMPILE_Werror:
-    case OPT_COMPILE_cl_single_precision_constant:
-    case OPT_COMPILE_cl_denorms_are_zero:
-    case OPT_COMPILE_cl_fp32_correctly_rounded_divide_sqrt:
-    case OPT_COMPILE_cl_opt_disable:
-    case OPT_COMPILE_cl_mad_enable:
-    case OPT_COMPILE_cl_no_signed_zeros:
-    case OPT_COMPILE_cl_unsafe_math_optimizations:
-    case OPT_COMPILE_g_Flag:
-    case OPT_COMPILE_cl_finite_math_only:
-    case OPT_COMPILE_cl_fast_relaxed_math:
-    case OPT_COMPILE_cl_std_CL1_1:
-    case OPT_COMPILE_cl_std_CL1_2:
-    case OPT_COMPILE_cl_std_CL2_0:
-    case OPT_COMPILE_cl_uniform_work_group_size:
-    case OPT_COMPILE_cl_no_subgroup_ifp:
-    case OPT_COMPILE_spir_std_1_0:
-    case OPT_COMPILE_spir_std_1_2:       // ignore for now
-    case OPT_COMPILE_cl_kernel_arg_info: // For SPIR, we always create kernel
-                                         // arg info, so ignoring it here
-    case OPT_COMPILE_target_triple:
-    case OPT_COMPILE_x:
-      spirArgs << (*it)->getAsString(args) << ' ';
-      break;
-    case OPT_COMPILE_profiling:
-      break;
-      // Just ignore the unknown options. The below assert is used for manual
-      // debugging only.
-      // default:
-      // assert(false && "some unknown argument");
-    }
-  }
-
-  std::string opt = spirArgs.str();
-  if (!opt.empty()) {
-    effectiveArgs.push_back("-cl-spir-compile-options");
-    effectiveArgs.push_back(opt);
-  }
-}
-
 void CompileOptionsParser::processOptions(const char *pszOptions,
                                           const char *pszOptionsEx) {
   // parse options
@@ -299,7 +234,6 @@ void CompileOptionsParser::processOptions(const char *pszOptions,
   // post process logic
   m_sourceName =
       m_commonFilter.processOptions(*pArgs, pszOptionsEx, m_effectiveArgs);
-  m_spirFilter.processOptions(*pArgs, m_effectiveArgs);
 
   // build the raw options array
   for (ArgsVector::iterator it = m_effectiveArgs.begin(),
