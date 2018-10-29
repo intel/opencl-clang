@@ -17,12 +17,6 @@ def profiling : Flag<["-"], "profiling">, HelpText<"Allow profiling">;
 def w : Flag<["-"], "w">, HelpText<"Suppress all warnings">;
 def D : JoinedOrSeparate<["-"], "D">;
 def I : JoinedOrSeparate<["-"], "I">, Flags<[RenderJoined]>, HelpText<"Add directory to include search path">;
-def dump_opt_llvm : Joined<["-"], "dump-opt-llvm=">;
-def dump_opt_asm : Joined<["-"], "dump-opt-asm=">;
-def auto_prefetch_level0 : Flag<["-"], "auto-prefetch-level=0">;
-def auto_prefetch_level1 : Flag<["-"], "auto-prefetch-level=1">;
-def auto_prefetch_level2 : Flag<["-"], "auto-prefetch-level=2">;
-def auto_prefetch_level3 : Flag<["-"], "auto-prefetch-level=3">;
 def s : Separate<["-"], "s">;
 def Werror : Flag<["-"], "Werror">;
 def cl_single_precision_constant : Flag<["-"], "cl-single-precision-constant">;
@@ -45,5 +39,3 @@ def target_triple : Separate<["-"], "target-triple">,  HelpText<"Specify target 
 def spir_std_1_0: Flag<["-"], "spir-std=1.0">;
 def spir_std_1_2: Flag<["-"], "spir-std=1.2">;
 def x : Separate<["-"], "x">;
-def pch_cpu: Flag<["-"], "pch-cpu">;
-def pch_gpu: Flag<["-"], "pch-gpu">;

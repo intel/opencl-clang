@@ -137,15 +137,6 @@ private:
 };
 
 ///
-// Options filter that is responsible for building the
-// '-cl-spir-compile-options' value
-//
-class SPIROptionsFilter {
-public:
-  void processOptions(const OpenCLArgList &args, ArgsVector &effectiveArgs);
-};
-
-///
 // Options parser for the Compile function
 //
 class CompileOptionsParser {
@@ -183,7 +174,6 @@ public:
 private:
   OpenCLCompileOptTable m_optTbl;
   EffectiveOptionsFilter m_commonFilter;
-  SPIROptionsFilter m_spirFilter;
   ArgsVector m_effectiveArgs;
   llvm::SmallVector<const char *, 16> m_effectiveArgsRaw;
   std::string m_sourceName;
