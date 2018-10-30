@@ -1,0 +1,426 @@
+From 642bf06efbdc007b6508f2d4f9fa111243316898 Mon Sep 17 00:00:00 2001
+From: Andrew Savonichev <andrew.savonichev@intel.com>
+Date: Tue, 23 Oct 2018 15:19:20 +0000
+Subject: [PATCH 2/4] Unify ZeroToOCL* cast types
+
+Reviewers: Anastasia, yaxunl
+
+Reviewed By: Anastasia
+
+Subscribers: asavonic, cfe-commits
+
+Differential Revision: https://reviews.llvm.org/D52654
+
+Change-Id: I42503b38f90c8d0339ab98cd4b11ec703dbca892
+git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@345038 91177308-0d34-0410-b5e6-96231b3b80d8
+---
+ include/clang/AST/OperationKinds.def    |  8 +--
+ include/clang/Sema/Initialization.h     | 16 ++----
+ lib/AST/Expr.cpp                        |  3 +-
+ lib/AST/ExprConstant.cpp                |  6 +-
+ lib/CodeGen/CGExpr.cpp                  |  6 +-
+ lib/CodeGen/CGExprAgg.cpp               |  3 +-
+ lib/CodeGen/CGExprComplex.cpp           |  3 +-
+ lib/CodeGen/CGExprConstant.cpp          |  3 +-
+ lib/CodeGen/CGExprScalar.cpp            | 10 +---
+ lib/Edit/RewriteObjCFoundationAPI.cpp   |  3 +-
+ lib/Sema/SemaCast.cpp                   |  2 +-
+ lib/Sema/SemaExprCXX.cpp                |  7 +--
+ lib/Sema/SemaInit.cpp                   | 97 +++++++++++----------------------
+ lib/StaticAnalyzer/Core/ExprEngineC.cpp |  3 +-
+ 14 files changed, 55 insertions(+), 115 deletions(-)
+
+diff --git a/include/clang/AST/OperationKinds.def b/include/clang/AST/OperationKinds.def
+index e2d65d8..d499a71 100644
+--- a/include/clang/AST/OperationKinds.def
++++ b/include/clang/AST/OperationKinds.def
+@@ -318,11 +318,9 @@ CAST_OPERATION(CopyAndAutoreleaseBlockObject)
+ // callee of a call expression.
+ CAST_OPERATION(BuiltinFnToFnPtr)
+ 
+-// Convert a zero value for OpenCL event_t initialization.
+-CAST_OPERATION(ZeroToOCLEvent)
+-
+-// Convert a zero value for OpenCL queue_t initialization.
+-CAST_OPERATION(ZeroToOCLQueue)
++// Convert a zero value for OpenCL opaque types initialization (event_t,
++// queue_t, etc.)
++CAST_OPERATION(ZeroToOCLOpaqueType)
+ 
+ // Convert a pointer to a different address space.
+ CAST_OPERATION(AddressSpaceConversion)
+diff --git a/include/clang/Sema/Initialization.h b/include/clang/Sema/Initialization.h
+index 8582e97..65468e2 100644
+--- a/include/clang/Sema/Initialization.h
++++ b/include/clang/Sema/Initialization.h
+@@ -892,11 +892,8 @@ public:
+     /// Initialize an OpenCL sampler from an integer.
+     SK_OCLSamplerInit,
+ 
+-    /// Initialize queue_t from 0.
+-    SK_OCLZeroQueue,
+-
+-    /// Passing zero to a function where OpenCL event_t is expected.
+-    SK_OCLZeroEvent
++    /// Initialize an opaque OpenCL type (event_t, queue_t, etc.) with zero
++    SK_OCLZeroOpaqueType
+   };
+ 
+   /// A single step in the initialization sequence.
+@@ -1333,12 +1330,9 @@ public:
+   /// constant.
+   void AddOCLSamplerInitStep(QualType T);
+ 
+-  /// Add a step to initialize an OpenCL event_t from a NULL
+-  /// constant.
+-  void AddOCLZeroEventStep(QualType T);
+-
+-  /// Add a step to initialize an OpenCL queue_t from 0.
+-  void AddOCLZeroQueueStep(QualType T);
++  /// Add a step to initialzie an OpenCL opaque type (event_t, queue_t, etc.)
++  /// from a zero constant.
++  void AddOCLZeroOpaqueTypeStep(QualType T);
+ 
+   /// Add steps to unwrap a initializer list for a reference around a
+   /// single element and rewrap it at the end.
+diff --git a/lib/AST/Expr.cpp b/lib/AST/Expr.cpp
+index 50cff15..babc580 100644
+--- a/lib/AST/Expr.cpp
++++ b/lib/AST/Expr.cpp
+@@ -1641,8 +1641,7 @@ bool CastExpr::CastConsistency() const {
+   case CK_ARCConsumeObject:
+   case CK_ARCReclaimReturnedObject:
+   case CK_ARCExtendBlockObject:
+-  case CK_ZeroToOCLEvent:
+-  case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLOpaqueType:
+   case CK_IntToOCLSampler:
+     assert(!getType()->isBooleanType() && "unheralded conversion to bool");
+     goto CheckNoBasePath;
+diff --git a/lib/AST/ExprConstant.cpp b/lib/AST/ExprConstant.cpp
+index 25817b4..e743fc9 100644
+--- a/lib/AST/ExprConstant.cpp
++++ b/lib/AST/ExprConstant.cpp
+@@ -9386,8 +9386,7 @@ bool IntExprEvaluator::VisitCastExpr(const CastExpr *E) {
+   case CK_IntegralComplexCast:
+   case CK_IntegralComplexToFloatingComplex:
+   case CK_BuiltinFnToFnPtr:
+-  case CK_ZeroToOCLEvent:
+-  case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLOpaqueType:
+   case CK_NonAtomicToAtomic:
+   case CK_AddressSpaceConversion:
+   case CK_IntToOCLSampler:
+@@ -9921,8 +9920,7 @@ bool ComplexExprEvaluator::VisitCastExpr(const CastExpr *E) {
+   case CK_ARCExtendBlockObject:
+   case CK_CopyAndAutoreleaseBlockObject:
+   case CK_BuiltinFnToFnPtr:
+-  case CK_ZeroToOCLEvent:
+-  case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLOpaqueType:
+   case CK_NonAtomicToAtomic:
+   case CK_AddressSpaceConversion:
+   case CK_IntToOCLSampler:
+diff --git a/lib/CodeGen/CGExpr.cpp b/lib/CodeGen/CGExpr.cpp
+index 93a1859..46ae899 100644
+--- a/lib/CodeGen/CGExpr.cpp
++++ b/lib/CodeGen/CGExpr.cpp
+@@ -4224,10 +4224,8 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
+     return MakeAddrLValue(V, E->getType(), LV.getBaseInfo(),
+                           CGM.getTBAAInfoForSubobject(LV, E->getType()));
+   }
+-  case CK_ZeroToOCLQueue:
+-    llvm_unreachable("NULL to OpenCL queue lvalue cast is not valid");
+-  case CK_ZeroToOCLEvent:
+-    llvm_unreachable("NULL to OpenCL event lvalue cast is not valid");
++  case CK_ZeroToOCLOpaqueType:
++    llvm_unreachable("NULL to OpenCL opaque type lvalue cast is not valid");
+   }
+ 
+   llvm_unreachable("Unhandled lvalue cast kind?");
+diff --git a/lib/CodeGen/CGExprAgg.cpp b/lib/CodeGen/CGExprAgg.cpp
+index 6264110..888eb18 100644
+--- a/lib/CodeGen/CGExprAgg.cpp
++++ b/lib/CodeGen/CGExprAgg.cpp
+@@ -847,8 +847,7 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
+   case CK_ARCExtendBlockObject:
+   case CK_CopyAndAutoreleaseBlockObject:
+   case CK_BuiltinFnToFnPtr:
+-  case CK_ZeroToOCLEvent:
+-  case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLOpaqueType:
+   case CK_AddressSpaceConversion:
+   case CK_IntToOCLSampler:
+     llvm_unreachable("cast kind invalid for aggregate types");
+diff --git a/lib/CodeGen/CGExprComplex.cpp b/lib/CodeGen/CGExprComplex.cpp
+index fb17609..a465f61 100644
+--- a/lib/CodeGen/CGExprComplex.cpp
++++ b/lib/CodeGen/CGExprComplex.cpp
+@@ -505,8 +505,7 @@ ComplexPairTy ComplexExprEmitter::EmitCast(CastKind CK, Expr *Op,
+   case CK_ARCExtendBlockObject:
+   case CK_CopyAndAutoreleaseBlockObject:
+   case CK_BuiltinFnToFnPtr:
+-  case CK_ZeroToOCLEvent:
+-  case CK_ZeroToOCLQueue:
++  case CK_ZeroToOCLOpaqueType:
+   case CK_AddressSpaceConversion:
+   case CK_IntToOCLSampler:
+     llvm_unreachable("invalid cast kind for complex value");
+diff --git a/lib/CodeGen/CGExprConstant.cpp b/lib/CodeGen/CGExprConstant.cpp
+index 6876647..7f9f38a 100644
+--- a/lib/CodeGen/CGExprConstant.cpp
++++ b/lib/CodeGen/CGExprConstant.cpp
+@@ -869,8 +869,7 @@ public:
+     case CK_FloatingToIntegral:
+     case CK_FloatingToBoolean:
+     case CK_FloatingCast:
+-    case CK_ZeroToOCLEvent:
+-    case CK_ZeroToOCLQueue:
++    case CK_ZeroToOCLOpaqueType:
+       return nullptr;
+     }
+     llvm_unreachable("Invalid CastKind");
+diff --git a/lib/CodeGen/CGExprScalar.cpp b/lib/CodeGen/CGExprScalar.cpp
+index c62588c..32eaff4 100644
+--- a/lib/CodeGen/CGExprScalar.cpp
++++ b/lib/CodeGen/CGExprScalar.cpp
+@@ -1920,13 +1920,9 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
+                                          CE->getExprLoc());
+   }
+ 
+-  case CK_ZeroToOCLEvent: {
+-    assert(DestTy->isEventT() && "CK_ZeroToOCLEvent cast on non-event type");
+-    return llvm::Constant::getNullValue(ConvertType(DestTy));
+-  }
+-
+-  case CK_ZeroToOCLQueue: {
+-    assert(DestTy->isQueueT() && "CK_ZeroToOCLQueue cast on non queue_t type");
++  case CK_ZeroToOCLOpaqueType: {
++    assert((DestTy->isEventT() || DestTy->isQueueT()) &&
++           "CK_ZeroToOCLEvent cast on non-event type");
+     return llvm::Constant::getNullValue(ConvertType(DestTy));
+   }
+ 
+diff --git a/lib/Edit/RewriteObjCFoundationAPI.cpp b/lib/Edit/RewriteObjCFoundationAPI.cpp
+index b53a70d..98af710 100644
+--- a/lib/Edit/RewriteObjCFoundationAPI.cpp
++++ b/lib/Edit/RewriteObjCFoundationAPI.cpp
+@@ -1079,8 +1079,7 @@ static bool rewriteToNumericBoxedExpression(const ObjCMessageExpr *Msg,
+     case CK_NonAtomicToAtomic:
+     case CK_CopyAndAutoreleaseBlockObject:
+     case CK_BuiltinFnToFnPtr:
+-    case CK_ZeroToOCLEvent:
+-    case CK_ZeroToOCLQueue:
++    case CK_ZeroToOCLOpaqueType:
+     case CK_IntToOCLSampler:
+       return false;
+ 
+diff --git a/lib/Sema/SemaCast.cpp b/lib/Sema/SemaCast.cpp
+index 57aac80..b86be43 100644
+--- a/lib/Sema/SemaCast.cpp
++++ b/lib/Sema/SemaCast.cpp
+@@ -2535,7 +2535,7 @@ void CastOperation::CheckCStyleCast() {
+       llvm::APSInt CastInt;
+       if (SrcExpr.get()->EvaluateAsInt(CastInt, Self.Context)) {
+         if (0 == CastInt) {
+-          Kind = CK_ZeroToOCLEvent;
++          Kind = CK_ZeroToOCLOpaqueType;
+           return;
+         }
+         Self.Diag(OpRange.getBegin(),
+diff --git a/lib/Sema/SemaExprCXX.cpp b/lib/Sema/SemaExprCXX.cpp
+index c851a81..b3b319b 100644
+--- a/lib/Sema/SemaExprCXX.cpp
++++ b/lib/Sema/SemaExprCXX.cpp
+@@ -4229,14 +4229,9 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
+   }
+ 
+   case ICK_Zero_Event_Conversion:
+-    From = ImpCastExprToType(From, ToType,
+-                             CK_ZeroToOCLEvent,
+-                             From->getValueKind()).get();
+-    break;
+-
+   case ICK_Zero_Queue_Conversion:
+     From = ImpCastExprToType(From, ToType,
+-                             CK_ZeroToOCLQueue,
++                             CK_ZeroToOCLOpaqueType,
+                              From->getValueKind()).get();
+     break;
+ 
+diff --git a/lib/Sema/SemaInit.cpp b/lib/Sema/SemaInit.cpp
+index 5070996..5e81560 100644
+--- a/lib/Sema/SemaInit.cpp
++++ b/lib/Sema/SemaInit.cpp
+@@ -3172,8 +3172,7 @@ void InitializationSequence::Step::Destroy() {
+   case SK_StdInitializerList:
+   case SK_StdInitializerListConstructorCall:
+   case SK_OCLSamplerInit:
+-  case SK_OCLZeroEvent:
+-  case SK_OCLZeroQueue:
++  case SK_OCLZeroOpaqueType:
+     break;
+ 
+   case SK_ConversionSequence:
+@@ -3459,16 +3458,9 @@ void InitializationSequence::AddOCLSamplerInitStep(QualType T) {
+   Steps.push_back(S);
+ }
+ 
+-void InitializationSequence::AddOCLZeroEventStep(QualType T) {
++void InitializationSequence::AddOCLZeroOpaqueTypeStep(QualType T) {
+   Step S;
+-  S.Kind = SK_OCLZeroEvent;
+-  S.Type = T;
+-  Steps.push_back(S);
+-}
+-
+-void InitializationSequence::AddOCLZeroQueueStep(QualType T) {
+-  Step S;
+-  S.Kind = SK_OCLZeroQueue;
++  S.Kind = SK_OCLZeroOpaqueType;
+   S.Type = T;
+   Steps.push_back(S);
+ }
+@@ -5172,39 +5164,31 @@ static bool TryOCLSamplerInitialization(Sema &S,
+   return true;
+ }
+ 
+-//
+-// OpenCL 1.2 spec, s6.12.10
+-//
+-// The event argument can also be used to associate the
+-// async_work_group_copy with a previous async copy allowing
+-// an event to be shared by multiple async copies; otherwise
+-// event should be zero.
+-//
+-static bool TryOCLZeroEventInitialization(Sema &S,
+-                                          InitializationSequence &Sequence,
+-                                          QualType DestType,
+-                                          Expr *Initializer) {
+-  if (!S.getLangOpts().OpenCL || !DestType->isEventT() ||
+-      !Initializer->isIntegerConstantExpr(S.getASTContext()) ||
+-      (Initializer->EvaluateKnownConstInt(S.getASTContext()) != 0))
++static bool TryOCLZeroOpaqueTypeInitialization(Sema &S,
++                                               InitializationSequence &Sequence,
++                                               QualType DestType,
++                                               Expr *Initializer) {
++  if (!S.getLangOpts().OpenCL)
+     return false;
+ 
+-  Sequence.AddOCLZeroEventStep(DestType);
+-  return true;
+-}
++  //
++  // OpenCL 1.2 spec, s6.12.10
++  //
++  // The event argument can also be used to associate the
++  // async_work_group_copy with a previous async copy allowing
++  // an event to be shared by multiple async copies; otherwise
++  // event should be zero.
++  //
++  if (DestType->isEventT() || DestType->isQueueT()) {
++    if (!Initializer->isIntegerConstantExpr(S.getASTContext()) ||
++        (Initializer->EvaluateKnownConstInt(S.getASTContext()) != 0))
++      return false;
+ 
+-static bool TryOCLZeroQueueInitialization(Sema &S,
+-                                          InitializationSequence &Sequence,
+-                                          QualType DestType,
+-                                          Expr *Initializer) {
+-  if (!S.getLangOpts().OpenCL || S.getLangOpts().OpenCLVersion < 200 ||
+-      !DestType->isQueueT() ||
+-      !Initializer->isIntegerConstantExpr(S.getASTContext()) ||
+-      (Initializer->EvaluateKnownConstInt(S.getASTContext()) != 0))
+-    return false;
++    Sequence.AddOCLZeroOpaqueTypeStep(DestType);
++    return true;
++  }
+ 
+-  Sequence.AddOCLZeroQueueStep(DestType);
+-  return true;
++  return false;
+ }
+ 
+ InitializationSequence::InitializationSequence(Sema &S,
+@@ -5478,12 +5462,9 @@ void InitializationSequence::InitializeFrom(Sema &S,
+     if (TryOCLSamplerInitialization(S, *this, DestType, Initializer))
+       return;
+ 
+-    if (TryOCLZeroEventInitialization(S, *this, DestType, Initializer))
++    if (TryOCLZeroOpaqueTypeInitialization(S, *this, DestType, Initializer))
+       return;
+ 
+-    if (TryOCLZeroQueueInitialization(S, *this, DestType, Initializer))
+-       return;
+-
+     // Handle initialization in C
+     AddCAssignmentStep(DestType);
+     MaybeProduceObjCObject(S, *this, Entity);
+@@ -7304,8 +7285,7 @@ InitializationSequence::Perform(Sema &S,
+   case SK_ProduceObjCObject:
+   case SK_StdInitializerList:
+   case SK_OCLSamplerInit:
+-  case SK_OCLZeroEvent:
+-  case SK_OCLZeroQueue: {
++  case SK_OCLZeroOpaqueType: {
+     assert(Args.size() == 1);
+     CurInit = Args[0];
+     if (!CurInit.get()) return ExprError();
+@@ -7960,21 +7940,12 @@ InitializationSequence::Perform(Sema &S,
+                                       CK_IntToOCLSampler);
+       break;
+     }
+-    case SK_OCLZeroEvent: {
+-      assert(Step->Type->isEventT() &&
+-             "Event initialization on non-event type.");
++    case SK_OCLZeroOpaqueType: {
++      assert((Step->Type->isEventT() || Step->Type->isQueueT()) &&
++             "Wrong type for initialization of OpenCL opaque type.");
+ 
+       CurInit = S.ImpCastExprToType(CurInit.get(), Step->Type,
+-                                    CK_ZeroToOCLEvent,
+-                                    CurInit.get()->getValueKind());
+-      break;
+-    }
+-    case SK_OCLZeroQueue: {
+-      assert(Step->Type->isQueueT() &&
+-             "Event initialization on non queue type.");
+-
+-      CurInit = S.ImpCastExprToType(CurInit.get(), Step->Type,
+-                                    CK_ZeroToOCLQueue,
++                                    CK_ZeroToOCLOpaqueType,
+                                     CurInit.get()->getValueKind());
+       break;
+     }
+@@ -8857,12 +8828,8 @@ void InitializationSequence::dump(raw_ostream &OS) const {
+       OS << "OpenCL sampler_t from integer constant";
+       break;
+ 
+-    case SK_OCLZeroEvent:
+-      OS << "OpenCL event_t from zero";
+-      break;
+-
+-    case SK_OCLZeroQueue:
+-      OS << "OpenCL queue_t from zero";
++    case SK_OCLZeroOpaqueType:
++      OS << "OpenCL opaque type from zero";
+       break;
+     }
+ 
+diff --git a/lib/StaticAnalyzer/Core/ExprEngineC.cpp b/lib/StaticAnalyzer/Core/ExprEngineC.cpp
+index 61b7a29..8ec3b9b 100644
+--- a/lib/StaticAnalyzer/Core/ExprEngineC.cpp
++++ b/lib/StaticAnalyzer/Core/ExprEngineC.cpp
+@@ -412,8 +412,7 @@ void ExprEngine::VisitCast(const CastExpr *CastE, const Expr *Ex,
+       case CK_BlockPointerToObjCPointerCast:
+       case CK_AnyPointerToBlockPointerCast:
+       case CK_ObjCObjectLValueCast:
+-      case CK_ZeroToOCLEvent:
+-      case CK_ZeroToOCLQueue:
++      case CK_ZeroToOCLOpaqueType:
+       case CK_IntToOCLSampler:
+       case CK_LValueBitCast: {
+         state =
+-- 
+1.8.3.1
+

@@ -116,7 +116,7 @@ function(apply_patches repo_dir patches_dir revision_to_patch)
 endfunction()
 
 set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
-set(CLANG_REVISION 0513b409d5e34b2d2a28ae21b6d620cc52de0e57)
+set(CLANG_REVISION a007b984aefa2192b58a534ce3087f43cd21fb27)
 
 set(SPIRV_SOURCE_DIR ${LLVM_SOURCE_DIR}/projects/llvm-spirv)
 set(SPIRV_REVISION 0c03e7a66f25c83dbd3d14e74ced9ace51ecb9d7)
