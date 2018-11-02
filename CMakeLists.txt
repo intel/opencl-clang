@@ -273,6 +273,20 @@ target_link_libraries( ${TARGET_NAME}
                        ${CMAKE_DL_LIBS}
                       )
 
+# Usage
+#     SET_LINUX_EXPORTS_FILE( TARGET FILE_NAME )
+# This function provides special linkage options for OCL Back-End. These options prevents exposure of function symbols
+# externally (except functions which are explicitly listed in version script
+
+function ( SET_LINUX_EXPORTS_FILE TARGET FILE_NAME )
+        get_target_property( SOURCE_FILES ${TARGET_NAME} SOURCES )
+        list( GET SOURCE_FILES 0 FIRST_SOURCE )
+        set_source_files_properties( ${FIRST_SOURCE} PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME} )
+        set_property( TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
+                        LINK_FLAGS "-Wl,-Bsymbolic -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME}" )
+endfunction ( SET_LINUX_EXPORTS_FILE )
+
 if (NOT WIN32)
     list(APPEND LINK_LIBS pthread)
+    SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
 endif ()
