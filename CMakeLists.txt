@@ -82,23 +82,17 @@ if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
 endif()
 set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
-function(apply_patches repo_dir patches_dir revision_to_patch)
+function(apply_patches repo_dir patches_dir base_revision target_branch)
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
+        COMMAND ${GIT_EXECUTABLE} symbolic-ref --short HEAD
         WORKING_DIRECTORY ${repo_dir}
-        OUTPUT_VARIABLE CURRENT_HASH
+        OUTPUT_VARIABLE current_branch
+        OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    if(NOT ${CURRENT_HASH} EQUAL ${revision_to_patch})
-        message(STATUS "Skip patching of ${repo_dir}. Expected revision: ${revision_to_patch}")
-        execute_process(
-            COMMAND ${GIT_EXECUTABLE} log -1 --oneline --decorate
-            WORKING_DIRECTORY ${repo_dir}
-            OUTPUT_VARIABLE CURRENT_BRANCH
-            ERROR_QUIET
-        )
-        message(STATUS "Current revision: ${CURRENT_BRANCH}")
+    if(${current_branch} STREQUAL ${target_branch})
+        message(STATUS "Source files in ${repo_dir} are already patched")
         return()
-    endif(NOT ${CURRENT_HASH} EQUAL ${revision_to_patch})
+    endif()
 
     file(GLOB patches ${patches_dir}/*.patch)
     if(NOT patches)
@@ -106,7 +100,7 @@ function(apply_patches repo_dir patches_dir revision_to_patch)
     endif()
     list(SORT patches)
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} checkout -b patched
+        COMMAND ${GIT_EXECUTABLE} checkout -b ${target_branch} ${base_revision}
         WORKING_DIRECTORY ${repo_dir}
     )
     execute_process(
@@ -115,18 +109,21 @@ function(apply_patches repo_dir patches_dir revision_to_patch)
     )
 endfunction()
 
+set(TARGET_BRANCH "ocl-open-80")
 set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
-set(CLANG_REVISION master)
+set(CLANG_BASE_REVISION master)
 
 set(SPIRV_SOURCE_DIR ${LLVM_SOURCE_DIR}/projects/llvm-spirv)
-set(SPIRV_REVISION master)
+set(SPIRV_BASE_REVISION master)
 
 apply_patches(${CLANG_SOURCE_DIR}
               ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
-              ${CLANG_REVISION})
+              ${CLANG_BASE_REVISION}
+              ${TARGET_BRANCH})
 apply_patches(${SPIRV_SOURCE_DIR}
               ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
-              ${SPIRV_REVISION})
+              ${SPIRV_BASE_REVISION}
+              ${TARGET_BRANCH})
 
 #
 # TblGen the options include file
