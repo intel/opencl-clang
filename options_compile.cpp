@@ -213,6 +213,13 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   // extension should be enabled by passing a '-cl-ext' option in pszOptionsEx.
   effectiveArgs.push_back("-cl-ext=-all");
 
+  // OpenCL v2.0 s6.9.u - Implicit function declaration is not supported.
+  // Behavior of clang is changed and now there is only warning about
+  // implicit function declarations. To be more user friendly and avoid
+  // unexpected indirect function calls in IR, let's force this warning to
+  // error.
+  effectiveArgs.push_back("-Werror=implicit-function-declaration");
+
   // add the extended options verbatim
   std::back_insert_iterator<ArgsVector> it(std::back_inserter(effectiveArgs));
   quoted_tokenize(it, pszOptionsEx, " \t", '"', '\x00');
