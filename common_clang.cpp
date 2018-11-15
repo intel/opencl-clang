@@ -49,7 +49,11 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "clang/FrontendTool/Utils.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Serialization/ModuleManager.h"
+#ifdef USE_PREBUILT_LLVM
+#include "LLVMSPIRVLib/LLVMSPIRVLib.h"
+#else // USE_PREBUILT_LLVM
 #include "LLVMSPIRVLib.h"
+#endif // USE_PREBUILT_LLVM
 
 // The following #defines are used as return value of Compile() API and defined
 // in https://github.com/KhronosGroup/OpenCL-Headers/blob/master/CL/cl.h
