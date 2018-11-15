@@ -5,12 +5,53 @@ cmake_minimum_required(VERSION 2.8.8)
 # property
 # `cmake --help-policy CMP0051` for details.
 cmake_policy(SET CMP0051 NEW)
+cmake_policy(SET CMP0057 NEW)
+cmake_policy(SET CMP0022 NEW)
 
 set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 include(CMakeFunctions)
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(USE_PREBUILT_LLVM ON)
+
+    add_definitions(-DUSE_PREBUILT_LLVM)
+
+    if(NOT PREFERRED_LLVM_VERSION)
+        set(PREFERRED_LLVM_VERSION "7.0.0")
+    endif(NOT PREFERRED_LLVM_VERSION)
+    message(STATUS "Looking for LLVM version ${PREFERRED_LLVM_VERSION}")
+    find_package(LLVM ${PREFERRED_LLVM_VERSION} REQUIRED)
+
+    message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+    message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+
+    set(CMAKE_MODULE_PATH
+      ${CMAKE_MODULE_PATH}
+      ${LLVM_CMAKE_DIR})
+
+    set(CMAKE_CXX_STANDARD 11)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+    option(LLVMSPIRV_INCLUDED_IN_LLVM
+      "Set to ON if libLLVMSPIRVLib is linked into libLLVM" ON)
+    if(LLVMSPIRV_INCLUDED_IN_LLVM)
+        message(STATUS "Assuming that libLLVMSPIRVLib is linked into libLLVM")
+    else(LLVMSPIRV_INCLUDED_IN_LLVM)
+        message(STATUS
+          "Assuming that libLLVMSPIRVLib is NOT linked into libLLVM")
+        if(NOT SPIRV_TRANSLATOR_DIR)
+            message(FATAL_ERROR "SPIRV_TRANSLATOR_DIR is required")
+        endif(NOT SPIRV_TRANSLATOR_DIR)
+    endif(LLVMSPIRV_INCLUDED_IN_LLVM)
+else(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(USE_PREBUILT_LLVM OFF)
+endif(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+
+include(AddLLVM)
+include(TableGen)
 
 find_package(Git REQUIRED)
 
@@ -40,21 +81,23 @@ if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
 endif()
 set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
-set(TARGET_BRANCH "ocl-open-70")
-set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
-set(CLANG_BASE_REVISION a007b984aefa2192b58a534ce3087f43cd21fb27)
+if(NOT USE_PREBUILT_LLVM)
+    set(TARGET_BRANCH "ocl-open-70")
+    set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
+    set(CLANG_BASE_REVISION a007b984aefa2192b58a534ce3087f43cd21fb27)
 
-set(SPIRV_SOURCE_DIR ${LLVM_SOURCE_DIR}/projects/llvm-spirv)
-set(SPIRV_BASE_REVISION 217f4e58ca8bea87ce469b54730085515f0bd3f)
+    set(SPIRV_SOURCE_DIR ${LLVM_SOURCE_DIR}/projects/llvm-spirv)
+    set(SPIRV_BASE_REVISION 217f4e58ca8bea87ce469b54730085515f0bd3f)
 
-apply_patches(${CLANG_SOURCE_DIR}
-              ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
-              ${CLANG_BASE_REVISION}
-              ${TARGET_BRANCH})
-apply_patches(${SPIRV_SOURCE_DIR}
-              ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
-              ${SPIRV_BASE_REVISION}
-              ${TARGET_BRANCH})
+    apply_patches(${CLANG_SOURCE_DIR}
+                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
+                  ${CLANG_BASE_REVISION}
+                  ${TARGET_BRANCH})
+    apply_patches(${SPIRV_SOURCE_DIR}
+                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
+                  ${SPIRV_BASE_REVISION}
+                  ${TARGET_BRANCH})
+endif(NOT USE_PREBUILT_LLVM)
 
 #
 # TblGen the options include file
@@ -62,8 +105,14 @@ apply_patches(${SPIRV_SOURCE_DIR}
 set (COMPILE_OPTIONS_TD  opencl_clang_options.td)
 set (COMPILE_OPTIONS_INC opencl_clang_options.inc)
 
+set(LLVM_TABLEGEN_EXE "llvm-tblgen")
 set(LLVM_TARGET_DEFINITIONS ${COMPILE_OPTIONS_TD})
-tablegen(LLVM ${COMPILE_OPTIONS_INC} -gen-opt-parser-defs)
+if(USE_PREBUILT_LLVM)
+  set(TABLEGEN_ADDITIONAL -I ${LLVM_INCLUDE_DIRS})
+else(USE_PREBUILT_LLVM)
+  set(TABLEGEN_ADDITIONAL "")
+endif(USE_PREBUILT_LLVM)
+tablegen(LLVM ${COMPILE_OPTIONS_INC} -gen-opt-parser-defs ${TABLEGEN_ADDITIONAL})
 add_public_tablegen_target(CClangCompileOptions)
 
 #
@@ -91,8 +140,8 @@ set(TARGET_SOURCE_FILES
 
 set( PRODUCT_VER_MAJOR 2 )
 set( PRODUCT_VER_MINOR 0 )
-set (LLVM_VER_MAJOR 7 )
-set (LLVM_VER_MINOR 0 )
+set (LLVM_VER_MAJOR ${LLVM_VERSION_MAJOR} )
+set (LLVM_VER_MINOR ${LLVM_VERSION_MINOR} )
 
 if (WIN32)
     configure_file(
@@ -113,15 +162,24 @@ endif()
 # Include directories
 #
 
-set(CLANG_BINARY_DIR ${LLVM_BINARY_DIR}/tools/clang/)
-set(CLANG_SOURCE_DIR ${LLVM_MAIN_SRC_DIR}/tools/clang/)
+if(NOT USE_PREBUILT_LLVM)
+    set(CLANG_BINARY_DIR ${LLVM_BINARY_DIR}/tools/clang/)
+    set(CLANG_SOURCE_DIR ${LLVM_MAIN_SRC_DIR}/tools/clang/)
+    include_directories(
+        ${CLANG_BINARY_DIR}/include # for tablegened includes
+        ${CLANG_SOURCE_DIR}/include # for basic headers
+        ${SPIRV_SOURCE_DIR}/include)
+endif(NOT USE_PREBUILT_LLVM)
+
+if(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
+    include_directories(${SPIRV_TRANSLATOR_DIR}/include)
+    link_directories(${SPIRV_TRANSLATOR_DIR}/lib${LLVM_LIBDIR_SUFFIX})
+endif(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
 
 include_directories( AFTER
-            ${CLANG_BINARY_DIR}/include # for tablegened includes
-            ${CLANG_SOURCE_DIR}/include # for basic headers
+            ${LLVM_INCLUDE_DIRS}
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}
-            ${SPIRV_SOURCE_DIR}/include
             )
 
 link_directories(
@@ -147,42 +205,49 @@ install(FILES
         common_clang.h
         DESTINATION include/cclang)
 
-# The list of clang libraries is taken from clang makefile
-# (build/tools/clang/tools/driver/CMakeFiles/clang.dir/build.make)
-# All duplicate libraries are there on purpose
+if (LLVM_LINK_LLVM_DYLIB)
+  set (LLVM_LIBS LLVM)
+else (LLVM_LINK_LLVM_DYLIB)
+  set (LLVM_LIBS
+    LLVMAnalysis
+    LLVMAsmParser
+    LLVMAsmPrinter
+    LLVMBitReader
+    LLVMBitWriter
+    LLVMCodeGen
+    LLVMCore
+    LLVMIRReader
+    LLVMInstCombine
+    LLVMInstrumentation
+    LLVMMC
+    LLVMMCDisassembler
+    LLVMMCParser
+    LLVMObjCARCOpts
+    LLVMObject
+    LLVMOption
+    LLVMProfileData
+    LLVMScalarOpts
+    LLVMSelectionDAG
+    LLVMSupport
+    LLVMTarget
+    LLVMTransformUtils
+    LLVMVectorize
+    LLVMX86AsmParser
+    LLVMX86AsmPrinter
+    LLVMX86CodeGen
+    LLVMX86Desc
+    LLVMX86Disassembler
+    LLVMX86Info
+    LLVMX86Utils)
+endif (LLVM_LINK_LLVM_DYLIB)
+
+if(NOT LLVM_LINK_LLVM_DYLIB OR (USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM))
+    set(LLVM_LIBS ${LLVM_LIBS} LLVMSPIRVLib)
+endif(NOT LLVM_LINK_LLVM_DYLIB OR (USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM))
+
 target_link_libraries( ${TARGET_NAME}
                        LINK_PRIVATE
-                       LLVMAnalysis
-                       LLVMAsmParser
-                       LLVMAsmPrinter
-                       LLVMBitReader
-                       LLVMBitWriter
-                       LLVMCodeGen
-                       LLVMCore
-                       LLVMIRReader
-                       LLVMInstCombine
-                       LLVMInstrumentation
-                       LLVMMC
-                       LLVMMCDisassembler
-                       LLVMMCParser
-                       LLVMObjCARCOpts
-                       LLVMObject
-                       LLVMOption
-                       LLVMProfileData
-                       LLVMSPIRVLib
-                       LLVMScalarOpts
-                       LLVMSelectionDAG
-                       LLVMSupport
-                       LLVMTarget
-                       LLVMTransformUtils
-                       LLVMVectorize
-                       LLVMX86AsmParser
-                       LLVMX86AsmPrinter
-                       LLVMX86CodeGen
-                       LLVMX86Desc
-                       LLVMX86Disassembler
-                       LLVMX86Info
-                       LLVMX86Utils
+                       ${LLVM_LIBS}
                        clangARCMigrate
                        clangAST
                        clangAnalysis

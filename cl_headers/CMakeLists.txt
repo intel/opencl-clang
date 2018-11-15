@@ -11,7 +11,12 @@ add_custom_command(
 )
 endfunction(copy_file)
 
-set(OPENCL_HEADERS_DIR "${CLANG_SOURCE_DIR}/lib/Headers")
+if(USE_PREBUILT_LLVM)
+    set(OPENCL_HEADERS_DIR
+      "${LLVM_LIBRARY_DIRS}/clang/${LLVM_PACKAGE_VERSION}/include/")
+else(USE_PREBUILT_LLVM)
+    set(OPENCL_HEADERS_DIR "${CLANG_SOURCE_DIR}/lib/Headers")
+endif(USE_PREBUILT_LLVM)
 copy_file(${OPENCL_HEADERS_DIR}/opencl-c.h opencl-c.h)
 
 add_custom_target (
