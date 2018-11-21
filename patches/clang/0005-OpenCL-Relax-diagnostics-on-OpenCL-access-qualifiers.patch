@@ -1,0 +1,161 @@
+From 7f183c37f13d34b9c9a7eac845421ac706d220d6 Mon Sep 17 00:00:00 2001
+From: Andrew Savonichev <andrew.savonichev@intel.com>
+Date: Thu, 6 Sep 2018 15:10:26 +0000
+Subject: [PATCH] [OpenCL] Relax diagnostics on OpenCL access qualifiers
+
+Summary:
+Emit warning for multiple access qualifiers if they do not conflict.
+
+Patch by Alexey Bader
+
+Reviewers: Anastasia, yaxunl
+
+Reviewed By: Anastasia
+
+Subscribers: asavonic, bader, cfe-commits
+
+Differential Revision: https://reviews.llvm.org/D51302
+
+git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@341553 91177308-0d34-0410-b5e6-96231b3b80d8
+---
+ lib/Sema/SemaDeclAttr.cpp           | 14 ++++++++----
+ lib/Sema/SemaType.cpp               | 45 +++++++++++++++++++++++++++----------
+ test/SemaOpenCL/access-qualifier.cl | 33 ++++++++++++++++++++++++++-
+ 3 files changed, 75 insertions(+), 17 deletions(-)
+
+diff --git a/lib/Sema/SemaDeclAttr.cpp b/lib/Sema/SemaDeclAttr.cpp
+index 77deed6..9bea321 100644
+--- a/lib/Sema/SemaDeclAttr.cpp
++++ b/lib/Sema/SemaDeclAttr.cpp
+@@ -5912,10 +5912,16 @@ static void handleOpenCLAccessAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+ 
+   // Check if there is only one access qualifier.
+   if (D->hasAttr<OpenCLAccessAttr>()) {
+-    S.Diag(AL.getLoc(), diag::err_opencl_multiple_access_qualifiers)
+-        << D->getSourceRange();
+-    D->setInvalidDecl(true);
+-    return;
++    if (D->getAttr<OpenCLAccessAttr>()->getSemanticSpelling() ==
++        AL.getSemanticSpelling()) {
++      S.Diag(AL.getLoc(), diag::warn_duplicate_declspec)
++          << AL.getName()->getName() << AL.getRange();
++    } else {
++      S.Diag(AL.getLoc(), diag::err_opencl_multiple_access_qualifiers)
++          << D->getSourceRange();
++      D->setInvalidDecl(true);
++      return;
++    }
+   }
+ 
+   // OpenCL v2.0 s6.6 - read_write can be used for image types to specify that an
+diff --git a/lib/Sema/SemaType.cpp b/lib/Sema/SemaType.cpp
+index 284d34b..bc0d42a 100644
+--- a/lib/Sema/SemaType.cpp
++++ b/lib/Sema/SemaType.cpp
+@@ -7085,22 +7085,43 @@ static void HandleOpenCLAccessAttr(QualType &CurType, const ParsedAttr &Attr,
+   }
+ 
+   if (const TypedefType* TypedefTy = CurType->getAs<TypedefType>()) {
+-    QualType PointeeTy = TypedefTy->desugar();
+-    S.Diag(Attr.getLoc(), diag::err_opencl_multiple_access_qualifiers);
++    QualType BaseTy = TypedefTy->desugar();
+ 
+     std::string PrevAccessQual;
+-    switch (cast<BuiltinType>(PointeeTy.getTypePtr())->getKind()) {
+-      #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+-    case BuiltinType::Id:                                          \
+-      PrevAccessQual = #Access;                                    \
+-      break;
+-      #include "clang/Basic/OpenCLImageTypes.def"
+-    default:
+-      assert(0 && "Unable to find corresponding image type.");
++    if (BaseTy->isPipeType()) {
++      if (TypedefTy->getDecl()->hasAttr<OpenCLAccessAttr>()) {
++        OpenCLAccessAttr *Attr =
++            TypedefTy->getDecl()->getAttr<OpenCLAccessAttr>();
++        PrevAccessQual = Attr->getSpelling();
++      } else {
++        PrevAccessQual = "read_only";
++      }
++    } else if (const BuiltinType* ImgType = BaseTy->getAs<BuiltinType>()) {
++
++      switch (ImgType->getKind()) {
++        #define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
++      case BuiltinType::Id:                                          \
++        PrevAccessQual = #Access;                                    \
++        break;
++        #include "clang/Basic/OpenCLImageTypes.def"
++      default:
++        llvm_unreachable("Unable to find corresponding image type.");
++      }
++    } else {
++      llvm_unreachable("unexpected type");
++    }
++    StringRef AttrName = Attr.getName()->getName();
++    if (PrevAccessQual == AttrName.ltrim("_")) {
++      // Duplicated qualifiers
++      S.Diag(Attr.getLoc(), diag::warn_duplicate_declspec)
++         << AttrName << Attr.getRange();
++    } else {
++      // Contradicting qualifiers
++      S.Diag(Attr.getLoc(), diag::err_opencl_multiple_access_qualifiers);
+     }
+ 
+-    S.Diag(TypedefTy->getDecl()->getLocStart(),
+-       diag::note_opencl_typedef_access_qualifier) << PrevAccessQual;
++    S.Diag(TypedefTy->getDecl()->getBeginLoc(),
++           diag::note_opencl_typedef_access_qualifier) << PrevAccessQual;
+   } else if (CurType->isPipeType()) {
+     if (Attr.getSemanticSpelling() == OpenCLAccessAttr::Keyword_write_only) {
+       QualType ElemType = CurType->getAs<PipeType>()->getElementType();
+diff --git a/test/SemaOpenCL/access-qualifier.cl b/test/SemaOpenCL/access-qualifier.cl
+index 35e838b..3d337ee 100644
+--- a/test/SemaOpenCL/access-qualifier.cl
++++ b/test/SemaOpenCL/access-qualifier.cl
+@@ -60,7 +60,7 @@ kernel void k10(read_only Int img){} // expected-error {{access qualifier can on
+ 
+ kernel void k11(read_only write_only image1d_t i){} // expected-error{{multiple access qualifiers}}
+ 
+-kernel void k12(read_only read_only image1d_t i){} // expected-error{{multiple access qualifiers}}
++kernel void k12(read_only read_only image1d_t i){} // expected-warning {{duplicate 'read_only' declaration specifier}}
+ 
+ #if __OPENCL_C_VERSION__ >= 200
+ kernel void k13(read_write pipe int i){} // expected-error{{access qualifier 'read_write' can not be used for 'read_only pipe int'}}
+@@ -78,3 +78,34 @@ kernel void k14(read_only pipe int p) {
+ #if __OPENCL_C_VERSION__ < 200
+ kernel void test_image3d_wo(write_only image3d_t img) {} // expected-error {{use of type '__write_only image3d_t' requires cl_khr_3d_image_writes extension to be enabled}}
+ #endif
++
++#if __OPENCL_C_VERSION__ >= 200
++kernel void read_write_twice_typedef(read_write img1d_rw i){} // expected-warning {{duplicate 'read_write' declaration specifier}}
++// expected-note@-74 {{previously declared 'read_write' here}}
++
++kernel void pipe_ro_twice(read_only read_only pipe int i){} // expected-warning{{duplicate 'read_only' declaration specifier}}
++// Conflicting access qualifiers
++kernel void pipe_ro_twice_tw(read_write read_only read_only pipe int i){} // expected-error{{multiple access qualifiers}}
++// expected-warning@-1 {{duplicate 'read_only' declaration specifier}}
++kernel void pipe_ro_wo(read_only write_only pipe int i){} // expected-error{{multiple access qualifiers}}
++
++typedef read_only pipe int ROPipeInt;
++kernel void pipe_ro_twice_typedef(read_only ROPipeInt i){} // expected-warning{{duplicate 'read_only' declaration specifier}}
++// expected-note@-2 {{previously declared 'read_only' here}}
++
++kernel void pass_ro_typedef_to_wo(ROPipeInt p) {
++  myPipeWrite(p); // expected-error {{passing 'ROPipeInt' (aka 'read_only pipe int') to parameter of incompatible type 'write_only pipe int'}}
++  // expected-note@-26 {{passing argument to parameter here}}
++}
++#endif
++
++kernel void read_only_twice_typedef(__read_only img1d_ro i){} // expected-warning {{duplicate '__read_only' declaration specifier}}
++// expected-note@-96 {{previously declared 'read_only' here}}
++
++kernel void read_only_twice_default(read_only img1d_ro_default img){} // expected-warning {{duplicate 'read_only' declaration specifier}}
++// expected-note@-102 {{previously declared 'read_only' here}}
++
++kernel void image_wo_twice(write_only __write_only image1d_t i){} // expected-warning {{duplicate 'write_only' declaration specifier}}
++kernel void image_wo_twice_typedef(write_only img1d_wo i){} // expected-warning {{duplicate 'write_only' declaration specifier}}
++// expected-note@-104 {{previously declared 'write_only' here}}
++
+-- 
+2.7.4
+
