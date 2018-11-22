@@ -245,28 +245,40 @@ if(NOT LLVM_LINK_LLVM_DYLIB OR (USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_
     set(LLVM_LIBS ${LLVM_LIBS} LLVMSPIRVLib)
 endif(NOT LLVM_LINK_LLVM_DYLIB OR (USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM))
 
+# The list of clang libraries is taken from clang makefile
+# (build/tools/clang/tools/driver/CMakeFiles/clang.dir/link.txt)
+# All duplicate libraries are there on purpose
 target_link_libraries( ${TARGET_NAME}
                        LINK_PRIVATE
                        ${LLVM_LIBS}
-                       clangARCMigrate
-                       clangAST
-                       clangAnalysis
                        clangBasic
                        clangCodeGen
                        clangDriver
-                       clangEdit
                        clangFrontend
                        clangFrontendTool
-                       clangLex
-                       clangParse
-                       clangRewrite
+                       clangCodeGen
                        clangRewriteFrontend
-                       clangSema
-                       clangSerialization
+                       clangARCMigrate
+                       clangStaticAnalyzerFrontend
                        clangStaticAnalyzerCheckers
                        clangStaticAnalyzerCore
-                       clangStaticAnalyzerFrontend
-                       ${CMAKE_DL_LIBS}
-                      )
+                       clangCrossTU
+                       clangIndex
+                       clangFrontend
+                       clangDriver
+                       clangParse
+                       clangSerialization
+                       clangSema
+                       clangAnalysis
+                       clangEdit
+                       clangFormat
+                       clangToolingInclusions
+                       clangToolingCore
+                       clangRewrite
+                       clangASTMatchers
+                       clangAST
+                       clangLex
+                       clangBasic
+                       ${CMAKE_DL_LIBS})
 
 SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
