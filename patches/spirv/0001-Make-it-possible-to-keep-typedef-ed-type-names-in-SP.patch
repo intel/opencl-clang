@@ -1,7 +1,7 @@
-From 142ff8135b042ea62ac23df92e18c711fb5349e7 Mon Sep 17 00:00:00 2001
+From 7678a2cdc4e7d9b7cf2acdc2629ea974346a8863 Mon Sep 17 00:00:00 2001
 From: Alexey Sotkin <alexey.sotkin@intel.com>
 Date: Mon, 29 Oct 2018 20:35:31 +0300
-Subject: [PATCH 2/2] Make it possible to keep typedef'ed type names in SPIRV
+Subject: [PATCH 1/2] Make it possible to keep typedef'ed type names in SPIRV
 
 In LLVM IR information about typedef'ed type name stored only in
 kernel_arg_type metadata, but it is missed while translating in SPIRV.

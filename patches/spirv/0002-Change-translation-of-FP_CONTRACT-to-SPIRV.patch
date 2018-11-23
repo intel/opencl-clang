@@ -1,0 +1,177 @@
+From f070b46b6c33321e57eab2f2c7b63bdd1164a5b2 Mon Sep 17 00:00:00 2001
+From: Alexey Sotkin <alexey.sotkin@intel.com>
+Date: Thu, 22 Nov 2018 14:10:09 +0300
+Subject: [PATCH 2/2] Change translation of FP_CONTRACT to SPIRV
+
+Previously we relied on !opencl.enable.FP_CONTRACT metadata to set
+ContractionOff execution mode for a kernel. But now clang doesn't generate
+this metadata. Due to lack of reliable mechanism for representation of the
+pragma in LLVM IR, this patch implements sort of very primitive heuristic
+to detect usage of #pragma OPENCL FP_CONTRACT OFF.
+---
+ lib/SPIRV/OCLUtil.cpp     | 30 ++++++++++++++++++++++++
+ lib/SPIRV/OCLUtil.h       |  4 ++++
+ lib/SPIRV/SPIRVWriter.cpp |  1 +
+ lib/SPIRV/TransOCLMD.cpp  |  5 ----
+ test/ContractionOff.ll    | 58 +++++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 93 insertions(+), 5 deletions(-)
+ create mode 100644 test/ContractionOff.ll
+
+diff --git a/lib/SPIRV/OCLUtil.cpp b/lib/SPIRV/OCLUtil.cpp
+index 32b66aa..e7d0312 100644
+--- a/lib/SPIRV/OCLUtil.cpp
++++ b/lib/SPIRV/OCLUtil.cpp
+@@ -677,6 +677,36 @@ bool isKernelQueryBI(const StringRef MangledName) {
+          MangledName == "__get_kernel_max_sub_group_size_for_ndrange_impl" ||
+          MangledName == "__get_kernel_preferred_work_group_size_multiple_impl";
+ }
++
++// Checks if we have the following (most common for fp contranction) pattern
++// in LLVM IR:
++// %mul = fmul float %a, %b
++// %add = fadd float %mul, %c
++// This pattern indicates that fp contraction could have been disabled by
++// // #pragma OPENCL FP_CONTRACT OFF. Otherwise the current version of clang
++// would generate:
++// %0 = call float @llvm.fmuladd.f32(float %a, float %b, float %c)
++// TODO We need a more reliable mechanism to expres the FP_CONTRACT pragma
++// in LLVM IR. Fox example adding the 'contract' attribute to fp operations
++// by default (according the OpenCL spec fp contraction is enabled by default).
++void checkFpContract(BinaryOperator *B, SPIRVBasicBlock *BB) {
++  if (B->getOpcode() != Instruction::FAdd &&
++      B->getOpcode() != Instruction::FSub)
++    return;
++  // Ok, this is fadd or fsub. Now check its operands.
++  for (auto *Op : B->operand_values()) {
++    if (auto *I = dyn_cast<Instruction>(Op)) {
++      if (I->getOpcode() == Instruction::FMul) {
++        SPIRVFunction *BF = BB->getParent();
++        if (BB->getModule()->isEntryPoint(ExecutionModelKernel, BF->getId())) {
++          BF->addExecutionMode(BB->getModule()->add(
++              new SPIRVExecutionMode(BF, spv::ExecutionModeContractionOff)));
++          break;
++        }
++      }
++    }
++  }
++}
+ } // namespace OCLUtil
+ 
+ void llvm::mangleOpenClBuiltin(const std::string &UniqName,
+diff --git a/lib/SPIRV/OCLUtil.h b/lib/SPIRV/OCLUtil.h
+index cfba41a..4d4ef3a 100644
+--- a/lib/SPIRV/OCLUtil.h
++++ b/lib/SPIRV/OCLUtil.h
+@@ -406,6 +406,10 @@ bool isKernelQueryBI(const StringRef MangledName);
+ /// Check that the type is the sampler_t
+ bool isSamplerTy(Type *Ty);
+ 
++// Checks if clang did not generate llvm.fmuladd for fp multiply-add operations.
++// If so, it applies ContractionOff ExecutionMode to the kernel.
++void checkFpContract(BinaryOperator *B, SPIRVBasicBlock *BB);
++
+ } // namespace OCLUtil
+ 
+ ///////////////////////////////////////////////////////////////////////////////
+diff --git a/lib/SPIRV/SPIRVWriter.cpp b/lib/SPIRV/SPIRVWriter.cpp
+index 8cc3a7d..158ef4d 100644
+--- a/lib/SPIRV/SPIRVWriter.cpp
++++ b/lib/SPIRV/SPIRVWriter.cpp
+@@ -662,6 +662,7 @@ SPIRVInstruction *LLVMToSPIRV::transBinaryInst(BinaryOperator *B,
+   SPIRVInstruction *BI = BM->addBinaryInst(
+       transBoolOpCode(Op0, OpCodeMap::map(LLVMOC)), transType(B->getType()),
+       Op0, transValue(B->getOperand(1), BB), BB);
++  checkFpContract(B, BB);
+   return BI;
+ }
+ 
+diff --git a/lib/SPIRV/TransOCLMD.cpp b/lib/SPIRV/TransOCLMD.cpp
+index 7ce3498..3dc303e 100644
+--- a/lib/SPIRV/TransOCLMD.cpp
++++ b/lib/SPIRV/TransOCLMD.cpp
+@@ -138,7 +138,6 @@ void TransOCLMD::visit(Module *M) {
+   if (EraseOCLMD)
+     B.eraseNamedMD(kSPIR2MD::Extensions).eraseNamedMD(kSPIR2MD::OptFeatures);
+ 
+-  bool HasFPContract = W.getNamedMD(kSPIR2MD::FPContract);
+   if (EraseOCLMD)
+     B.eraseNamedMD(kSPIR2MD::FPContract);
+ 
+@@ -166,10 +165,6 @@ void TransOCLMD::visit(Module *M) {
+     // Specifing execution modes for the Kernel and adding it to the list
+     // of ExecutionMode instructions.
+ 
+-    // !{void (i32 addrspace(1)*)* @kernel, i32 31}
+-    if (!HasFPContract)
+-      EM.addOp().add(&Kernel).add(spv::ExecutionModeContractionOff).done();
+-
+     // !{void (i32 addrspace(1)*)* @kernel, i32 17, i32 X, i32 Y, i32 Z}
+     if (MDNode *WGSize = Kernel.getMetadata(kSPIR2MD::WGSize)) {
+       unsigned X, Y, Z;
+diff --git a/test/ContractionOff.ll b/test/ContractionOff.ll
+new file mode 100644
+index 0000000..716b750
+--- /dev/null
++++ b/test/ContractionOff.ll
+@@ -0,0 +1,58 @@
++; Source:
++; void kernel k1 (float a, float b, float c) {
++; #pragma OPENCL FP_CONTRACT OFF
++;   float d = a * b + c;
++; }
++;
++; void kernel k2 (float a, float b, float c) {
++;   float d = a * b + c;
++; }
++
++; RUN: llvm-as < %s | llvm-spirv -spirv-text -o %t
++; RUN: FileCheck < %t %s
++
++; CHECK: EntryPoint 6 [[K1:[0-9]+]] "k1"
++; CHECK: EntryPoint 6 [[K2:[0-9]+]] "k2"
++; CHECK: ExecutionMode [[K1]] 31
++; CHECK-NOT: ExecutionMode [[K2]] 31
++
++;ModuleID = '<stdin>'
++source_filename = "/tmp/tmp.cl"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir"
++
++; Function Attrs: convergent nounwind
++define spir_kernel void @k1(float %a, float %b, float %c) #0 !kernel_arg_addr_space !4 !kernel_arg_access_qual !5 !kernel_arg_type !6 !kernel_arg_base_type !6 !kernel_arg_type_qual !7 {
++entry:
++  %mul = fmul float %a, %b
++  %add = fadd float %mul, %c
++  ret void
++}
++
++; Function Attrs: convergent nounwind
++define spir_kernel void @k2(float %a, float %b, float %c) #0 !kernel_arg_addr_space !4 !kernel_arg_access_qual !5 !kernel_arg_type !6 !kernel_arg_base_type !6 !kernel_arg_type_qual !7 {
++entry:
++  %0 = call float @llvm.fmuladd.f32(float %a, float %b, float %c)
++  ret void
++}
++
++; Function Attrs: nounwind readnone speculatable
++declare float @llvm.fmuladd.f32(float, float, float) #2
++
++attributes #0 = { convergent nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "denorms-are-zero"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "uniform-work-group-size"="true" "unsafe-fp-math"="false" "use-soft-float"="false" }
++attributes #1 = { argmemonly nounwind }
++attributes #2 = { nounwind readnone speculatable }
++
++!llvm.module.flags = !{!0}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!2}
++!llvm.ident = !{!3}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 1, i32 0}
++!2 = !{i32 1, i32 2}
++!3 = !{!"clang version 8.0.0"}
++!4 = !{i32 0, i32 0, i32 0}
++!5 = !{!"none", !"none", !"none"}
++!6 = !{!"float", !"float", !"float"}
++!7 = !{!"", !"", !""}
+-- 
+1.8.3.1
+
