@@ -1,16 +1,26 @@
-From 3dd05bd382830cd61a83237ebd6b1d85c68dae31 Mon Sep 17 00:00:00 2001
-From: Alexey Sotkin <alexey.sotkin@intel.com>
-Date: Wed, 24 Oct 2018 21:18:42 +0300
-Subject: [PATCH 4/4] Add support of cl_intel_device_side_avc_motion_estimation
- extension
+From 939eaef0875da8468d06017f91cd1a605584cd85 Mon Sep 17 00:00:00 2001
+From: Andrew Savonichev <andrew.savonichev@intel.com>
+Date: Thu, 8 Nov 2018 11:25:41 +0000
+Subject: [PATCH] [OpenCL] Add support of
+ cl_intel_device_side_avc_motion_estimation extension
 
+Summary:
 Documentation can be found at https://www.khronos.org/registry/OpenCL/extensions/intel/cl_intel_device_side_avc_motion_estimation.txt
 
 Patch by Kristina Bessonova
 
-Change-Id: I0d401d5ad61b6717513b190c34d6e8a977f178f6
+Reviewers: Anastasia, yaxunl, shafik
+
+Reviewed By: Anastasia
+
+Subscribers: arphaman, sidorovd, AlexeySotkin, krisb, bader, asavonic, cfe-commits
+
+Differential Revision: https://reviews.llvm.org/D51484
+
+Change-Id: I852384a616cc1942f8b626dd61899e437da81ada
+git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@346392 91177308-0d34-0410-b5e6-96231b3b80d8
 ---
- include/clang-c/Index.h                            |  14 +-
+ include/clang-c/Index.h                            |  20 +-
  include/clang/AST/ASTContext.h                     |   3 +
  include/clang/AST/Type.h                           |  33 +-
  include/clang/Basic/OpenCLExtensionTypes.def       |  41 ++
@@ -33,7 +43,7 @@ Change-Id: I0d401d5ad61b6717513b190c34d6e8a977f178f6
  lib/CodeGen/CGOpenCLRuntime.cpp                    |   5 +
  lib/CodeGen/CodeGenTypes.cpp                       |   3 +
  lib/CodeGen/ItaniumCXXABI.cpp                      |   3 +
- lib/Headers/opencl-c.h                             | 630 +++++++++++++++++++++
+ lib/Headers/opencl-c.h                             | 631 +++++++++++++++++++++
  lib/Index/USRGeneration.cpp                        |   3 +
  lib/Sema/Sema.cpp                                  |   4 +
  lib/Sema/SemaExpr.cpp                              |   6 +
@@ -47,21 +57,26 @@ Change-Id: I0d401d5ad61b6717513b190c34d6e8a977f178f6
  test/SemaOpenCL/intel-subgroup-avc-ext-types.cl    | 105 ++++
  tools/libclang/CIndex.cpp                          |   3 +
  tools/libclang/CXType.cpp                          |   4 +
- 37 files changed, 1058 insertions(+), 7 deletions(-)
+ 37 files changed, 1065 insertions(+), 7 deletions(-)
  create mode 100644 include/clang/Basic/OpenCLExtensionTypes.def
  create mode 100644 test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
  create mode 100644 test/SemaOpenCL/intel-subgroup-avc-ext-types.cl
 
 diff --git a/include/clang-c/Index.h b/include/clang-c/Index.h
-index 65dada3..1bd650a 100644
+index 65dada3..d4ddcf5 100644
 --- a/include/clang-c/Index.h
 +++ b/include/clang-c/Index.h
-@@ -3266,7 +3266,19 @@ enum CXTypeKind {
+@@ -3266,7 +3266,25 @@ enum CXTypeKind {
    CXType_OCLSampler = 157,
    CXType_OCLEvent = 158,
    CXType_OCLQueue = 159,
 -  CXType_OCLReserveID = 160
 +  CXType_OCLReserveID = 160,
++
++  CXType_ObjCObject = 161,
++  CXType_ObjCTypeParam = 162,
++  CXType_Attributed = 163,
++
 +  CXType_OCLIntelSubgroupAVCMcePayload = 164,
 +  CXType_OCLIntelSubgroupAVCImePayload = 165,
 +  CXType_OCLIntelSubgroupAVCRefPayload = 166,
@@ -73,6 +88,7 @@ index 65dada3..1bd650a 100644
 +  CXType_OCLIntelSubgroupAVCImeResultSingleRefStreamout = 172,
 +  CXType_OCLIntelSubgroupAVCImeResultDualRefStreamout = 173,
 +  CXType_OCLIntelSubgroupAVCImeSingleRefStreamin = 174,
++
 +  CXType_OCLIntelSubgroupAVCImeDualRefStreamin = 175
  };
  
@@ -504,10 +520,10 @@ index 00fff14..dc8792b 100644
      case BuiltinType::OCLEvent:
      case BuiltinType::OCLClkEvent:
 diff --git a/lib/Headers/opencl-c.h b/lib/Headers/opencl-c.h
-index 5525830..07dad2c 100644
+index 5525830..98f997d 100644
 --- a/lib/Headers/opencl-c.h
 +++ b/lib/Headers/opencl-c.h
-@@ -16201,6 +16201,636 @@ void        __ovld __conv intel_sub_group_block_write_us4( __global ushort* p, u
+@@ -16201,6 +16201,637 @@ void        __ovld __conv intel_sub_group_block_write_us4( __global ushort* p, u
  void        __ovld __conv intel_sub_group_block_write_us8( __global ushort* p, ushort8 data );
  #endif // cl_intel_subgroups_short
  
@@ -550,9 +566,6 @@ index 5525830..07dad2c 100644
 +#define CLK_AVC_ME_SEARCH_WINDOW_RESERVED0_INTEL 0x6
 +#define CLK_AVC_ME_SEARCH_WINDOW_RESERVED1_INTEL 0x7
 +#define CLK_AVC_ME_SEARCH_WINDOW_CUSTOM_INTEL 0x8
-+#define CLK_AVC_ME_SEARCH_WINDOW_16x12_RADIUS_INTEL 0x9
-+#define CLK_AVC_ME_SEARCH_WINDOW_4x4_RADIUS_INTEL 0x2
-+#define CLK_AVC_ME_SEARCH_WINDOW_2x2_RADIUS_INTEL 0xa
 +
 +#define CLK_AVC_ME_SAD_ADJUST_MODE_NONE_INTEL 0x0
 +#define CLK_AVC_ME_SAD_ADJUST_MODE_HAAR_INTEL 0x2
@@ -674,10 +687,10 @@ index 5525830..07dad2c 100644
 +
 +intel_sub_group_avc_mce_payload_t __ovld
 +intel_sub_group_avc_mce_set_inter_base_multi_reference_penalty(
-+    uchar reference_penalty, intel_sub_group_avc_mce_payload_t payload);
++    uchar reference_base_penalty, intel_sub_group_avc_mce_payload_t payload);
 +intel_sub_group_avc_mce_payload_t __ovld
 +intel_sub_group_avc_mce_set_inter_shape_penalty(
-+    ulong packed_shape_cost, intel_sub_group_avc_mce_payload_t payload);
++    ulong packed_shape_penalty, intel_sub_group_avc_mce_payload_t payload);
 +intel_sub_group_avc_mce_payload_t __ovld
 +intel_sub_group_avc_mce_set_inter_direction_penalty(
 +    uchar direction_cost, intel_sub_group_avc_mce_payload_t payload);
@@ -687,7 +700,7 @@ index 5525830..07dad2c 100644
 +    uchar cost_precision, intel_sub_group_avc_mce_payload_t payload);
 +intel_sub_group_avc_mce_payload_t __ovld
 +intel_sub_group_avc_mce_set_ac_only_haar(
-+  intel_sub_group_avc_mce_payload_t payload);
++    intel_sub_group_avc_mce_payload_t payload);
 +intel_sub_group_avc_mce_payload_t __ovld
 +intel_sub_group_avc_mce_set_source_interlaced_field_polarity(
 +    uchar src_field_polarity, intel_sub_group_avc_mce_payload_t payload);
@@ -726,7 +739,7 @@ index 5525830..07dad2c 100644
 +    ushort2 src_coord, uchar partition_mask, uchar sad_adjustment);
 +intel_sub_group_avc_ime_payload_t __ovld
 +intel_sub_group_avc_ime_set_single_reference(
-+    short2 offset, uchar search_window_config,
++    short2 ref_offset, uchar search_window_config,
 +    intel_sub_group_avc_ime_payload_t payload);
 +intel_sub_group_avc_ime_payload_t __ovld
 +intel_sub_group_avc_ime_set_dual_reference(
@@ -743,56 +756,59 @@ index 5525830..07dad2c 100644
 +    uchar threshold, intel_sub_group_avc_ime_payload_t payload);
 +intel_sub_group_avc_ime_payload_t __ovld
 +intel_sub_group_avc_ime_set_weighted_sad(
-+  uint packed_sad_weights, intel_sub_group_avc_ime_payload_t payload);
++    uint packed_sad_weights, intel_sub_group_avc_ime_payload_t payload);
 +
++__attribute__((deprecated("If you use the latest Intel driver, please use "
++                          "intel_sub_group_avc_ime_ref_window_size instead",
++                          "intel_sub_group_avc_ime_ref_window_size")))
++ushort2 __ovld
++intel_sub_group_ime_ref_window_size(uchar search_window_config, char dual_ref);
 +ushort2 __ovld intel_sub_group_avc_ime_ref_window_size(
 +    uchar search_window_config, char dual_ref);
-+ushort2 __ovld intel_sub_group_ime_ref_window_size(
-+    uchar search_window_config, char dual_ref);
 +short2 __ovld intel_sub_group_avc_ime_adjust_ref_offset(
-+    short2 ref_offset, ushort2 ref_coord, ushort2 ref_window_size,
-+    ushort2 frame_size);
++    short2 ref_offset, ushort2 src_coord, ushort2 ref_window_size,
++    ushort2 image_size);
 +
 +intel_sub_group_avc_ime_result_t __ovld
 +intel_sub_group_avc_ime_evaluate_with_single_reference(
-+    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
-+    intel_sub_group_avc_ime_payload_t payload);
++    read_only image2d_t src_image, read_only image2d_t ref_image,
++    sampler_t vme_media_sampler, intel_sub_group_avc_ime_payload_t payload);
 +intel_sub_group_avc_ime_result_t __ovld
 +intel_sub_group_avc_ime_evaluate_with_dual_reference(
-+    read_only image2d_t src, read_only image2d_t fwd_ref,
-+    read_only image2d_t bwd_ref, sampler_t vme_accel,
++    read_only image2d_t src_image, read_only image2d_t fwd_ref_image,
++    read_only image2d_t bwd_ref_image, sampler_t vme_media_sampler,
 +    intel_sub_group_avc_ime_payload_t payload);
 +intel_sub_group_avc_ime_result_single_reference_streamout_t __ovld
 +intel_sub_group_avc_ime_evaluate_with_single_reference_streamout(
-+    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
-+    intel_sub_group_avc_ime_payload_t payload);
++    read_only image2d_t src_image, read_only image2d_t ref_image,
++    sampler_t vme_media_sampler, intel_sub_group_avc_ime_payload_t payload);
 +intel_sub_group_avc_ime_result_dual_reference_streamout_t __ovld
 +intel_sub_group_avc_ime_evaluate_with_dual_reference_streamout(
-+    read_only image2d_t src, read_only image2d_t fwd_ref,
-+    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    read_only image2d_t src_image, read_only image2d_t fwd_ref_image,
++    read_only image2d_t bwd_ref_image, sampler_t vme_media_sampler,
 +    intel_sub_group_avc_ime_payload_t payload);
 +intel_sub_group_avc_ime_result_t __ovld
 +intel_sub_group_avc_ime_evaluate_with_single_reference_streamin(
-+    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
-+    intel_sub_group_avc_ime_payload_t payload,
-+    intel_sub_group_avc_ime_single_reference_streamin_t streamin);
++    read_only image2d_t src_image, read_only image2d_t ref_image,
++    sampler_t vme_media_sampler, intel_sub_group_avc_ime_payload_t payload,
++    intel_sub_group_avc_ime_single_reference_streamin_t streamin_components);
 +intel_sub_group_avc_ime_result_t __ovld
 +intel_sub_group_avc_ime_evaluate_with_dual_reference_streamin(
-+    read_only image2d_t src, read_only image2d_t fwd_ref,
-+    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    read_only image2d_t src_image, read_only image2d_t fwd_ref_image,
++    read_only image2d_t bwd_ref_image, sampler_t vme_media_sampler,
 +    intel_sub_group_avc_ime_payload_t payload,
-+    intel_sub_group_avc_ime_dual_reference_streamin_t streamin);
++    intel_sub_group_avc_ime_dual_reference_streamin_t streamin_components);
 +intel_sub_group_avc_ime_result_single_reference_streamout_t __ovld
 +intel_sub_group_avc_ime_evaluate_with_single_reference_streaminout(
-+    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
-+    intel_sub_group_avc_ime_payload_t payload,
-+    intel_sub_group_avc_ime_single_reference_streamin_t streamin);
++    read_only image2d_t src_image, read_only image2d_t ref_image,
++    sampler_t vme_media_sampler, intel_sub_group_avc_ime_payload_t payload,
++    intel_sub_group_avc_ime_single_reference_streamin_t streamin_components);
 +intel_sub_group_avc_ime_result_dual_reference_streamout_t __ovld
 +intel_sub_group_avc_ime_evaluate_with_dual_reference_streaminout(
-+    read_only image2d_t src, read_only image2d_t fwd_ref,
-+    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    read_only image2d_t src_image, read_only image2d_t fwd_ref_image,
++    read_only image2d_t bwd_ref_image, sampler_t vme_media_sampler,
 +    intel_sub_group_avc_ime_payload_t payload,
-+    intel_sub_group_avc_ime_dual_reference_streamin_t streamin);
++    intel_sub_group_avc_ime_dual_reference_streamin_t streamin_components);
 +
 +intel_sub_group_avc_ime_single_reference_streamin_t __ovld
 +intel_sub_group_avc_ime_get_single_reference_streamin(
@@ -827,9 +843,9 @@ index 5525830..07dad2c 100644
 +    uchar major_shape, uchar direction);
 +
 +uchar __ovld intel_sub_group_avc_ime_get_border_reached(
-+    uchar frame_select, intel_sub_group_avc_ime_result_t result);
++    uchar image_select, intel_sub_group_avc_ime_result_t result);
 +uchar __ovld intel_sub_group_avc_ime_get_truncated_search_indication(
-+    intel_sub_group_avc_ime_result_t payload);
++    intel_sub_group_avc_ime_result_t result);
 +uchar __ovld
 +intel_sub_group_avc_ime_get_unidirectional_early_search_termination(
 +    intel_sub_group_avc_ime_result_t result);
@@ -859,21 +875,21 @@ index 5525830..07dad2c 100644
 +
 +intel_sub_group_avc_ref_result_t __ovld
 +intel_sub_group_avc_ref_evaluate_with_single_reference(
-+    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
-+    intel_sub_group_avc_ref_payload_t payload);
++    read_only image2d_t src_image, read_only image2d_t ref_image,
++    sampler_t vme_media_sampler, intel_sub_group_avc_ref_payload_t payload);
 +intel_sub_group_avc_ref_result_t __ovld
 +intel_sub_group_avc_ref_evaluate_with_dual_reference(
-+    read_only image2d_t src, read_only image2d_t fwd_ref,
-+    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    read_only image2d_t src_image, read_only image2d_t fwd_ref_image,
++    read_only image2d_t bwd_ref_image, sampler_t vme_media_sampler,
 +    intel_sub_group_avc_ref_payload_t payload);
 +intel_sub_group_avc_ref_result_t __ovld
 +intel_sub_group_avc_ref_evaluate_with_multi_reference(
-+    read_only image2d_t src, uint packed_reference_ids,
-+    sampler_t vme_accelerator, intel_sub_group_avc_ref_payload_t payload);
++    read_only image2d_t src_image, uint packed_reference_ids,
++    sampler_t vme_media_sampler, intel_sub_group_avc_ref_payload_t payload);
 +intel_sub_group_avc_ref_result_t __ovld
 +intel_sub_group_avc_ref_evaluate_with_multi_reference(
-+    read_only image2d_t src, uint packed_reference_ids,
-+    uchar packed_reference_field_polarities, sampler_t vme_accelerator,
++    read_only image2d_t src_image, uint packed_reference_ids,
++    uchar packed_reference_field_polarities, sampler_t vme_media_sampler,
 +    intel_sub_group_avc_ref_payload_t payload);
 +
 +// SIC built-in functions
@@ -888,13 +904,13 @@ index 5525830..07dad2c 100644
 +intel_sub_group_avc_sic_payload_t __ovld
 +intel_sub_group_avc_sic_configure_ipe(
 +    uchar luma_intra_partition_mask, uchar intra_neighbour_availabilty,
-+    uchar left_edge_luma_pixels, uchar left_upper_edge_luma_pixel,
++    uchar left_edge_luma_pixels, uchar upper_left_corner_luma_pixel,
 +    uchar upper_edge_luma_pixels, uchar upper_right_edge_luma_pixels,
 +    uchar intra_sad_adjustment, intel_sub_group_avc_sic_payload_t payload);
 +intel_sub_group_avc_sic_payload_t __ovld
 +intel_sub_group_avc_sic_configure_ipe(
 +    uchar luma_intra_partition_mask, uchar intra_neighbour_availabilty,
-+    uchar left_edge_luma_pixels, uchar left_upper_edge_luma_pixel,
++    uchar left_edge_luma_pixels, uchar upper_left_corner_luma_pixel,
 +    uchar upper_edge_luma_pixels, uchar upper_right_edge_luma_pixels,
 +    ushort left_edge_chroma_pixels, ushort upper_left_corner_chroma_pixel,
 +    ushort upper_edge_chroma_pixels, uchar intra_sad_adjustment,
@@ -922,30 +938,31 @@ index 5525830..07dad2c 100644
 +    ulong packed_sad_coefficients, intel_sub_group_avc_sic_payload_t payload);
 +intel_sub_group_avc_sic_payload_t __ovld
 +intel_sub_group_avc_sic_set_block_based_raw_skip_sad(
-+    uchar block_based_skip_block_type,
++    uchar block_based_skip_type,
 +    intel_sub_group_avc_sic_payload_t payload);
 +
 +intel_sub_group_avc_sic_result_t __ovld
 +intel_sub_group_avc_sic_evaluate_ipe(
-+    read_only image2d_t src, sampler_t vme_accelerator,
++    read_only image2d_t src_image, sampler_t vme_media_sampler,
 +    intel_sub_group_avc_sic_payload_t payload);
 +intel_sub_group_avc_sic_result_t __ovld
 +intel_sub_group_avc_sic_evaluate_with_single_reference(
-+    read_only image2d_t src, read_only image2d_t ref, sampler_t vme_accelerator,
-+    intel_sub_group_avc_sic_payload_t payload);
++    read_only image2d_t src_image, read_only image2d_t ref_image,
++    sampler_t vme_media_sampler, intel_sub_group_avc_sic_payload_t payload);
 +intel_sub_group_avc_sic_result_t __ovld
 +intel_sub_group_avc_sic_evaluate_with_dual_reference(
-+    read_only image2d_t src, read_only image2d_t fwd_ref,
-+    read_only image2d_t bwd_ref, sampler_t vme_accelerator,
++    read_only image2d_t src_image, read_only image2d_t fwd_ref_image,
++    read_only image2d_t bwd_ref_image, sampler_t vme_media_sampler,
 +    intel_sub_group_avc_sic_payload_t payload);
 +intel_sub_group_avc_sic_result_t __ovld
 +intel_sub_group_avc_sic_evaluate_with_multi_reference(
-+    read_only image2d_t src, uint ids, sampler_t vme_accelerator,
-+    intel_sub_group_avc_sic_payload_t pl);
++    read_only image2d_t src_image, uint packed_reference_ids,
++    sampler_t vme_media_sampler, intel_sub_group_avc_sic_payload_t payload);
 +intel_sub_group_avc_sic_result_t __ovld
 +intel_sub_group_avc_sic_evaluate_with_multi_reference(
-+    read_only image2d_t src, uint ids, uchar field_polarities,
-+    sampler_t vme_accelerator, intel_sub_group_avc_sic_payload_t payload);
++    read_only image2d_t src_image, uint packed_reference_ids,
++    uchar packed_reference_field_polarities, sampler_t vme_media_sampler,
++    intel_sub_group_avc_sic_payload_t payload);
 +
 +uchar __ovld intel_sub_group_avc_sic_get_ipe_luma_shape(
 +    intel_sub_group_avc_sic_result_t result);
@@ -967,13 +984,13 @@ index 5525830..07dad2c 100644
 +// Wrappers
 +intel_sub_group_avc_ime_payload_t __ovld
 +intel_sub_group_avc_ime_set_inter_base_multi_reference_penalty(
-+    uchar ref_penalty, intel_sub_group_avc_ime_payload_t payload);
++    uchar reference_base_penalty, intel_sub_group_avc_ime_payload_t payload);
 +intel_sub_group_avc_ref_payload_t __ovld
 +intel_sub_group_avc_ref_set_inter_base_multi_reference_penalty(
-+    uchar ref_penalty, intel_sub_group_avc_ref_payload_t payload);
++    uchar reference_base_penalty, intel_sub_group_avc_ref_payload_t payload);
 +intel_sub_group_avc_sic_payload_t __ovld
 +intel_sub_group_avc_sic_set_inter_base_multi_reference_penalty(
-+    uchar ref_penalty, intel_sub_group_avc_sic_payload_t payload);
++    uchar reference_base_penalty, intel_sub_group_avc_sic_payload_t payload);
 +
 +intel_sub_group_avc_ime_payload_t __ovld
 +intel_sub_group_avc_ime_set_inter_shape_penalty(
@@ -997,16 +1014,16 @@ index 5525830..07dad2c 100644
 +
 +intel_sub_group_avc_ime_payload_t __ovld
 +intel_sub_group_avc_ime_set_motion_vector_cost_function(
-+    ulong cost_delta, uint2 cost_table, uchar cost_precision,
-+    intel_sub_group_avc_ime_payload_t payload);
++    ulong packed_cost_center_delta, uint2 packed_cost_table,
++    uchar cost_precision, intel_sub_group_avc_ime_payload_t payload);
 +intel_sub_group_avc_ref_payload_t __ovld
 +intel_sub_group_avc_ref_set_motion_vector_cost_function(
-+    ulong cost_delta, uint2 cost_table, uchar cost_precision,
-+    intel_sub_group_avc_ref_payload_t payload);
++    ulong packed_cost_center_delta, uint2 packed_cost_table,
++    uchar cost_precision, intel_sub_group_avc_ref_payload_t payload);
 +intel_sub_group_avc_sic_payload_t __ovld
 +intel_sub_group_avc_sic_set_motion_vector_cost_function(
-+    ulong cost_delta, uint2 cost_table, uchar cost_precision,
-+    intel_sub_group_avc_sic_payload_t payload);
++    ulong packed_cost_center_delta, uint2 packed_cost_table,
++    uchar cost_precision, intel_sub_group_avc_sic_payload_t payload);
 +
 +intel_sub_group_avc_ime_payload_t __ovld
 +intel_sub_group_avc_ime_set_source_interlaced_field_polarity(
@@ -1198,7 +1215,7 @@ index 3dc6fb1..84617ec 100644
  #define PLACEHOLDER_TYPE(Id, SingletonId)
  #include "clang/AST/BuiltinTypes.def"
 diff --git a/lib/Sema/SemaInit.cpp b/lib/Sema/SemaInit.cpp
-index 5e81560..998de46 100644
+index 5e81560..f0ff942 100644
 --- a/lib/Sema/SemaInit.cpp
 +++ b/lib/Sema/SemaInit.cpp
 @@ -1166,6 +1166,10 @@ void InitListChecker::CheckListElementTypes(const InitializedEntity &Entity,
@@ -1208,7 +1225,7 @@ index 5e81560..998de46 100644
 +  } else if (DeclType->isOCLIntelSubgroupAVCType()) {
 +    // Checks for scalar type are sufficient for these types too.
 +    CheckScalarType(Entity, IList, DeclType, Index, StructuredList,
-+                    StructuredIndex); 
++                    StructuredIndex);
    } else {
      if (!VerifyOnly)
        SemaRef.Diag(IList->getLocStart(), diag::err_illegal_initializer_type)
@@ -1403,7 +1420,7 @@ index d344f37..b26e61b 100644
  // CHECK20: ndrange_t
  // CHECK: _Z16convert_char_rtec
 diff --git a/test/Index/opencl-types.cl b/test/Index/opencl-types.cl
-index d71893a..637d23d 100644
+index d71893a..cda2dad 100644
 --- a/test/Index/opencl-types.cl
 +++ b/test/Index/opencl-types.cl
 @@ -124,3 +124,11 @@ void kernel testMiscOpenCLTypes() {
@@ -1417,7 +1434,7 @@ index d71893a..637d23d 100644
 +  intel_sub_group_avc_mce_payload_t mce_payload;
 +}
 +
-+// CHECK: VarDecl=mce_payload:131:37 (Definition) [type=intel_sub_group_avc_mce_payload_t] [typekind=Typedef] [canonicaltype=intel_sub_group_avc_mce_payload_t] [canonicaltypekind=OCLIntelSubgroupAVCMcePayload] [isPOD=1]
++// CHECK: VarDecl=mce_payload:131:37 (Definition){{( \(invalid\))?}} [type=intel_sub_group_avc_mce_payload_t] [typekind=Typedef] [canonicaltype=intel_sub_group_avc_mce_payload_t] [canonicaltypekind=OCLIntelSubgroupAVCMcePayload] [isPOD=1]
 diff --git a/test/SemaOpenCL/extension-version.cl b/test/SemaOpenCL/extension-version.cl
 index 714e4c2..64a2841 100644
 --- a/test/SemaOpenCL/extension-version.cl
