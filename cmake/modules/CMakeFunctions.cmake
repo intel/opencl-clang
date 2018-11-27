@@ -45,6 +45,12 @@ endmacro(use_eh)
 # Does nothing if the `target_branch` is already checked out in the `repo_dir`.
 #
 function(apply_patches repo_dir patches_dir base_revision target_branch)
+    file(GLOB patches ${patches_dir}/*.patch)
+    if(NOT patches)
+        message(STATUS "No patches in ${patches_dir}")
+        return()
+    endif()
+
     execute_process(
         COMMAND ${GIT_EXECUTABLE} symbolic-ref --short HEAD
         WORKING_DIRECTORY ${repo_dir}
@@ -56,10 +62,6 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
         return()
     endif()
 
-    file(GLOB patches ${patches_dir}/*.patch)
-    if(NOT patches)
-        return()
-    endif()
     list(SORT patches)
     execute_process(
         COMMAND ${GIT_EXECUTABLE} checkout -b ${target_branch} ${base_revision}
