@@ -30,7 +30,7 @@ git clone https://github.com/llvm-mirror/llvm.git -b release_70
 cd tools
 git clone https://github.com/llvm-mirror/clang.git -b release_70
 cd <workspace>/llvm/projects
-git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git llvm-spirv
+git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_70 llvm-spirv
 git clone https://github.com/intel/opencl-clang.git -b ocl-open-70
 ```
 
