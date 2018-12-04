@@ -47,12 +47,11 @@ endmacro(use_eh)
 function(apply_patches repo_dir patches_dir base_revision target_branch)
     file(GLOB patches ${patches_dir}/*.patch)
     if(NOT patches)
-        message(STATUS "No patches in ${patches_dir}")
         return()
     endif()
 
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} symbolic-ref --short HEAD
+        COMMAND ${GIT_EXECUTABLE} rev-list -1 HEAD
         WORKING_DIRECTORY ${repo_dir}
         OUTPUT_VARIABLE current_branch
         OUTPUT_STRIP_TRAILING_WHITESPACE
