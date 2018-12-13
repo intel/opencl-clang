@@ -82,5 +82,5 @@ function ( SET_LINUX_EXPORTS_FILE TARGET FILE_NAME )
         list( GET SOURCE_FILES 0 FIRST_SOURCE )
         set_source_files_properties( ${FIRST_SOURCE} PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME} )
         set_property( TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-                        LINK_FLAGS "-Wl,-Bsymbolic -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME}" )
+                        LINK_FLAGS " -Wl,-Bsymbolic -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME}" )
 endfunction ( SET_LINUX_EXPORTS_FILE )
