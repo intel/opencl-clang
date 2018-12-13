@@ -49,8 +49,3 @@ add_library(${CL_HEADERS_LIB} OBJECT
 )
 
 add_dependencies(${CL_HEADERS_LIB} opencl.headers.target)
-
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/opencl-c.h
-    DESTINATION include/cclang
-)
