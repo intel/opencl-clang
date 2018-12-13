@@ -59,9 +59,6 @@ if (NOT WIN32)
     add_subdirectory( linux_linker )
 endif()
 
-use_eh(TRUE)
-use_rtti(FALSE)
-
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
     set(ADDR 32)
 else ()
@@ -186,99 +183,83 @@ link_directories(
     ${LLVM_LIBRARY_DIRS}
 )
 
-add_subdirectory(cl_headers)
-
-add_library(${TARGET_NAME} SHARED
-    ${TARGET_INCLUDE_FILES}
-    ${TARGET_SOURCE_FILES}
-    $<TARGET_OBJECTS:cl_headers>
-)
-
-add_dependencies(${TARGET_NAME} CClangCompileOptions)
-
-install(TARGETS ${TARGET_NAME}
-    RUNTIME DESTINATION bin
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib)
-
-install(FILES
-        common_clang.h
-        DESTINATION include/cclang)
-
 if (LLVM_LINK_LLVM_DYLIB)
   set (LLVM_LIBS LLVM)
 else (LLVM_LINK_LLVM_DYLIB)
   set (LLVM_LIBS
-    LLVMAnalysis
-    LLVMAsmParser
-    LLVMAsmPrinter
-    LLVMBitReader
-    LLVMBitWriter
-    LLVMCodeGen
-    LLVMCore
-    LLVMIRReader
-    LLVMInstCombine
-    LLVMInstrumentation
-    LLVMMC
-    LLVMMCDisassembler
-    LLVMMCParser
-    LLVMObjCARCOpts
-    LLVMObject
-    LLVMOption
-    LLVMProfileData
-    LLVMScalarOpts
-    LLVMSelectionDAG
-    LLVMSupport
-    LLVMTarget
-    LLVMTransformUtils
-    LLVMVectorize
-    LLVMX86AsmParser
-    LLVMX86AsmPrinter
-    LLVMX86CodeGen
-    LLVMX86Desc
-    LLVMX86Disassembler
-    LLVMX86Info
-    LLVMX86Utils)
+    Analysis
+    AsmParser
+    AsmPrinter
+    BitReader
+    BitWriter
+    CodeGen
+    Core
+    IRReader
+    InstCombine
+    Instrumentation
+    MC
+    MCDisassembler
+    MCParser
+    ObjCARCOpts
+    Object
+    Option
+    ProfileData
+    ScalarOpts
+    SelectionDAG
+    Support
+    Target
+    TransformUtils
+    Vectorize
+    X86AsmParser
+    X86AsmPrinter
+    X86CodeGen
+    X86Desc
+    X86Disassembler
+    X86Info
+    X86Utils)
 endif (LLVM_LINK_LLVM_DYLIB)
 
 if(NOT LLVM_LINK_LLVM_DYLIB OR (USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM))
-    set(LLVM_LIBS ${LLVM_LIBS} LLVMSPIRVLib)
+    set(LLVM_LIBS ${LLVM_LIBS} SPIRVLib)
 endif(NOT LLVM_LINK_LLVM_DYLIB OR (USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM))
 
-# The list of clang libraries is taken from clang makefile
-# (build/tools/clang/tools/driver/CMakeFiles/clang.dir/link.txt)
-# All duplicate libraries are there on purpose
-target_link_libraries( ${TARGET_NAME}
-                       LINK_PRIVATE
-                       ${LLVM_LIBS}
-                       clangBasic
-                       clangCodeGen
-                       clangDriver
-                       clangFrontend
-                       clangFrontendTool
-                       clangCodeGen
-                       clangRewriteFrontend
-                       clangARCMigrate
-                       clangStaticAnalyzerFrontend
-                       clangStaticAnalyzerCheckers
-                       clangStaticAnalyzerCore
-                       clangCrossTU
-                       clangIndex
-                       clangFrontend
-                       clangDriver
-                       clangParse
-                       clangSerialization
-                       clangSema
-                       clangAnalysis
-                       clangEdit
-                       clangFormat
-                       clangToolingInclusions
-                       clangToolingCore
-                       clangRewrite
-                       clangASTMatchers
-                       clangAST
-                       clangLex
-                       clangBasic
-                       ${CMAKE_DL_LIBS})
+add_subdirectory(cl_headers)
+
+set(LLVM_REQUIRES_EH ON)
+
+add_llvm_library(${TARGET_NAME} SHARED
+  ${TARGET_INCLUDE_FILES}
+  ${TARGET_SOURCE_FILES}
+  $<TARGET_OBJECTS:cl_headers>
+
+  DEPENDS CClangCompileOptions
+  LINK_COMPONENTS
+    ${LLVM_LIBS}
+  LINK_LIBS
+    clangARCMigrate
+    clangAST
+    clangAnalysis
+    clangBasic
+    clangCodeGen
+    clangDriver
+    clangEdit
+    clangFrontend
+    clangFrontendTool
+    clangLex
+    clangParse
+    clangRewrite
+    clangRewriteFrontend
+    clangSema
+    clangSerialization
+    clangStaticAnalyzerCheckers
+    clangStaticAnalyzerCore
+    clangStaticAnalyzerFrontend
+    ${CMAKE_DL_LIBS})
+
+install(FILES common_clang.h
+        DESTINATION include/cclang
+        COMPONENT ${TARGET_NAME})
 
 SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
+
+add_custom_target(deploy DEPENDS install-${TARGET_NAME})
