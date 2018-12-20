@@ -140,14 +140,6 @@ set( PRODUCT_VER_MINOR 0 )
 set (LLVM_VER_MAJOR ${LLVM_VERSION_MAJOR} )
 set (LLVM_VER_MINOR ${LLVM_VERSION_MINOR} )
 
-if (WIN32)
-    configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/common_clang.rc.in
-        ${CMAKE_CURRENT_BINARY_DIR}/common_clang.rc
-        @ONLY)
-    list (APPEND TARGET_SOURCE_FILES ${CMAKE_CURRENT_BINARY_DIR}/common_clang.rc)
-endif (WIN32)
-
 add_definitions( -D__STDC_LIMIT_MACROS )
 add_definitions( -D__STDC_CONSTANT_MACROS )
 add_definitions( -DCOMMON_CLANG_EXPORTS )
@@ -255,6 +247,40 @@ add_llvm_library(${TARGET_NAME} SHARED
     clangStaticAnalyzerCore
     clangStaticAnalyzerFrontend
     ${CMAKE_DL_LIBS})
+
+# Configure resource file on Windows
+if (WIN32)
+    # windows_resource_file should be defined by llvm_add_library and should
+    # contain full patch to a .rc file
+    # It also might not be defined if this library is built out-of-tree:
+    # let's use our copy of .rc file from LLVM source tree in that case
+    if (NOT DEFINED windows_resource_file)
+        set(windows_resource_file windows_resource_file.rc)
+    endif(NOT DEFINED windows_resource_file)
+
+    set(RC_CHAR_TM "\\231")
+    set(RC_CHAR_C "\\251")
+    set(RC_CHAR_R "\\256")
+
+    set(RC_FILE_VERSION "${PRODUCT_VER_MAJOR}.${PRODUCT_VER_MINOR}.${LLVM_VER_MAJOR}.${LLVM_VER_MINOR}")
+    set(RC_PRODUCT_NAME "Intel${RC_CHAR_R} Front-end Library for OpenCL${RC_CHAR_TM} software")
+
+    # Adjust content of the resource file by specifying compile definitions
+    set_property(SOURCE ${windows_resource_file}
+        PROPERTY COMPILE_DEFINITIONS
+            "RC_VERSION_FIELD_1=${PRODUCT_VER_MAJOR}"
+            "RC_VERSION_FIELD_2=${PRODUCT_VER_MINOR}"
+            "RC_VERSION_FIELD_3=${LLVM_VER_MAJOR}"
+            "RC_VERSION_FIELD_4=${LLVM_VER_MINOR}"
+            "RC_COMPANY_NAME=\"Intel Corporation\""
+            "RC_FILE_DESCRIPTION=\"${RC_PRODUCT_NAME}\""
+            "RC_FILE_VERSION=\"${RC_FILE_VERSION}\""
+            "RC_INTERNAL_NAME=\"${TARGET_NAME}\""
+            "RC_ORIGINAL_FILENAME=\"${TARGET_NAME}.dll\""
+            "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
+            "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
+            "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
+endif(WIN32)
 
 install(FILES common_clang.h
         DESTINATION include/cclang
