@@ -50,26 +50,29 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
         return()
     endif()
 
+    message(STATUS "${repo_dir}:")
+    # Check if the target branch already exists
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} rev-list -1 HEAD
+        COMMAND ${GIT_EXECUTABLE} rev-parse --verify --no-revs -q ${target_branch}
         WORKING_DIRECTORY ${repo_dir}
-        OUTPUT_VARIABLE current_branch
-        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE patches_needed
     )
-    if(${current_branch} STREQUAL ${target_branch})
-        message(STATUS "Source files in ${repo_dir} are already patched")
-        return()
+    if(patches_needed) # The target branch doesn't exist
+        list(SORT patches)
+        execute_process( # Create the target branch
+            COMMAND ${GIT_EXECUTABLE} checkout -b ${target_branch} ${base_revision}
+            WORKING_DIRECTORY ${repo_dir}
+        )
+        execute_process( # Apply the pathces
+            COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patches}
+            WORKING_DIRECTORY ${repo_dir}
+        )
+    else() # The target branch already exists
+        execute_process( # Check it out
+            COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}
+            WORKING_DIRECTORY ${repo_dir}
+        )
     endif()
-
-    list(SORT patches)
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} checkout -b ${target_branch} ${base_revision}
-        WORKING_DIRECTORY ${repo_dir}
-    )
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patches}
-        WORKING_DIRECTORY ${repo_dir}
-    )
 endfunction()
 
 # Usage
