@@ -78,9 +78,11 @@ endfunction()
 # prevents exposure of function symbols externally (except functions which are
 # explicitly listed in version script)
 function ( SET_LINUX_EXPORTS_FILE TARGET FILE_NAME )
+    if(NOT WIN32)
         get_target_property( SOURCE_FILES ${TARGET_NAME} SOURCES )
         list( GET SOURCE_FILES 0 FIRST_SOURCE )
         set_source_files_properties( ${FIRST_SOURCE} PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME} )
         set_property( TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
                         LINK_FLAGS " -Wl,-Bsymbolic -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME}" )
+    endif(NOT WIN32)
 endfunction ( SET_LINUX_EXPORTS_FILE )
