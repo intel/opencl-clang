@@ -1,0 +1,203 @@
+From c6601b20b40b6b1de8d5472b043f2f69a6626eab Mon Sep 17 00:00:00 2001
+From: Mariya Podchishchaeva <mariya.podchishchaeva@intel.com>
+Date: Wed, 26 Dec 2018 20:17:38 +0300
+Subject: [PATCH] Add no signed/unsigned wrap decoration support
+
+---
+ lib/SPIRV/SPIRVReader.cpp             |  9 +++++++++
+ lib/SPIRV/SPIRVRegularizeLLVM.cpp     |  6 ------
+ lib/SPIRV/SPIRVWriter.cpp             | 10 +++++++++
+ lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h |  2 ++
+ lib/SPIRV/libSPIRV/SPIRVValue.cpp     | 28 ++++++++++++++++++++++++++
+ lib/SPIRV/libSPIRV/SPIRVValue.h       |  4 ++++
+ lib/SPIRV/libSPIRV/spirv.hpp          |  2 ++
+ test/NoSignedUnsignedWrap.ll          | 38 +++++++++++++++++++++++++++++++++++
+ 8 files changed, 93 insertions(+), 6 deletions(-)
+ create mode 100644 test/NoSignedUnsignedWrap.ll
+
+diff --git a/lib/SPIRV/SPIRVReader.cpp b/lib/SPIRV/SPIRVReader.cpp
+index 717b3a7..d83405a 100644
+--- a/lib/SPIRV/SPIRVReader.cpp
++++ b/lib/SPIRV/SPIRVReader.cpp
+@@ -694,6 +694,15 @@ BinaryOperator *SPIRVToLLVM::transShiftLogicalBitwiseInst(SPIRVValue *BV,
+   auto Inst = BinaryOperator::Create(BO, transValue(BBN->getOperand(0), F, BB),
+                                      transValue(BBN->getOperand(1), F, BB),
+                                      BV->getName(), BB);
++
++  if (BV->hasDecorate(DecorationNoSignedWrap)) {
++    Inst->setHasNoSignedWrap(true);
++  }
++
++  if (BV->hasDecorate(DecorationNoUnsignedWrap)) {
++    Inst->setHasNoUnsignedWrap(true);
++  }
++
+   return Inst;
+ }
+ 
+diff --git a/lib/SPIRV/SPIRVRegularizeLLVM.cpp b/lib/SPIRV/SPIRVRegularizeLLVM.cpp
+index 4a1837d..84f7492 100644
+--- a/lib/SPIRV/SPIRVRegularizeLLVM.cpp
++++ b/lib/SPIRV/SPIRVRegularizeLLVM.cpp
+@@ -132,12 +132,6 @@ bool SPIRVRegularizeLLVM::regularize() {
+ 
+         // Remove optimization info not supported by SPIRV
+         if (auto BO = dyn_cast<BinaryOperator>(II)) {
+-          if (isa<OverflowingBinaryOperator>(BO)) {
+-            if (BO->hasNoUnsignedWrap())
+-              BO->setHasNoUnsignedWrap(false);
+-            if (BO->hasNoSignedWrap())
+-              BO->setHasNoSignedWrap(false);
+-          }
+           if (isa<PossiblyExactOperator>(BO) && BO->isExact())
+             BO->setIsExact(false);
+         }
+diff --git a/lib/SPIRV/SPIRVWriter.cpp b/lib/SPIRV/SPIRVWriter.cpp
+index 158ef4d..fdba9d9 100644
+--- a/lib/SPIRV/SPIRVWriter.cpp
++++ b/lib/SPIRV/SPIRVWriter.cpp
+@@ -1023,6 +1023,16 @@ bool LLVMToSPIRV::transDecoration(Value *V, SPIRVValue *BV) {
+   if ((isa<AtomicCmpXchgInst>(V) && cast<AtomicCmpXchgInst>(V)->isVolatile()) ||
+       (isa<AtomicRMWInst>(V) && cast<AtomicRMWInst>(V)->isVolatile()))
+     BV->setVolatile(true);
++
++  if (auto BVO = dyn_cast_or_null<OverflowingBinaryOperator>(V)) {
++    if (BVO->hasNoSignedWrap()) {
++      BV->setNoSignedWrap(true);
++    }
++    if (BVO->hasNoUnsignedWrap()) {
++      BV->setNoUnsignedWrap(true);
++    }
++  }
++
+   return true;
+ }
+ 
+diff --git a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+index 409d49b..1ef7901 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+@@ -329,6 +329,8 @@ template <> inline void SPIRVMap<Decoration, std::string>::init() {
+   add(DecorationInputAttachmentIndex, "InputAttachmentIndex");
+   add(DecorationAlignment, "Alignment");
+   add(DecorationMaxByteOffset, "MaxByteOffset");
++  add(DecorationNoSignedWrap, "NoSignedWrap");
++  add(DecorationNoUnsignedWrap, "NoUnsignedWrap");
+ }
+ SPIRV_DEF_NAMEMAP(Decoration, SPIRVDecorationNameMap)
+ 
+diff --git a/lib/SPIRV/libSPIRV/SPIRVValue.cpp b/lib/SPIRV/libSPIRV/SPIRVValue.cpp
+index fadd474..d5591ca 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVValue.cpp
++++ b/lib/SPIRV/libSPIRV/SPIRVValue.cpp
+@@ -68,4 +68,32 @@ void SPIRVValue::setVolatile(bool IsVolatile) {
+                      << " for obj " << Id << "\n")
+ }
+ 
++bool SPIRVValue::hasNoSignedWrap() const {
++  return hasDecorate(DecorationNoSignedWrap);
++}
++
++void SPIRVValue::setNoSignedWrap(bool HasNoSignedWrap) {
++  if (!HasNoSignedWrap) {
++    eraseDecorate(DecorationNoSignedWrap);
++    return;
++  }
++  addDecorate(new SPIRVDecorate(DecorationNoSignedWrap, this));
++  SPIRVDBG(spvdbgs() << "Set nsw "
++                     << " for obj " << Id << "\n")
++}
++
++bool SPIRVValue::hasNoUnsignedWrap() const {
++  return hasDecorate(DecorationNoUnsignedWrap);
++}
++
++void SPIRVValue::setNoUnsignedWrap(bool HasNoUnsignedWrap) {
++  if (!HasNoUnsignedWrap) {
++    eraseDecorate(DecorationNoUnsignedWrap);
++    return;
++  }
++  addDecorate(new SPIRVDecorate(DecorationNoUnsignedWrap, this));
++  SPIRVDBG(spvdbgs() << "Set nuw "
++                     << " for obj " << Id << "\n")
++}
++
+ } // namespace SPIRV
+diff --git a/lib/SPIRV/libSPIRV/SPIRVValue.h b/lib/SPIRV/libSPIRV/SPIRVValue.h
+index 8d58fce..3a7f75d 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVValue.h
++++ b/lib/SPIRV/libSPIRV/SPIRVValue.h
+@@ -91,9 +91,13 @@ public:
+   }
+   bool isVolatile() const;
+   bool hasAlignment(SPIRVWord *Result = 0) const;
++  bool hasNoSignedWrap() const;
++  bool hasNoUnsignedWrap() const;
+ 
+   void setAlignment(SPIRVWord);
+   void setVolatile(bool IsVolatile);
++  void setNoSignedWrap(bool HasNoSignedWrap);
++  void setNoUnsignedWrap(bool HasNoUnsignedWrap);
+ 
+   void validate() const override {
+     SPIRVEntry::validate();
+diff --git a/lib/SPIRV/libSPIRV/spirv.hpp b/lib/SPIRV/libSPIRV/spirv.hpp
+index e8536d3..cfdbeb2 100644
+--- a/lib/SPIRV/libSPIRV/spirv.hpp
++++ b/lib/SPIRV/libSPIRV/spirv.hpp
+@@ -382,6 +382,8 @@ enum Decoration {
+     DecorationInputAttachmentIndex = 43,
+     DecorationAlignment = 44,
+     DecorationMaxByteOffset = 45,
++    DecorationNoSignedWrap = 4469,
++    DecorationNoUnsignedWrap = 4470,
+     DecorationOverrideCoverageNV = 5248,
+     DecorationPassthroughNV = 5250,
+     DecorationViewportRelativeNV = 5252,
+diff --git a/test/NoSignedUnsignedWrap.ll b/test/NoSignedUnsignedWrap.ll
+new file mode 100644
+index 0000000..049a39e
+--- /dev/null
++++ b/test/NoSignedUnsignedWrap.ll
+@@ -0,0 +1,38 @@
++; Source
++; int square(unsigned short a) {
++;   return a * a;
++; }
++; Command
++; clang -cc1 -triple spir -emit-llvm -O2 -o NoSignedUnsignedWrap.ll test.cl
++
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc -spirv-text -o - | FileCheck %s --check-prefix=CHECK-SPIRV
++
++; RUN: llvm-spirv %t.bc -o %t.spv
++; RUN: llvm-spirv -r %t.spv -o %t.rev.bc
++; RUN: llvm-dis < %t.rev.bc | FileCheck %s --check-prefix=CHECK-LLVM
++
++; CHECK-SPIRV: Decorate {{[0-9]+}} NoSignedWrap
++; CHECK-SPIRV: Decorate {{[0-9]+}} NoUnsignedWrap
++
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir"
++
++; Function Attrs: norecurse nounwind readnone
++define spir_func i32 @square(i16 zeroext %a) local_unnamed_addr #0 {
++entry:
++  %conv = zext i16 %a to i32
++  ; CHECK-LLVM: mul nuw nsw
++  %mul = mul nuw nsw i32 %conv, %conv
++  ret i32 %mul
++}
++
++attributes #0 = { norecurse nounwind readnone "correctly-rounded-divide-sqrt-fp-math"="false" "denorms-are-zero"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
++
++!llvm.module.flags = !{!0}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!2}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 1, i32 0}
++!2 = !{i32 1, i32 2}
+-- 
+2.7.4
+
