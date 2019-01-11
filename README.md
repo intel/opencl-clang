@@ -110,6 +110,12 @@ Example:
 cmake -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=/path/to/installed/spirv/translator ../opencl-clang
 ```
 
+There is a known issue (linker crash) for this kind of build on Ubuntu 16.04 Xenial.
+In this case the following cmake option should fix it:
+```
+-DLLVM_NO_DEAD_STRIP=ON
+```
+
 Installation directory of SPIR-V Translator is expected to contain the
 following files:
 ```
