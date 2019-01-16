@@ -176,9 +176,9 @@ link_directories(
 )
 
 if (LLVM_LINK_LLVM_DYLIB)
-  set (LLVM_LIBS LLVM)
+  set (LLVM_COMPONENTS LLVM)
 else (LLVM_LINK_LLVM_DYLIB)
-  set (LLVM_LIBS
+  set (LLVM_COMPONENTS
     Analysis
     AsmParser
     AsmPrinter
@@ -211,9 +211,18 @@ else (LLVM_LINK_LLVM_DYLIB)
     X86Utils)
 endif (LLVM_LINK_LLVM_DYLIB)
 
-if(NOT LLVM_LINK_LLVM_DYLIB OR (USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM))
-    set(LLVM_LIBS ${LLVM_LIBS} SPIRVLib)
-endif(NOT LLVM_LINK_LLVM_DYLIB OR (USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM))
+set(ADDITIONAL_LIBS )
+
+if(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
+  # SPIRV-LLVM-Translator is not included into LLVM as a component.
+  # So, we need to list it there explicitly as a library
+  set(ADDITIONAL_LIBS ${ADDITIONAL_LIBS} LLVMSPIRVLib)
+elseif(NOT LLVM_LINK_LLVM_DYLIB)
+  # SPIRV-LLVM-Translator is included into LLVM as a component, but
+  # LLVM components is not linked together into an umbrella library.
+  # So, we need to list SPIRV-LLVM-Translator there explicitly as a component
+  set(LLVM_COMPONENTS ${LLVM_LIBS} SPIRVLib)
+endif(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
 
 add_subdirectory(cl_headers)
 
@@ -226,26 +235,40 @@ add_llvm_library(${TARGET_NAME} SHARED
 
   DEPENDS CClangCompileOptions
   LINK_COMPONENTS
-    ${LLVM_LIBS}
+    ${LLVM_COMPONENTS}
   LINK_LIBS
-    clangARCMigrate
-    clangAST
-    clangAnalysis
+# The list of clang libraries is taken from clang makefile
+# (build/tools/clang/tools/driver/CMakeFiles/clang.dir/link.txt)
+# All duplicate libraries are there on purpose
     clangBasic
     clangCodeGen
     clangDriver
-    clangEdit
     clangFrontend
     clangFrontendTool
-    clangLex
-    clangParse
-    clangRewrite
+    clangCodeGen
     clangRewriteFrontend
-    clangSema
-    clangSerialization
+    clangARCMigrate
+    clangStaticAnalyzerFrontend
     clangStaticAnalyzerCheckers
     clangStaticAnalyzerCore
-    clangStaticAnalyzerFrontend
+    clangCrossTU
+    clangIndex
+    clangFrontend
+    clangDriver
+    clangParse
+    clangSerialization
+    clangSema
+    clangAnalysis
+    clangEdit
+    clangFormat
+    clangToolingInclusions
+    clangToolingCore
+    clangRewrite
+    clangASTMatchers
+    clangAST
+    clangLex
+    clangBasic
+    ${ADDITIONAL_LIBS}
     ${CMAKE_DL_LIBS})
 
 # Configure resource file on Windows
