@@ -40,6 +40,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticIDs.h"
@@ -214,9 +215,9 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
     compiler->setDiagnostics(&*Diags);
 
-    auto OverlayFS = new clang::vfs::OverlayFileSystem(
-        clang::vfs::getRealFileSystem());
-    auto MemFS = new clang::vfs::InMemoryFileSystem();
+    auto OverlayFS = new llvm::vfs::OverlayFileSystem(
+        llvm::vfs::getRealFileSystem());
+    auto MemFS = new llvm::vfs::InMemoryFileSystem();
     OverlayFS->pushOverlay(MemFS);
 
     compiler->setVirtualFileSystem(OverlayFS);
