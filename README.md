@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/intel/opencl-clang.svg?branch=ocl-open-70)](https://travis-ci.com/intel/opencl-clang)
+
 Common clang is a thin wrapper library around clang. Common clang has
 OpenCL-oriented API and is capable to compile OpenCL C kernels to SPIR-V
 modules.
