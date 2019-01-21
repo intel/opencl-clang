@@ -176,9 +176,9 @@ link_directories(
 )
 
 if (LLVM_LINK_LLVM_DYLIB)
-  set (LLVM_COMPONENTS LLVM)
+  set (LLVM_LIBS LLVM)
 else (LLVM_LINK_LLVM_DYLIB)
-  set (LLVM_COMPONENTS
+  set (LLVM_LIBS
     Analysis
     AsmParser
     AsmPrinter
@@ -221,7 +221,7 @@ elseif(NOT LLVM_LINK_LLVM_DYLIB)
   # SPIRV-LLVM-Translator is included into LLVM as a component, but
   # LLVM components is not linked together into an umbrella library.
   # So, we need to list SPIRV-LLVM-Translator there explicitly as a component
-  set(LLVM_COMPONENTS ${LLVM_LIBS} SPIRVLib)
+  set(LLVM_LIBS ${LLVM_LIBS} SPIRVLib)
 endif(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
 
 add_subdirectory(cl_headers)
@@ -235,7 +235,7 @@ add_llvm_library(${TARGET_NAME} SHARED
 
   DEPENDS CClangCompileOptions
   LINK_COMPONENTS
-    ${LLVM_COMPONENTS}
+    ${LLVM_LIBS}
   LINK_LIBS
 # The list of clang libraries is taken from clang makefile
 # (build/tools/clang/tools/driver/CMakeFiles/clang.dir/link.txt)
