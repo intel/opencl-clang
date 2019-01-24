@@ -107,7 +107,12 @@ const char* ResourceManager::realloc_buffer(const char *id,
   size_t alloc_size = requireNullTerminate ? size + 1 : size;
   buffer.resize(alloc_size);
   buffer.assign(buf, buf + size);
-  buffer.back() = '\0';
+  // The data in the buffer will be eventually passed to llvm::MemoryBufferMem
+  // ctor via argument of StringRef type. The Length of this StringRef will be
+  // = the 'size' argument of this function. There is an assert in 
+  // llvm::MemoryBuffer::init checking that element *past the end* of the memory
+  // range passed via the ctor is '\0'. So we add it here.
+  buffer.push_back('\0');
 
   return &buffer[0];
 }
