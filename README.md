@@ -28,12 +28,12 @@ following:
 This can be done using the following commands:
 ```
 cd <workspace>
-git clone https://github.com/llvm-mirror/llvm.git
-cd tools
-git clone https://github.com/llvm-mirror/clang.git
+git clone https://github.com/llvm-mirror/llvm.git -b release_80
+cd <workspace>/llvm/tools
+git clone https://github.com/llvm-mirror/clang.git -b release_80
 cd <workspace>/llvm/projects
 git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git llvm-spirv
-git clone https://github.com/intel/opencl-clang.git
+git clone https://github.com/intel/opencl-clang.git -b ocl-open-80
 ```
 
 Then we need to create a build directory and run the build:
@@ -59,7 +59,7 @@ documented in [Embedding LLVM in your project](https://llvm.org/docs/CMake.html#
 Commands to checkout sources and build:
 ```
 cd <workspace>
-git clone https://github.com/intel/opencl-clang.git
+git clone https://github.com/intel/opencl-clang.git -b ocl-open-80
 mkdir build && cd build
 cmake ../opencl-clang
 make all -j`nproc`
