@@ -32,7 +32,7 @@ git clone https://github.com/llvm-mirror/llvm.git -b release_80
 cd <workspace>/llvm/tools
 git clone https://github.com/llvm-mirror/clang.git -b release_80
 cd <workspace>/llvm/projects
-git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git llvm-spirv
+git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_80 llvm-spirv
 git clone https://github.com/intel/opencl-clang.git -b ocl-open-80
 ```
 
