@@ -33,8 +33,10 @@ addons:
       - libclang-8-dev
 
 install:
-  - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
-  - unzip /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip -d spirv-llvm-translator
+  - export TAG=v8.0.0-1
+  - export TARBALL=SPIRV-LLVM-Translator-${TAG}-linux-${BUILD_TYPE}.zip
+  - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/${TAG}/${TARBALL} -O /tmp/${TARBALL}
+  - unzip /tmp/${TARBALL} -d spirv-llvm-translator
 
 compiler:
   - gcc
