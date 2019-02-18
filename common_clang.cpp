@@ -63,17 +63,18 @@ Copyright (c) Intel Corporation (2009-2017).
 #define CL_OUT_OF_HOST_MEMORY -6
 
 #include "assert.h"
-#include <list>
-#include <iosfwd>
-#include <sstream>
-#include <iterator>
 #include <algorithm>
+#include <iosfwd>
+#include <iterator>
+#include <list>
+#include <streambuf>
 #ifdef _WIN32
 #include <ctype.h>
 #endif
 
 #if defined _DEBUG
 #include <cstdlib>
+#include <sstream>
 #include <fstream>
 #include <thread>
 #endif
@@ -163,6 +164,25 @@ static void PrintCompileOptions(const char *pszOptions, const char *pszOptionsEx
   logFile.close();
 #endif
 }
+
+class SmallVectorBuffer : public std::streambuf
+{
+  // All memory management is delegated to llvm::SmallVectorImpl
+  llvm::SmallVectorImpl<char> &OS;
+
+  // Since we don't touch any pointer in streambuf(pbase, pptr, epptr) this is
+  // the only method we need to override.
+  virtual std::streamsize xsputn(const char *s, std::streamsize  n) override {
+    OS.append(s, s + n);
+    return n;
+  }
+
+public:
+  SmallVectorBuffer() = delete;
+  SmallVectorBuffer(const SmallVectorBuffer&) = delete;
+  SmallVectorBuffer &operator=(const SmallVectorBuffer&) = delete;
+  SmallVectorBuffer(llvm::SmallVectorImpl<char> &O) : OS(O) {}
+};
 
 extern "C" CC_DLL_EXPORT int
 Compile(const char *pszProgramSource, const char **pInputHeaders,
@@ -300,7 +320,8 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
         return CL_COMPILE_PROGRAM_FAILURE;
       }
       pResult->getIRBufferRef().clear();
-      llvm::raw_svector_ostream OS(pResult->getIRBufferRef());
+      SmallVectorBuffer StreamBuf(pResult->getIRBufferRef());
+      std::ostream OS(&StreamBuf);
       std::string Err;
       success = llvm::writeSpirv(M.get(), OS, Err);
       err_ostream << Err.c_str();
