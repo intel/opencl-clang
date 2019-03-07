@@ -175,42 +175,6 @@ link_directories(
     ${LLVM_LIBRARY_DIRS}
 )
 
-if (LLVM_LINK_LLVM_DYLIB)
-  set (LLVM_LIBS LLVM)
-else (LLVM_LINK_LLVM_DYLIB)
-  set (LLVM_LIBS
-    Analysis
-    AsmParser
-    AsmPrinter
-    BitReader
-    BitWriter
-    CodeGen
-    Core
-    IRReader
-    InstCombine
-    Instrumentation
-    MC
-    MCDisassembler
-    MCParser
-    ObjCARCOpts
-    Object
-    Option
-    ProfileData
-    ScalarOpts
-    SelectionDAG
-    Support
-    Target
-    TransformUtils
-    Vectorize
-    X86AsmParser
-    X86AsmPrinter
-    X86CodeGen
-    X86Desc
-    X86Disassembler
-    X86Info
-    X86Utils)
-endif (LLVM_LINK_LLVM_DYLIB)
-
 set(ADDITIONAL_LIBS )
 
 if(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
@@ -271,6 +235,8 @@ add_llvm_library(${TARGET_NAME} SHARED
     ${ADDITIONAL_LIBS}
     ${CMAKE_DL_LIBS})
 
+llvm_config(${TARGET_NAME} all)
+
 # Configure resource file on Windows
 if (WIN32)
     # windows_resource_file should be defined by llvm_add_library and should
@@ -303,6 +269,9 @@ if (WIN32)
             "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
             "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
             "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
+elseif(UNIX)
+    set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
+                      LINK_FLAGS " -Wl,--no-undefined")
 endif(WIN32)
 
 install(FILES common_clang.h
