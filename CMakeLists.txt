@@ -1,5 +1,5 @@
 project( common_clang )
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 3.4.3)
 
 # Do not omit TARGET_OBJECTS expression from the SOURCES target
 # property
