@@ -305,6 +305,9 @@ if (WIN32)
             "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
 endif(WIN32)
 
+set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
+                LINK_FLAGS " -Wl,--no-undefined")
+
 install(FILES common_clang.h
         DESTINATION include/cclang
         COMPONENT ${TARGET_NAME})
