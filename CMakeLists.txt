@@ -175,53 +175,13 @@ link_directories(
     ${LLVM_LIBRARY_DIRS}
 )
 
-if (LLVM_LINK_LLVM_DYLIB)
-  set (LLVM_COMPONENTS LLVM)
-else (LLVM_LINK_LLVM_DYLIB)
-  set (LLVM_COMPONENTS
-    Analysis
-    AsmParser
-    AsmPrinter
-    BitReader
-    BitWriter
-    CodeGen
-    Core
-    IRReader
-    InstCombine
-    Instrumentation
-    MC
-    MCDisassembler
-    MCParser
-    ObjCARCOpts
-    Object
-    Option
-    ProfileData
-    ScalarOpts
-    SelectionDAG
-    Support
-    Target
-    TransformUtils
-    Vectorize
-    X86AsmParser
-    X86AsmPrinter
-    X86CodeGen
-    X86Desc
-    X86Disassembler
-    X86Info
-    X86Utils)
-endif (LLVM_LINK_LLVM_DYLIB)
+set(ADDITIONAL_LIBS ${CMAKE_DL_LIBS})
 
-set(ADDITIONAL_LIBS )
-
-if(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
+if(NOT LLVMSPIRVLib IN_LIST LLVM_AVAILABLE_LIBS)
   # SPIRV-LLVM-Translator is not included into LLVM as a component.
   # So, we need to list it here explicitly as an external library
-  set(ADDITIONAL_LIBS LLVMSPIRVLib)
-else()
-  # SPIRV-LLVM-Translator is built as part of LLVM build.
-  # We should add it to the list of LLVM components
-  list(APPEND LLVM_COMPONENTS SPIRVLib)
-endif(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
+  list(APPEND ADDITIONAL_LIBS LLVMSPIRVLib)
+endif()
 
 add_subdirectory(cl_headers)
 
@@ -234,7 +194,7 @@ add_llvm_library(${TARGET_NAME} SHARED
 
   DEPENDS CClangCompileOptions
   LINK_COMPONENTS
-    ${LLVM_COMPONENTS}
+    all
   LINK_LIBS
 # The list of clang libraries is taken from clang makefile
 # (build/tools/clang/tools/driver/CMakeFiles/clang.dir/link.txt)
@@ -268,7 +228,7 @@ add_llvm_library(${TARGET_NAME} SHARED
     clangLex
     clangBasic
     ${ADDITIONAL_LIBS}
-    ${CMAKE_DL_LIBS})
+  )
 
 # Configure resource file on Windows
 if (WIN32)
@@ -302,6 +262,9 @@ if (WIN32)
             "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
             "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
             "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
+elseif(UNIX)
+    set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
+                      LINK_FLAGS " -Wl,--no-undefined")
 endif(WIN32)
 
 install(FILES common_clang.h
