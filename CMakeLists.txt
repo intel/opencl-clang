@@ -215,13 +215,12 @@ set(ADDITIONAL_LIBS )
 
 if(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
   # SPIRV-LLVM-Translator is not included into LLVM as a component.
-  # So, we need to list it there explicitly as a library
-  set(ADDITIONAL_LIBS ${ADDITIONAL_LIBS} LLVMSPIRVLib)
-elseif(NOT LLVM_LINK_LLVM_DYLIB)
-  # SPIRV-LLVM-Translator is included into LLVM as a component, but
-  # LLVM components is not linked together into an umbrella library.
-  # So, we need to list SPIRV-LLVM-Translator there explicitly as a component
-  set(LLVM_COMPONENTS ${LLVM_LIBS} SPIRVLib)
+  # So, we need to list it here explicitly as an external library
+  set(ADDITIONAL_LIBS LLVMSPIRVLib)
+else()
+  # SPIRV-LLVM-Translator is built as part of LLVM build.
+  # We should add it to the list of LLVM components
+  list(APPEND LLVM_COMPONENTS SPIRVLib)
 endif(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
 
 add_subdirectory(cl_headers)
