@@ -235,14 +235,13 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
     compiler->setDiagnostics(&*Diags);
 
-    auto OverlayFS = new llvm::vfs::OverlayFileSystem(
-        llvm::vfs::getRealFileSystem());
-    auto MemFS = new llvm::vfs::InMemoryFileSystem();
+    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS(
+        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
+    llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> MemFS(
+        new llvm::vfs::InMemoryFileSystem);
     OverlayFS->pushOverlay(MemFS);
 
-    compiler->setVirtualFileSystem(OverlayFS);
-
-    compiler->createFileManager();
+    compiler->createFileManager(OverlayFS);
     compiler->createSourceManager(compiler->getFileManager());
 
     // Create compiler invocation from user args before trickering with it
