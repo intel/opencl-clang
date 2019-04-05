@@ -143,9 +143,6 @@ set (LLVM_VER_MINOR ${LLVM_VERSION_MINOR} )
 add_definitions( -D__STDC_LIMIT_MACROS )
 add_definitions( -D__STDC_CONSTANT_MACROS )
 add_definitions( -DCOMMON_CLANG_EXPORTS )
-if (NOT WIN32)
-    add_definitions( -DLIBCOMMON_CLANG_NAME="lib${COMMON_CLANG_LIBRARY_NAME}.so")
-endif()
 
 #
 # Include directories
@@ -264,7 +261,10 @@ if (WIN32)
             "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
 elseif(UNIX)
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-                      LINK_FLAGS " -Wl,--no-undefined")
+        COMPILE_DEFINITIONS LIBCOMMON_CLANG_NAME="$<TARGET_SONAME_FILE_NAME:${TARGET_NAME}>")
+
+    set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
+        LINK_FLAGS " -Wl,--no-undefined")
 endif(WIN32)
 
 install(FILES common_clang.h
