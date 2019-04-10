@@ -259,18 +259,24 @@ if (WIN32)
             "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
             "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
             "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
+
+    install (TARGETS ${TARGET_NAME}
+        ARCHIVE DESTINATION lib
+        COMPONENT ${TARGET_NAME}
+    )
 elseif(UNIX)
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
         COMPILE_DEFINITIONS LIBCOMMON_CLANG_NAME="$<TARGET_SONAME_FILE_NAME:${TARGET_NAME}>")
 
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
         LINK_FLAGS " -Wl,--no-undefined")
+
+    SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
 endif(WIN32)
 
 install(FILES common_clang.h
         DESTINATION include/cclang
         COMPONENT ${TARGET_NAME})
 
-SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
 
 add_custom_target(deploy DEPENDS install-${TARGET_NAME})
