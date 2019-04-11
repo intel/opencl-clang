@@ -41,7 +41,7 @@ Then we need to create a build directory and run the build:
 cd <workspace>
 mkdir build && cd build
 cmake -DLLVM_TARGETS_TO_BUILD="X86" ../llvm
-make common_clang -j`nproc`
+make opencl-clang -j`nproc`
 ```
 
 For sanity check of the built please run `make check-clang` and
