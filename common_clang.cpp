@@ -18,7 +18,6 @@ Copyright (c) Intel Corporation (2009-2017).
 
 #include "common_clang.h"
 #include "pch_mgr.h"
-#include "cl_headers/resource.h"
 #include "binary_result.h"
 #include "options.h"
 
@@ -111,26 +110,11 @@ void CommonClangInitialize() {
   }
 }
 
+extern const char PCM_OPENCL_C_H[];
+extern unsigned int PCM_OPENCL_C_H_size;
+
 static bool GetHeaders(std::vector<Resource> &Result) {
-  struct {const char *ID; const char *Name;} Headers[] = {
-    {OPENCL_C_H,             "opencl-c.h"},
-  };
-
-  Result.clear();
-  Result.reserve(sizeof(Headers) / sizeof(*Headers));
-
-  ResourceManager &RM = ResourceManager::instance();
-
-  for (auto Header:Headers) {
-    Resource R = RM.get_resource(Header.Name, Header.ID, "PCM", true);
-    if (!R) {
-      assert(0 && "Resource not found");
-      return false;
-    }
-
-    Result.push_back(R);
-  }
-
+  Result.push_back(Resource(PCM_OPENCL_C_H, PCM_OPENCL_C_H_size, "opencl-c.h"));
   return true;
 }
 
