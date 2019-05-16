@@ -1,0 +1,117 @@
+From cb882c89b54511c7be82c2f56474dc2a989064a9 Mon Sep 17 00:00:00 2001
+From: Alexey Sotkin <alexey.sotkin@intel.com>
+Date: Mon, 13 May 2019 10:41:51 +0300
+Subject: [PATCH] Translation of llvm.dbg.declare in case the local variable is
+ optimized out
+
+---
+ lib/SPIRV/LLVMToSPIRVDbgTran.cpp     |  8 +++-----
+ lib/SPIRV/SPIRVToLLVMDbgTran.cpp     | 15 +++++++++++++++
+ lib/SPIRV/libSPIRV/SPIRVEnum.h       | 13 +++++++++++++
+ test/DebugInfo/DebugDeclareUnused.cl | 16 ++++++++++++++++
+ 4 files changed, 47 insertions(+), 5 deletions(-)
+ create mode 100644 test/DebugInfo/DebugDeclareUnused.cl
+
+diff --git a/lib/SPIRV/LLVMToSPIRVDbgTran.cpp b/lib/SPIRV/LLVMToSPIRVDbgTran.cpp
+index 21981fa..fae147d 100644
+--- a/lib/SPIRV/LLVMToSPIRVDbgTran.cpp
++++ b/lib/SPIRV/LLVMToSPIRVDbgTran.cpp
+@@ -84,12 +84,9 @@ void LLVMToSPIRVDbgTran::transDebugMetadata() {
+ SPIRVValue *
+ LLVMToSPIRVDbgTran::createDebugDeclarePlaceholder(const DbgDeclareInst *DbgDecl,
+                                                   SPIRVBasicBlock *BB) {
+-  if (!DbgDecl->getAddress())
+-    return nullptr; // The variable is dead.
+-
+   DbgDeclareIntrinsics.push_back(DbgDecl);
+   using namespace SPIRVDebug::Operand::DebugDeclare;
+-  SPIRVWordVec Ops(OperandCount, getDebugInfoNone()->getId());
++  SPIRVWordVec Ops(OperandCount, getDebugInfoNoneId());
+   SPIRVId ExtSetId = BM->getExtInstSetId(SPIRVEIS_Debug);
+   return BM->addExtInst(getVoidTy(), ExtSetId, SPIRVDebug::Declare, Ops, BB);
+ }
+@@ -108,7 +105,8 @@ void LLVMToSPIRVDbgTran::finalizeDebugDeclare(const DbgDeclareInst *DbgDecl) {
+   using namespace SPIRVDebug::Operand::DebugDeclare;
+   SPIRVWordVec Ops(OperandCount);
+   Ops[DebugLocalVarIdx] = transDbgEntry(DbgDecl->getVariable())->getId();
+-  Ops[VariableIdx] = SPIRVWriter->transValue(Alloca, BB)->getId();
++  Ops[VariableIdx] = Alloca ? SPIRVWriter->transValue(Alloca, BB)->getId()
++                            : getDebugInfoNoneId();
+   Ops[ExpressionIdx] = transDbgEntry(DbgDecl->getExpression())->getId();
+   DD->setArguments(Ops);
+ }
+diff --git a/lib/SPIRV/SPIRVToLLVMDbgTran.cpp b/lib/SPIRV/SPIRVToLLVMDbgTran.cpp
+index 9b8bb74..1b20652 100644
+--- a/lib/SPIRV/SPIRVToLLVMDbgTran.cpp
++++ b/lib/SPIRV/SPIRVToLLVMDbgTran.cpp
+@@ -891,6 +891,21 @@ SPIRVToLLVMDbgTran::transDebugIntrinsic(const SPIRVExtInst *DebugInst,
+   case SPIRVDebug::Declare: {
+     using namespace SPIRVDebug::Operand::DebugDeclare;
+     auto LocalVar = GetLocalVar(Ops[DebugLocalVarIdx]);
++    if (getDbgInst<SPIRVDebug::DebugInfoNone>(Ops[VariableIdx])) {
++      // If we don't have the variable(e.g. alloca might be promoted by mem2reg)
++      // we should generate the following IR:
++      // call void @llvm.dbg.declare(metadata !4, metadata !14, metadata !5)
++      // !4 = !{}
++      // DIBuilder::insertDeclare doesn't allow to pass nullptr for the Storage
++      // parameter. To work around this limitation we create a dummy temp
++      // alloca, use it to create llvm.dbg.declare, and then remove the alloca.
++      auto *AI = new AllocaInst(Type::getInt8Ty(M->getContext()), 0, "tmp", BB);
++      auto *DbgDeclare = Builder.insertDeclare(
++          AI, LocalVar.first, GetExpression(Ops[ExpressionIdx]),
++          LocalVar.second, BB);
++      AI->eraseFromParent();
++      return DbgDeclare;
++    }
+     return Builder.insertDeclare(GetValue(Ops[VariableIdx]), LocalVar.first,
+                                  GetExpression(Ops[ExpressionIdx]),
+                                  LocalVar.second, BB);
+diff --git a/lib/SPIRV/libSPIRV/SPIRVEnum.h b/lib/SPIRV/libSPIRV/SPIRVEnum.h
+index 8a8fe2b..3a071e7 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVEnum.h
+@@ -113,6 +113,19 @@ typedef spv::GroupOperation SPIRVGroupOperationKind;
+ typedef spv::Dim SPIRVImageDimKind;
+ typedef std::vector<SPIRVCapabilityKind> SPIRVCapVec;
+ 
++enum SPIRVExtensionKind {
++  SPV_INTEL_device_side_avc_motion_estimation,
++  SPV_KHR_no_integer_wrap_decoration
++};
++
++typedef std::set<SPIRVExtensionKind> SPIRVExtSet;
++
++template <> inline void SPIRVMap<SPIRVExtensionKind, std::string>::init() {
++  add(SPV_INTEL_device_side_avc_motion_estimation,
++      "SPV_INTEL_device_side_avc_motion_estimation");
++  add(SPV_KHR_no_integer_wrap_decoration, "SPV_KHR_no_integer_wrap_decoration");
++}
++
+ template <> inline void SPIRVMap<SPIRVExtInstSetKind, std::string>::init() {
+   add(SPIRVEIS_OpenCL, "OpenCL.std");
+   add(SPIRVEIS_Debug, "SPIRV.debug");
+diff --git a/test/DebugInfo/DebugDeclareUnused.cl b/test/DebugInfo/DebugDeclareUnused.cl
+new file mode 100644
+index 0000000..f51c790
+--- /dev/null
++++ b/test/DebugInfo/DebugDeclareUnused.cl
+@@ -0,0 +1,16 @@
++// Check that we can translate llvm.dbg.declare for a local variable which was
++// deleted by mem2reg pass(enabled by default in llvm-spirv)
++
++// RUN: %clang_cc1 %s -triple spir -disable-llvm-passes -debug-info-kind=standalone -emit-llvm-bc -o - | llvm-spirv -o %t.spv
++// RUN: llvm-spirv %t.spv -to-text -o - | FileCheck %s --check-prefix=CHECK-SPIRV
++// RUN: llvm-spirv -r %t.spv -o - | llvm-dis -o - | FileCheck %s --check-prefix=CHECK-LLVM
++
++
++void foo() {
++  int a;
++}
++
++// CHECK-SPIRV: ExtInst {{[0-9]+}} [[None:[0-9]+]] {{[0-9]+}} DebugInfoNone
++// CHECK-SPIRV: ExtInst {{[0-9]+}} {{[0-9]+}} {{[0-9]+}} DebugDeclare {{[0-9]+}} [[None]] {{[0-9]+}}
++// CHECK-LLVM: call void @llvm.dbg.declare(metadata ![[VarAddr:[0-9]+]], metadata !{{[0-9]+}}, metadata !DIExpression())
++// CHECK-LLVM: ![[VarAddr]] = !{}
+-- 
+2.7.4
+
