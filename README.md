@@ -29,7 +29,7 @@ This can be done using the following commands:
 ```
 cd <workspace>
 git clone https://github.com/llvm-mirror/llvm.git -b release_70
-cd tools
+cd llvm/tools
 git clone https://github.com/llvm-mirror/clang.git -b release_70
 cd <workspace>/llvm/projects
 git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_70 llvm-spirv
@@ -41,7 +41,7 @@ Then we need to create a build directory and run the build:
 cd <workspace>
 mkdir build && cd build
 cmake -DLLVM_TARGETS_TO_BUILD="X86" ../llvm
-make common_clang -j`nproc`
+make opencl-clang -j`nproc`
 ```
 
 For sanity check of the built please run `make check-clang` and
