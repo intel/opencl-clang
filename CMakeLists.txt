@@ -79,16 +79,48 @@ endif()
 set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
 if(NOT USE_PREBUILT_LLVM)
-    set(TARGET_BRANCH "ocl-open-90")
-    set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
-    set(CLANG_BASE_REVISION master)
 
-    if (LLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR)
-        set(SPIRV_SOURCE_DIR ${LLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR})
-    else (LLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR)
+    if(NOT LLVM_EXTERNAL_CLANG_SOURCE_DIR)
+        set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
+    elseif(EXISTS "${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/CMakeLists.txt")
+        set(CLANG_SOURCE_DIR "${LLVM_EXTERNAL_CLANG_SOURCE_DIR}")
+    endif()
+    if(EXISTS ${CLANG_SOURCE_DIR})
+        message(STATUS "Using Clang source code direcotry: ${CLANG_SOURCE_DIR}")
+    else()
+        message(FATAL_ERROR
+            "Can't find Clang source code directory!\n"
+            "If you are using LLVM monorepo:\n"
+            "  1. Clean CMake cache: `rm CMakeCache.txt`\n"
+            "  2. Enable Clang project with `-DLLVM_ENABLE_PROJECTS=\"clang\"` option\n"
+            "If Clang is used as a separate repository (not monorepo), it should "
+            "be checked out at `llvm/tools/clang`."
+        )
+    endif()
+
+    if(NOT LLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR)
         set(SPIRV_SOURCE_DIR ${LLVM_SOURCE_DIR}/projects/llvm-spirv)
-    endif (LLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR)
+    elseif(EXISTS "${LLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR}/CMakeLists.txt")
+        set(SPIRV_SOURCE_DIR ${LLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR})
+    endif()
+    if(EXISTS ${SPIRV_SOURCE_DIR})
+        message(STATUS "Using SPIRV-LLVM-Translator source code directory: ${SPIRV_SOURCE_DIR}")
+    else()
+        message(FATAL_ERROR
+            "Can't find SPIRV-LLVM-Translator source code dir!\n"
+            "If you are using LLVM monorepo, SPIRV-LLVM-Translator should be checked out "
+            "at '<monorepo_root_dir>/llvm-spirv' and it should be enabled as an external LLVM "
+            "project using the following 2 options:\n"
+            "  -DLLVM_EXTERNAL_PROJECTS=\"opencl-clang;llvm-spirv\"\n"
+            "  -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR=\"<monorepo_root_dir>/llvm-spirv\"\n"
+            "If you are not using LLVM monorepo, SPIRV-LLVM-Translator should be checked "
+            "out at `llvm/projects/llvm-spirv`"
+        )
+    endif()
+
+    set(CLANG_BASE_REVISION master)
     set(SPIRV_BASE_REVISION master)
+    set(TARGET_BRANCH "ocl-open-90")
 
     apply_patches(${CLANG_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
@@ -154,11 +186,10 @@ add_definitions( -DCOMMON_CLANG_EXPORTS )
 
 if(NOT USE_PREBUILT_LLVM)
     set(CLANG_BINARY_DIR ${LLVM_BINARY_DIR}/tools/clang/)
-    set(CLANG_SOURCE_DIR ${LLVM_MAIN_SRC_DIR}/tools/clang/)
     include_directories(
-        ${CLANG_BINARY_DIR}/include # for tablegened includes
-        ${CLANG_SOURCE_DIR}/include # for basic headers
-        ${SPIRV_SOURCE_DIR}/include)
+        ${CLANG_BINARY_DIR}/include  # for tablegened includes
+        ${CLANG_SOURCE_DIR}/include  # for basic headers
+        ${SPIRV_SOURCE_DIR}/include) # for SPIRV headers
 endif(NOT USE_PREBUILT_LLVM)
 
 if(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
