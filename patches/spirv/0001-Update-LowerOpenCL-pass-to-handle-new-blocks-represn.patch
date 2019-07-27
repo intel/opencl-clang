@@ -1,64 +1,18 @@
-From 9ce0fe02fd6cda5fb29fbb0d5037a1798a810b8a Mon Sep 17 00:00:00 2001
-From: Alexey Sotkin <alexey.sotkin@intel.com>
-Date: Thu, 21 Feb 2019 17:14:36 +0300
-Subject: [PATCH 1/3] Update LowerOpenCL pass to handle new blocks
- represntation in LLVM IR
-
----
- lib/SPIRV/SPIRVLowerOCLBlocks.cpp         | 413 ++++++++----------------------
- test/global_block.ll                      |  71 ++---
- test/literal-struct.ll                    |  31 ++-
- test/transcoding/block_w_struct_return.ll |  47 ++--
- test/transcoding/enqueue_kernel.ll        | 237 ++++++++++-------
- 5 files changed, 317 insertions(+), 482 deletions(-)
+ lib/SPIRV/SPIRVLowerOCLBlocks.cpp         | 249 ++++--------------------------
+ test/global_block.ll                      |  71 ++++-----
+ test/literal-struct.ll                    |  31 ++--
+ test/transcoding/block_w_struct_return.ll |  47 +++---
+ test/transcoding/enqueue_kernel.ll        | 237 ++++++++++++++++------------
+ 5 files changed, 235 insertions(+), 400 deletions(-)
 
 diff --git a/lib/SPIRV/SPIRVLowerOCLBlocks.cpp b/lib/SPIRV/SPIRVLowerOCLBlocks.cpp
-index 50e1838..b42a4ec 100644
+index c80bf04..b42a4ec 100644
 --- a/lib/SPIRV/SPIRVLowerOCLBlocks.cpp
 +++ b/lib/SPIRV/SPIRVLowerOCLBlocks.cpp
-@@ -1,303 +1,110 @@
--//===- SPIRVLowerOCLBlocks.cpp - OCL Utilities ----------------------------===//
--//
--//                     The LLVM/SPIRV Translator
--//
--// This file is distributed under the University of Illinois Open Source
--// License. See LICENSE.TXT for details.
--//
--// Copyright (c) 2018 Intel Corporation. All rights reserved.
--//
--// Permission is hereby granted, free of charge, to any person obtaining a
--// copy of this software and associated documentation files (the "Software"),
--// to deal with the Software without restriction, including without limitation
--// the rights to use, copy, modify, merge, publish, distribute, sublicense,
--// and/or sell copies of the Software, and to permit persons to whom the
--// Software is furnished to do so, subject to the following conditions:
--//
--// Redistributions of source code must retain the above copyright notice,
--// this list of conditions and the following disclaimers.
--// Redistributions in binary form must reproduce the above copyright notice,
--// this list of conditions and the following disclaimers in the documentation
--// and/or other materials provided with the distribution.
--// Neither the names of Intel Corporation, nor the names of its
--// contributors may be used to endorse or promote products derived from this
--// Software without specific prior written permission.
--// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
--// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
--// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
--// CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
--// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
--// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH
--// THE SOFTWARE.
--//
--//===----------------------------------------------------------------------===//
--//
--// SPIR-V specification doesn't allow function pointers, so SPIR-V translator
--// is designed to fail if a value with function type (except calls) is occured.
--// Currently there is only two cases, when function pointers are generating in
--// LLVM IR in OpenCL - block calls and device side enqueue built-in calls.
--//
--// In both cases values with function type used as intermediate representation
--// for block literal structure.
--//
+@@ -40,207 +40,34 @@
+ // In both cases values with function type used as intermediate representation
+ // for block literal structure.
+ //
 -// This pass is designed to find such cases and simplify them to avoid any
 -// function pointer types occurrences in LLVM IR in 4 steps.
 -//
@@ -88,26 +42,38 @@ index 50e1838..b42a4ec 100644
 -//             bitcast ({ i32, i32 }* @__block_literal_global to void ()*
 -//
 -//    And remove them.
--//
--//===----------------------------------------------------------------------===//
--#define DEBUG_TYPE "spv-lower-ocl-blocks"
--
++// In LLVM IR produced by clang, blocks are represented with the following
++// structure:
++// %struct.__opencl_block_literal_generic = type { i32, i32, i8 addrspace(4)* }
++// Pointers to block invoke functions are stored in the third field. Clang
++// replaces inderect function calls in all cases except if block is passed as a
++// function argument. Note that it is somewhat unclear if the OpenCL C spec
++// should allow passing blocks as function argumernts. This pass is not supposed
++// to work correctly with such functions.
++// Clang though has to store function pointers to this structure. Purpose of
++// this pass is to replace store of function pointers(not allowed in SPIR-V)
++// with null pointers.
+ //
+ //===----------------------------------------------------------------------===//
+ #define DEBUG_TYPE "spv-lower-ocl-blocks"
+ 
 -#include "OCLUtil.h"
--#include "SPIRVInternal.h"
--
+ #include "SPIRVInternal.h"
+ 
 -#include "llvm/ADT/SetVector.h"
 -#include "llvm/Analysis/ValueTracking.h"
 -#include "llvm/IR/GlobalVariable.h"
 -#include "llvm/IR/InstIterator.h"
--#include "llvm/IR/Module.h"
--#include "llvm/Pass.h"
+ #include "llvm/IR/Module.h"
+ #include "llvm/Pass.h"
 -#include "llvm/PassSupport.h"
 -#include "llvm/Support/Casting.h"
--
--using namespace llvm;
--
--namespace {
--
++#include "llvm/Support/Regex.h"
+ 
+ using namespace llvm;
+ 
+ namespace {
+ 
 -static void
 -removeUnusedFunctionPtrInst(Instruction *I,
 -                            SmallSetVector<Instruction *, 16> &FuncPtrInsts) {
@@ -260,15 +226,16 @@ index 50e1838..b42a4ec 100644
 -    if (GVType && GVType->getElementType()->isFunctionTy())
 -      FuncPtrGlbs.push_back(&GV);
 -  }
--}
--
--class SPIRVLowerOCLBlocks : public ModulePass {
--
--public:
--  SPIRVLowerOCLBlocks() : ModulePass(ID) {}
--
--  bool runOnModule(Module &M) {
--    bool Changed = false;
++static bool isBlockInvoke(Function &F) {
++  static Regex BlockInvokeRegex("_block_invoke_?[0-9]*$");
++  return BlockInvokeRegex.match(F.getName());
+ }
+ 
+ class SPIRVLowerOCLBlocks : public ModulePass {
+@@ -250,44 +77,24 @@ public:
+ 
+   bool runOnModule(Module &M) {
+     bool Changed = false;
 -
 -    // 1. Find function pointer allocas and fix their users
 -    SmallVector<AllocaInst *, 16> FuncPtrAllocas;
@@ -292,113 +259,6 @@ index 50e1838..b42a4ec 100644
 -    while (!FuncPtrInsts.empty()) {
 -      Instruction *I = FuncPtrInsts.pop_back_val();
 -      removeUnusedFunctionPtrInst(I, FuncPtrInsts);
--    }
--
--    // 4. Find and remove unused global variables with function pointer type
--    SmallVector<GlobalVariable *, 16> FuncPtrGlbs;
--    findUnusedFunctionPtrGlbs(M, FuncPtrGlbs);
--
--    Changed |= !FuncPtrGlbs.empty();
--    for (auto *GV : FuncPtrGlbs)
--      GV->eraseFromParent();
--
--    return Changed;
--  }
--
--  static char ID;
--}; // class SPIRVLowerOCLBlocks
--
--char SPIRVLowerOCLBlocks::ID = 0;
--
--} // namespace
--
--INITIALIZE_PASS(
--    SPIRVLowerOCLBlocks, "spv-lower-ocl-blocks",
--    "Remove function pointers occured in case of using OpenCL blocks", false,
--    false)
--
--llvm::ModulePass *llvm::createSPIRVLowerOCLBlocks() {
--  return new SPIRVLowerOCLBlocks();
--}
-+//===- SPIRVLowerOCLBlocks.cpp - OCL Utilities ----------------------------===//
-+//
-+//                     The LLVM/SPIRV Translator
-+//
-+// This file is distributed under the University of Illinois Open Source
-+// License. See LICENSE.TXT for details.
-+//
-+// Copyright (c) 2018 Intel Corporation. All rights reserved.
-+//
-+// Permission is hereby granted, free of charge, to any person obtaining a
-+// copy of this software and associated documentation files (the "Software"),
-+// to deal with the Software without restriction, including without limitation
-+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-+// and/or sell copies of the Software, and to permit persons to whom the
-+// Software is furnished to do so, subject to the following conditions:
-+//
-+// Redistributions of source code must retain the above copyright notice,
-+// this list of conditions and the following disclaimers.
-+// Redistributions in binary form must reproduce the above copyright notice,
-+// this list of conditions and the following disclaimers in the documentation
-+// and/or other materials provided with the distribution.
-+// Neither the names of Intel Corporation, nor the names of its
-+// contributors may be used to endorse or promote products derived from this
-+// Software without specific prior written permission.
-+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-+// CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH
-+// THE SOFTWARE.
-+//
-+//===----------------------------------------------------------------------===//
-+//
-+// SPIR-V specification doesn't allow function pointers, so SPIR-V translator
-+// is designed to fail if a value with function type (except calls) is occured.
-+// Currently there is only two cases, when function pointers are generating in
-+// LLVM IR in OpenCL - block calls and device side enqueue built-in calls.
-+//
-+// In both cases values with function type used as intermediate representation
-+// for block literal structure.
-+//
-+// In LLVM IR produced by clang, blocks are represented with the following
-+// structure:
-+// %struct.__opencl_block_literal_generic = type { i32, i32, i8 addrspace(4)* }
-+// Pointers to block invoke functions are stored in the third field. Clang
-+// replaces inderect function calls in all cases except if block is passed as a
-+// function argument. Note that it is somewhat unclear if the OpenCL C spec
-+// should allow passing blocks as function argumernts. This pass is not supposed
-+// to work correctly with such functions.
-+// Clang though has to store function pointers to this structure. Purpose of
-+// this pass is to replace store of function pointers(not allowed in SPIR-V)
-+// with null pointers.
-+//
-+//===----------------------------------------------------------------------===//
-+#define DEBUG_TYPE "spv-lower-ocl-blocks"
-+
-+#include "SPIRVInternal.h"
-+
-+#include "llvm/IR/Module.h"
-+#include "llvm/Pass.h"
-+#include "llvm/Support/Regex.h"
-+
-+using namespace llvm;
-+
-+namespace {
-+
-+static bool isBlockInvoke(Function &F) {
-+  static Regex BlockInvokeRegex("_block_invoke_?[0-9]*$");
-+  return BlockInvokeRegex.match(F.getName());
-+}
-+
-+class SPIRVLowerOCLBlocks : public ModulePass {
-+
-+public:
-+  SPIRVLowerOCLBlocks() : ModulePass(ID) {}
-+
-+  bool runOnModule(Module &M) {
-+    bool Changed = false;
 +    for (Function &F : M) {
 +      if (!isBlockInvoke(F))
 +        continue;
@@ -411,25 +271,25 @@ index 50e1838..b42a4ec 100644
 +          Changed = true;
 +        }
 +      }
-+    }
-+    return Changed;
-+  }
-+
-+  static char ID;
+     }
+-
+-    // 4. Find and remove unused global variables with function pointer type
+-    SmallVector<GlobalVariable *, 16> FuncPtrGlbs;
+-    findUnusedFunctionPtrGlbs(M, FuncPtrGlbs);
+-
+-    Changed |= !FuncPtrGlbs.empty();
+-    for (auto *GV : FuncPtrGlbs)
+-      GV->eraseFromParent();
+-
+     return Changed;
+   }
+ 
+   static char ID;
+-}; // class SPIRVLowerOCLBlocks
 +};
-+
-+char SPIRVLowerOCLBlocks::ID = 0;
-+
-+} // namespace
-+
-+INITIALIZE_PASS(
-+    SPIRVLowerOCLBlocks, "spv-lower-ocl-blocks",
-+    "Remove function pointers occured in case of using OpenCL blocks", false,
-+    false)
-+
-+llvm::ModulePass *llvm::createSPIRVLowerOCLBlocks() {
-+  return new SPIRVLowerOCLBlocks();
-+}
+ 
+ char SPIRVLowerOCLBlocks::ID = 0;
+ 
 diff --git a/test/global_block.ll b/test/global_block.ll
 index a9267d8..efb4cf3 100644
 --- a/test/global_block.ll
@@ -1111,6 +971,3 @@ index 0d29c71..435871d 100644
 +!4 = !{!"none", !"none", !"none", !"none"}
 +!5 = !{!"int*", !"int*", !"int", !"char"}
 +!6 = !{!"", !"", !"", !""}
--- 
-1.8.3.1
-
