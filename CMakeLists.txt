@@ -262,6 +262,12 @@ if (WIN32)
             "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
             "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
             "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
+
+    # Enable compiler generation of Control Flow Guard security checks.
+    target_compile_options(${TARGET_NAME} PUBLIC "/guard:cf")
+    set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
+        LINK_FLAGS "/DYNAMICBASE /GUARD:CF")
+
 elseif(UNIX)
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
                       LINK_FLAGS " -Wl,--no-undefined")
