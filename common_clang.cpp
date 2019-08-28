@@ -115,6 +115,7 @@ void CommonClangInitialize() {
 static bool GetHeaders(std::vector<Resource> &Result) {
   struct {const char *ID; const char *Name;} Headers[] = {
     {OPENCL_C_H,             "opencl-c.h"},
+    {OPENCL_C_BASE_H,        "opencl-c-base.h"},
   };
 
   Result.clear();

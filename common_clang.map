@@ -7,6 +7,7 @@ global:
    Link;
    GetKernelArgInfo;
    PCM_OPENCL_C_H*;
+   PCM_OPENCL_C_BASE_H*;
  };
 local: *;
 };

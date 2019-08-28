@@ -18,11 +18,13 @@ else(USE_PREBUILT_LLVM)
     set(OPENCL_HEADERS_DIR "${CLANG_SOURCE_DIR}/lib/Headers")
 endif(USE_PREBUILT_LLVM)
 copy_file(${OPENCL_HEADERS_DIR}/opencl-c.h opencl-c.h)
+copy_file(${OPENCL_HEADERS_DIR}/opencl-c-base.h opencl-c-base.h)
 
 add_custom_target (
     opencl.headers.target
     DEPENDS
     opencl-c.h
+    opencl-c-base.h
 )
 
 
@@ -39,8 +41,10 @@ if(WIN32)
     list(APPEND CL_HEADERS_SRC OpenCL.rc)
 else()
     pack_to_obj(opencl-c.h           opencl-c.h.cpp           "PCM_OPENCL_C_H")
+    pack_to_obj(opencl-c-base.h      opencl-c-base.h.cpp      "PCM_OPENCL_C_BASE_H")
     list(APPEND CL_HEADERS_SRC
-         opencl-c.h.cpp
+      opencl-c.h.cpp
+      opencl-c-base.h.cpp
     )
 endif()
 

@@ -20,5 +20,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #define __RESOURCE__
 
 #define OPENCL_C_H             "OPENCL_C_H"
+#define OPENCL_C_BASE_H        "OPENCL_C_BASE_H"
 
 #endif /* __RESOURCE__ */
