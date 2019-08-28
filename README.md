@@ -69,12 +69,12 @@ make all -j`nproc`
 
 ##### Preferred LLVM version
 
-By default, Common clang's cmake script is searching for LLVM 9.0.0. You can
+By default, Common clang's cmake script is searching for LLVM 10.0.0. You can
 override target version of LLVM by using `PREFERRED_LLVM_VERSION` cmake option:
 
 Example:
 ```
-cmake -DPREFERRED_LLVM_VERSION="9.0.0" ../opencl-clang
+cmake -DPREFERRED_LLVM_VERSION="10.1.2" ../opencl-clang
 ```
 
 ##### Custom LLVM installation

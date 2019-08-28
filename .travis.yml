@@ -28,9 +28,10 @@ addons:
         key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
       - ubuntu-toolchain-r-test
     packages:
-      - llvm-9-tools
-      - llvm-9-dev
-      - libclang-9-dev
+      - llvm-10-tools
+      - llvm-10-dev
+      - libclang-10-dev
+      - lldb-10 # llvm-lit has dependency on lit-cpuid utility from this package
 
 install:
   - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
