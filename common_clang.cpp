@@ -247,8 +247,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
     // Create compiler invocation from user args before trickering with it
     clang::CompilerInvocation::CreateFromArgs(compiler->getInvocation(),
-                                              optionsParser.beginArgs(),
-                                              optionsParser.endArgs(), *Diags);
+                                              optionsParser.args(), *Diags);
 
     // Configure our handling of diagnostics.
     ProcessWarningOptions(*Diags, compiler->getDiagnosticOpts());
