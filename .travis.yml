@@ -3,8 +3,8 @@ language: cpp
 os:
   - linux
 
-# Use Ubuntu 16.04 LTS (Xenial) as the Linux testing environment.
-dist: xenial
+# Use Ubuntu 18.04 LTS (Bionic) as the Linux testing environment.
+dist: bionic
 sudo: false
 
 git:
@@ -24,13 +24,14 @@ env:
 addons:
   apt:
     sources:
-      - sourceline: 'deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial main'
+      - sourceline: 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main'
         key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
       - ubuntu-toolchain-r-test
     packages:
-      - llvm-9-tools
-      - llvm-9-dev
-      - libclang-9-dev
+      - llvm-10-tools
+      - llvm-10-dev
+      - libclang-10-dev
+      - lldb-10
 
 install:
   - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
