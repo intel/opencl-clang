@@ -22,6 +22,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #define COMMON_CLANG_OPTIONS_H
 
 #include "llvm/Option/Arg.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
@@ -165,6 +166,10 @@ public:
 
   const char *const *endArgs() const {
     return beginArgs() + m_effectiveArgsRaw.size();
+  }
+
+  llvm::ArrayRef<const char *> args() {
+    return m_effectiveArgsRaw;
   }
 
   std::string getEffectiveOptionsAsString() const;
