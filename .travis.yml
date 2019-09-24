@@ -15,6 +15,7 @@ branches:
     - master
     - ocl-open-70
     - ocl-open-80
+    - ocl-open-90
 
 env:
   matrix:
@@ -24,7 +25,7 @@ env:
 addons:
   apt:
     sources:
-      - sourceline: 'deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial main'
+      - sourceline: 'deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-9 main'
         key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
       - ubuntu-toolchain-r-test
     packages:
@@ -33,14 +34,20 @@ addons:
       - libclang-9-dev
 
 install:
-  - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
-  - unzip /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip -d spirv-llvm-translator
+  - export TAG=v9.0.0-1
+  - export TARBALL=SPIRV-LLVM-Translator-${TAG}-linux-${BUILD_TYPE}.zip
+  - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/${TAG}/${TARBALL} -O /tmp/${TARBALL}
+  - unzip /tmp/${TARBALL} -d spirv-llvm-translator
 
 compiler:
   - gcc
   - clang
 
 script:
+   # For some reason cmake expects lit-cpuid to be installed.
+   # But llvm-9 packages in the current state do not provide it.
+   # As a temporary workaround we create a dummy file just to pacify cmake.
+  - sudo touch /usr/lib/llvm-9/bin/lit-cpuid
   - mkdir build && cd build
   - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=./spirv-llvm-translator -DCMAKE_INSTALL_PREFIX=./install ..
   - make install
