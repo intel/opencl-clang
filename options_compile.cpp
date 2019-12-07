@@ -183,14 +183,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 
   effectiveArgs.push_back("-triple");
   if (szTriple.empty()) {
-#if defined(_WIN64) || defined(__x86_64__) || defined(_M_AMD64) ||             \
-    defined(_M_X64)
+#if defined(_M_X64) || defined(__LP64__)
     szTriple = "spir64-unknown-unknown";
-#elif defined(_WIN32) || defined(i386) || defined(__i386__) ||                 \
-    defined(__x86__)
-    szTriple = "spir-unknown-unknown";
 #else
-#error "Can't define target triple: unknown architecture."
+    szTriple = "spir-unknown-unknown";
 #endif
   }
 
