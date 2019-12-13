@@ -82,8 +82,10 @@ if(NOT USE_PREBUILT_LLVM)
 
     if(NOT LLVM_EXTERNAL_CLANG_SOURCE_DIR)
         set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
+        set(CLANG_BASE_REVISION origin/release_90)
     elseif(EXISTS "${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/CMakeLists.txt")
         set(CLANG_SOURCE_DIR "${LLVM_EXTERNAL_CLANG_SOURCE_DIR}")
+        set(CLANG_BASE_REVISION origin/release/9.x)
     endif()
     if(EXISTS ${CLANG_SOURCE_DIR})
         message(STATUS "Using Clang source code direcotry: ${CLANG_SOURCE_DIR}")
@@ -118,7 +120,6 @@ if(NOT USE_PREBUILT_LLVM)
         )
     endif()
 
-    set(CLANG_BASE_REVISION master)
     set(SPIRV_BASE_REVISION master)
     set(TARGET_BRANCH "ocl-open-90")
 
