@@ -1,4 +1,4 @@
-From 177cce531fd3665bb964a03db51890e0241e3e72 Mon Sep 17 00:00:00 2001
+From e80206b25bfc4120351bc7c42ac856d6b7257f01 Mon Sep 17 00:00:00 2001
 From: Alexey Sotkin <alexey.sotkin@intel.com>
 Date: Thu, 21 Feb 2019 17:14:36 +0300
 Subject: [PATCH] Update LowerOpenCL pass to handle new blocks represntation in
@@ -9,8 +9,8 @@ Subject: [PATCH] Update LowerOpenCL pass to handle new blocks represntation in
  test/global_block.ll                      |  71 ++++-----
  test/literal-struct.ll                    |  31 ++--
  test/transcoding/block_w_struct_return.ll |  47 +++---
- test/transcoding/enqueue_kernel.ll        | 237 ++++++++++++++++------------
- 5 files changed, 235 insertions(+), 400 deletions(-)
+ test/transcoding/enqueue_kernel.ll        | 248 ++++++++++++++++-------------
+ 5 files changed, 235 insertions(+), 411 deletions(-)
 
 diff --git a/lib/SPIRV/SPIRVLowerOCLBlocks.cpp b/lib/SPIRV/SPIRVLowerOCLBlocks.cpp
 index c80bf04..b42a4ec 100644
@@ -602,10 +602,10 @@ index a68820f..ebd2c5f 100644
 +!5 = !{!"int*"}
 +!6 = !{!""}
 diff --git a/test/transcoding/enqueue_kernel.ll b/test/transcoding/enqueue_kernel.ll
-index 1f0b360..761043e 100644
+index 23b230a..c164d37 100644
 --- a/test/transcoding/enqueue_kernel.ll
 +++ b/test/transcoding/enqueue_kernel.ll
-@@ -51,11 +51,12 @@
+@@ -57,11 +57,12 @@
  ; ModuleID = 'enqueue_kernel.cl'
  source_filename = "enqueue_kernel.cl"
  target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
@@ -619,7 +619,7 @@ index 1f0b360..761043e 100644
  
  ; CHECK-SPIRV: EntryPoint {{[0-9]+}} [[BlockKer1:[0-9]+]] "__device_side_enqueue_block_invoke_kernel"
  ; CHECK-SPIRV: EntryPoint {{[0-9]+}} [[BlockKer2:[0-9]+]] "__device_side_enqueue_block_invoke_2_kernel"
-@@ -66,89 +67,123 @@ target triple = "spir-unknown-unknown"
+@@ -73,89 +74,123 @@ target triple = "spir-unknown-unknown"
  
  ; CHECK-SPIRV: TypeInt [[Int32Ty:[0-9]+]] 32
  ; CHECK-SPIRV: TypeInt [[Int8Ty:[0-9]+]] 8
@@ -649,10 +649,10 @@ index 1f0b360..761043e 100644
 -; CHECK-LLVM: [[BlockTy2:%[0-9a-z\.]+]] = type <{ i32, i32, i32 addrspace(1)*, i32, i8 }>
 -; CHECK-LLVM: [[BlockTy3:%[0-9a-z\.]+]] = type <{ i32, i32, i32 addrspace(1)*, i32, i32 addrspace(1)* }>
 -; CHECK-LLVM: [[BlockTy4:%[0-9a-z\.]+]] = type <{ i32, i32 }>
-+; CHECK-LLVM: [[BlockTy1:%[0-9a-z\.]+]] = type { i32, i32, i8 addrspace(4)* }
-+; CHECK-LLVM: [[BlockTy2:%[0-9a-z\.]+]] = type <{ i32, i32, i8 addrspace(4)*, i32 addrspace(1)*, i32, i8 }>
-+; CHECK-LLVM: [[BlockTy3:%[0-9a-z\.]+]] = type <{ i32, i32, i8 addrspace(4)*, i32 addrspace(1)*, i32, i32 addrspace(1)* }>
-+; CHECK-LLVM: [[BlockTy4:%[0-9a-z\.]+]] = type <{ i32, i32, i8 addrspace(4)* }>
++; CHECK-LLVM: [[BlockTy1:%[0-9]+]] = type { i32, i32, i8 addrspace(4)* }
++; CHECK-LLVM: [[BlockTy2:%[0-9]+]] = type <{ i32, i32, i8 addrspace(4)*, i32 addrspace(1)*, i32, i8 }>
++; CHECK-LLVM: [[BlockTy3:%[0-9]+]] = type <{ i32, i32, i8 addrspace(4)*, i32 addrspace(1)*, i32, i32 addrspace(1)* }>
++; CHECK-LLVM: [[BlockTy4:%[0-9]+]] = type <{ i32, i32, i8 addrspace(4)* }>
  
 -; CHECK-LLVM: @__block_literal_global = internal addrspace(1) constant [[BlockTy1]] { i32 8, i32 4 }, align 4
 -; CHECK-LLVM: @__block_literal_global.1 = internal addrspace(1) constant [[BlockTy1]] { i32 8, i32 4 }, align 4
@@ -740,7 +740,7 @@ index 1f0b360..761043e 100644
 +; CHECK-LLVM: [[Block2:%[0-9]+]] = bitcast [[BlockTy2]]* %block to %struct.__opencl_block_literal_generic*
 +; CHECK-LLVM: [[Block2Ptr:%[0-9]+]] = addrspacecast %struct.__opencl_block_literal_generic* [[Block2]] to i8 addrspace(4)*
  ; CHECK-LLVM: [[BlockInv2:%[0-9]+]] = addrspacecast void (i8 addrspace(4)*)* @__device_side_enqueue_block_invoke_kernel to i8 addrspace(4)*
--; CHECK-LLVM: call i32 @__enqueue_kernel_basic_events(%opencl.queue_t* {{.*}}, i32 {{.*}}, %struct.ndrange_t* {{.*}}, i32 0, %opencl.clk_event_t* addrspace(4)* null, %opencl.clk_event_t* addrspace(4)* null, i8 addrspace(4)* [[BlockInv2]], i8 addrspace(4)* [[Block2]])
+-; CHECK-LLVM: call i32 @__enqueue_kernel_basic(%opencl.queue_t* {{.*}}, i32 {{.*}}, %struct.ndrange_t* {{.*}}, i8 addrspace(4)* [[BlockInv2]], i8 addrspace(4)* [[Block2]])
 -
 -  %5 = call i32 @__enqueue_kernel_basic(%opencl.queue_t* %1, i32 %2, %struct.ndrange_t* byval %ndrange, i8 addrspace(4)* addrspacecast (i8* bitcast (void (i8 addrspace(4)*)* @__device_side_enqueue_block_invoke_kernel to i8*) to i8 addrspace(4)*), i8 addrspace(4)* %4)
 -  %6 = addrspacecast %opencl.clk_event_t** %event_wait_list to %opencl.clk_event_t* addrspace(4)*
@@ -787,7 +787,7 @@ index 1f0b360..761043e 100644
  
  ; CHECK-SPIRV: PtrCastToGeneric [[EventPtrTy]] [[Event1:[0-9]+]]
  ; CHECK-SPIRV: PtrCastToGeneric [[EventPtrTy]] [[Event2:[0-9]+]]
-@@ -158,16 +193,24 @@ entry:
+@@ -165,16 +200,24 @@ entry:
  ;                            [[ConstInt2]] [[Event1]] [[Event2]]
  ;                            [[BlockKer2]] [[BlockLit2]] [[ConstInt20]] [[ConstInt8]]
  
@@ -821,7 +821,7 @@ index 1f0b360..761043e 100644
  
  ; CHECK-SPIRV: PtrAccessChain [[Int32LocPtrTy]] [[LocalBuf31:[0-9]+]]
  ; CHECK-SPIRV: Bitcast {{[0-9]+}} [[BlockLit3Tmp:[0-9]+]] [[BlockGlb1:[0-9]+]]
-@@ -182,14 +225,18 @@ entry:
+@@ -189,14 +232,18 @@ entry:
  ; CHECK-LLVM: [[BlockInv0:%[0-9]+]] = addrspacecast void (i8 addrspace(4)*, i8 addrspace(3)*)* @__device_side_enqueue_block_invoke_3_kernel to i8 addrspace(4)*
  ; CHECK-LLVM: call i32 @__enqueue_kernel_events_varargs(%opencl.queue_t* {{.*}}, i32 {{.*}}, %struct.ndrange_t* {{.*}}, i32 2, %opencl.clk_event_t* addrspace(4)* {{.*}}, %opencl.clk_event_t* addrspace(4)* {{.*}}, i8 addrspace(4)* [[BlockInv0]], i8 addrspace(4)* [[Block0]], i32 1, i32* {{.*}})
  
@@ -848,11 +848,22 @@ index 1f0b360..761043e 100644
  
  ; CHECK-SPIRV: PtrAccessChain [[Int32LocPtrTy]] [[LocalBuf41:[0-9]+]]
  ; CHECK-SPIRV: PtrAccessChain [[Int32LocPtrTy]] [[LocalBuf42:[0-9]+]]
-@@ -206,24 +253,27 @@ entry:
+@@ -213,35 +260,27 @@ entry:
  ; CHECK-LLVM: [[BlockInv1:%[0-9]+]] = addrspacecast void (i8 addrspace(4)*, i8 addrspace(3)*, i8 addrspace(3)*, i8 addrspace(3)*)* @__device_side_enqueue_block_invoke_4_kernel to i8 addrspace(4)*
- ; CHECK-LLVM: call i32 @__enqueue_kernel_events_varargs(%opencl.queue_t* {{.*}}, i32 {{.*}}, %struct.ndrange_t* {{.*}}, i32 0, %opencl.clk_event_t* addrspace(4)* null, %opencl.clk_event_t* addrspace(4)* null, i8 addrspace(4)* [[BlockInv1]], i8 addrspace(4)* [[Block1]], i32 3, i32* {{.*}})
+ ; CHECK-LLVM: call i32 @__enqueue_kernel_varargs(%opencl.queue_t* {{.*}}, i32 {{.*}}, %struct.ndrange_t* {{.*}}, i8 addrspace(4)* [[BlockInv1]], i8 addrspace(4)* [[Block1]], i32 3, i32* {{.*}})
  
 -  %20 = call i32 @__enqueue_kernel_varargs(%opencl.queue_t* %1, i32 %2, %struct.ndrange_t* %ndrange, i8 addrspace(4)* addrspacecast (i8* bitcast (void (i8 addrspace(4)*, i8 addrspace(3)*, i8 addrspace(3)*, i8 addrspace(3)*)* @__device_side_enqueue_block_invoke_4_kernel to i8*) to i8 addrspace(4)*), i8 addrspace(4)* addrspacecast (i8 addrspace(1)* bitcast ({ i32, i32 } addrspace(1)* @__block_literal_global.1 to i8 addrspace(1)*) to i8 addrspace(4)*), i32 3, i32* %17)
+-
+-; CHECK-SPIRV: PtrCastToGeneric [[Int8PtrGenTy]] [[BlockLit2:[0-9]+]]
+-; CHECK-SPIRV: EnqueueKernel [[Int32Ty]] {{[0-9]+}} {{[0-9]+}} {{[0-9]+}} {{[0-9]+}}
+-;                            [[ConstInt0]] [[EventNull]] [[Event1]]
+-;                            [[BlockKer5]] [[BlockLit5]] [[ConstInt20]] [[ConstInt8]]
+-
+-; CHECK-LLVM: [[BlockInv5:%[0-9]+]] = addrspacecast void (i8 addrspace(4)*)* @__device_side_enqueue_block_invoke_5_kernel to i8 addrspace(4)*
+-; CHECK-LLVM: call i32 @__enqueue_kernel_basic_events(%opencl.queue_t* {{.*}}, i32 {{.*}}, %struct.ndrange_t* {{.*}}, i32 0, %opencl.clk_event_t* addrspace(4)* null, %opencl.clk_event_t* addrspace(4)* {{.*}}, i8 addrspace(4)* [[BlockInv5]], i8 addrspace(4)* [[Block3]])
+-
+-  %21 = call i32 @__enqueue_kernel_basic_events(%opencl.queue_t* %1, i32 %2, %struct.ndrange_t* %ndrange, i32 0, %opencl.clk_event_t* addrspace(4)* null, %opencl.clk_event_t* addrspace(4)* %7, i8 addrspace(4)* addrspacecast (i8* bitcast (void (i8 addrspace(4)*)* @__device_side_enqueue_block_invoke_5_kernel to i8*) to i8 addrspace(4)*), i8 addrspace(4)* %9)
+-
 +  %40 = call i32 @__enqueue_kernel_varargs(%opencl.queue_t* %33, i32 %34, %struct.ndrange_t* %tmp12, i8 addrspace(4)* addrspacecast (i8* bitcast (void (i8 addrspace(4)*, i8 addrspace(3)*, i8 addrspace(3)*, i8 addrspace(3)*)* @__device_side_enqueue_block_invoke_4_kernel to i8*) to i8 addrspace(4)*), i8 addrspace(4)* addrspacecast (i8 addrspace(1)* bitcast ({ i32, i32, i8 addrspace(4)* } addrspace(1)* @__block_literal_global.1 to i8 addrspace(1)*) to i8 addrspace(4)*), i32 3, i32* %37)
    ret void
  }
@@ -883,7 +894,7 @@ index 1f0b360..761043e 100644
    %2 = load i32, i32 addrspace(4)* %block.capture.addr2, align 4
    %arrayidx = getelementptr inbounds i32, i32 addrspace(1)* %1, i32 %2
    store i32 %conv, i32 addrspace(1)* %arrayidx, align 4
-@@ -243,19 +293,19 @@ declare i32 @__enqueue_kernel_basic(%opencl.queue_t*, i32, %struct.ndrange_t*, i
+@@ -261,19 +300,19 @@ declare i32 @__enqueue_kernel_basic(%opencl.queue_t*, i32, %struct.ndrange_t*, i
  define internal spir_func void @__device_side_enqueue_block_invoke_2(i8 addrspace(4)* %.block_descriptor) #2 {
  entry:
    %.block_descriptor.addr = alloca i8 addrspace(4)*, align 4
@@ -910,7 +921,7 @@ index 1f0b360..761043e 100644
    %4 = load i32, i32 addrspace(4)* %block.capture.addr3, align 4
    %arrayidx4 = getelementptr inbounds i32, i32 addrspace(1)* %3, i32 %4
    store i32 %2, i32 addrspace(1)* %arrayidx4, align 4
-@@ -276,11 +326,11 @@ define internal spir_func void @__device_side_enqueue_block_invoke_3(i8 addrspac
+@@ -294,11 +333,11 @@ define internal spir_func void @__device_side_enqueue_block_invoke_3(i8 addrspac
  entry:
    %.block_descriptor.addr = alloca i8 addrspace(4)*, align 4
    %p.addr = alloca i8 addrspace(3)*, align 4
@@ -925,7 +936,7 @@ index 1f0b360..761043e 100644
    ret void
  }
  
-@@ -300,13 +350,13 @@ entry:
+@@ -318,13 +357,13 @@ entry:
    %p1.addr = alloca i8 addrspace(3)*, align 4
    %p2.addr = alloca i8 addrspace(3)*, align 4
    %p3.addr = alloca i8 addrspace(3)*, align 4
@@ -942,9 +953,9 @@ index 1f0b360..761043e 100644
    ret void
  }
  
-@@ -329,27 +379,20 @@ declare i32 @__enqueue_kernel_varargs(%opencl.queue_t*, i32, %struct.ndrange_t*,
- ; CHECK-LLVM-DAG: define spir_kernel void @__device_side_enqueue_block_invoke_3_kernel(i8 addrspace(4)*, i8 addrspace(3)*)
+@@ -379,27 +418,20 @@ entry:
  ; CHECK-LLVM-DAG: define spir_kernel void @__device_side_enqueue_block_invoke_4_kernel(i8 addrspace(4)*, i8 addrspace(3)*, i8 addrspace(3)*, i8 addrspace(3)*)
+ ; CHECK-LLVM-DAG: define spir_kernel void @__device_side_enqueue_block_invoke_5_kernel(i8 addrspace(4)*)
  
 -attributes #0 = { convergent noinline nounwind optnone "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "uniform-work-group-size"="false" "unsafe-fp-math"="false" "use-soft-float"="false" }
 +attributes #0 = { convergent noinline nounwind optnone "correctly-rounded-divide-sqrt-fp-math"="false" "denorms-are-zero"="false" "disable-tail-calls"="false" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "uniform-work-group-size"="false" "unsafe-fp-math"="false" "use-soft-float"="false" }
