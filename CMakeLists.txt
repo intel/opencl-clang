@@ -84,7 +84,7 @@ if(NOT USE_PREBUILT_LLVM)
     set(CLANG_BASE_REVISION 2e4c9c5fc864c2c432e4c262a67c42d824b265c6)
 
     set(SPIRV_SOURCE_DIR ${LLVM_SOURCE_DIR}/projects/llvm-spirv)
-    set(SPIRV_BASE_REVISION 1d48cd84d04a2f60b43ea3f66eb7c86f4e5973a9)
+    set(SPIRV_BASE_REVISION bb96964181723d32dfe61ef7780dcbdf0f931ccf)
 
     apply_patches(${CLANG_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
