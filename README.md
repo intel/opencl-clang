@@ -12,8 +12,7 @@ Source code in this repo can be built in different manners:
 
 ### In-tree build
 
-Before the build all dependencies must be downloaded and layed out as the
-following:
+Before the build all dependencies must be downloaded and laid out as follows:
 
 ```
 <workspace>
@@ -22,7 +21,7 @@ following:
     |   `-- clang
     `-- projects
         |-- llvm-spirv
-        `-- common-clang
+        `-- opencl-clang
 ```
 
 This can be done using the following commands:
@@ -44,12 +43,12 @@ cmake -DLLVM_TARGETS_TO_BUILD="X86" ../llvm
 make opencl-clang -j`nproc`
 ```
 
-For sanity check of the built please run `make check-clang` and
+For sanity check of the build please run `make check-clang` and
 `make check-llvm-spirv`
 
 ### Out-of-tree build
 
-To build Common clang as standalone project, you need to obtain pre-built LLVM
+To build Common clang as a standalone project, you need to obtain pre-built LLVM
 and SPIR-V Translator libraries. **Note:** currently this kind of build is
 supported on Linux only.
 
@@ -70,7 +69,7 @@ make all -j`nproc`
 ##### Preferred LLVM version
 
 By default, Common clang's cmake script is searching for LLVM 10.0.0. You can
-override target version of LLVM by using `PREFERRED_LLVM_VERSION` cmake option:
+override target version of LLVM by using the `PREFERRED_LLVM_VERSION` cmake option:
 
 Example:
 ```
@@ -80,13 +79,13 @@ cmake -DPREFERRED_LLVM_VERSION="10.0.0" ../opencl-clang
 ##### Custom LLVM installation
 
 If LLVM is installed somewhere in custom (non-system directories) location, you
-could point to it using `LLVM_DIR` cmake option. **Note**: You need to specify a'
-path to a directory containing `LLVMConfig.cmake` file.
+could point to it using the `LLVM_DIR` cmake option. **Note**: You need to specify
+the path to a directory containing the `LLVMConfig.cmake` file.
 
 This file is available in two different locations.
 * `<INSTALL_PREFIX>/lib/cmake/llvm/LLVMConfig.cmake` where `<INSTALL_PREFIX>`
-  is the install prefix of an installed version of LLVM. On Linux typically this
-  is `/usr/lib/cmake/llvm/LLVMConfig.cmake`.
+  is the install prefix of an installed version of LLVM. On Linux this is typically
+  `/usr/lib/cmake/llvm/LLVMConfig.cmake`.
 * `<LLVM_BUILD_ROOT>/lib/cmake/llvm/LLVMConfig.cmake` where `<LLVM_BUILD_ROOT>`
   is the root of the LLVM build tree.
   **Note: this is only available when building LLVM with CMake.**
