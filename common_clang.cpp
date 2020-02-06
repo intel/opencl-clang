@@ -245,6 +245,9 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
     compiler->createFileManager(OverlayFS);
     compiler->createSourceManager(compiler->getFileManager());
 
+    // Calling ResetAllOptionOccurrences as WA for issue from here:
+    // https://reviews.llvm.org/D66324?id=219733#1680231
+    llvm::cl::ResetAllOptionOccurrences();
     // Create compiler invocation from user args before trickering with it
     clang::CompilerInvocation::CreateFromArgs(compiler->getInvocation(),
                                               optionsParser.args(), *Diags);
