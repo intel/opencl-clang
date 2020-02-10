@@ -16,30 +16,30 @@ Before the build all dependencies must be downloaded and laid out as follows:
 
 ```
 <workspace>
-`-- llvm
-    |-- tools
-    |   `-- clang
-    `-- projects
-        |-- llvm-spirv
-        `-- opencl-clang
+|-- llvm
+|-- clang
+|-- SPIRV-LLVM-Translator
+`-- opencl-clang
 ```
 
 This can be done using the following commands:
-```
+```bash
 cd <workspace>
-git clone https://github.com/llvm-mirror/llvm.git
-cd tools
-git clone https://github.com/llvm-mirror/clang.git
-cd <workspace>/llvm/projects
-git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git llvm-spirv
+git clone https://github.com/llvm/llvm-project.git .
+git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git
 git clone https://github.com/intel/opencl-clang.git
 ```
 
 Then we need to create a build directory and run the build:
-```
-cd <workspace>
+```bash
+export OCL_CLANG_WS=<workspace>
+cd $OCL_CLANG_WS
 mkdir build && cd build
-cmake -DLLVM_TARGETS_TO_BUILD="X86" ../llvm
+cmake -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_ENABLE_PROJECTS="clang" \
+      -DLLVM_EXTERNAL_PROJECTS="llvm-spirv;opencl-clang" \
+      -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR="$OCL_CLANG_WS/SPIRV-LLVM-Translator" \
+      -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR="$OCL_CLANG_WS/opencl-clang" \
+      $OCL_CLANG_WS/llvm
 make opencl-clang -j`nproc`
 ```
 
