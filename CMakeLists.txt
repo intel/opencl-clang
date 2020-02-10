@@ -120,7 +120,7 @@ if(NOT USE_PREBUILT_LLVM)
         )
     endif()
 
-    set(SPIRV_BASE_REVISION master)
+    set(SPIRV_BASE_REVISION llvm_release_90)
     set(TARGET_BRANCH "ocl-open-90")
 
     apply_patches(${CLANG_SOURCE_DIR}
