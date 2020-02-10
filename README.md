@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/intel/opencl-clang.svg?branch=master)](https://travis-ci.com/intel/opencl-clang)
+[![Build Status](https://travis-ci.com/intel/opencl-clang.svg?branch=ocl-open-90)](https://travis-ci.com/intel/opencl-clang)
 
 Common clang is a thin wrapper library around clang. Common clang has
 OpenCL-oriented API and is capable to compile OpenCL C kernels to SPIR-V
@@ -28,12 +28,12 @@ following:
 This can be done using the following commands:
 ```
 cd <workspace>
-git clone https://github.com/llvm-mirror/llvm.git
+git clone https://github.com/llvm-mirror/llvm.git -b release_90
 cd tools
-git clone https://github.com/llvm-mirror/clang.git
+git clone https://github.com/llvm-mirror/clang.git -b release_90
 cd <workspace>/llvm/projects
-git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git llvm-spirv
-git clone https://github.com/intel/opencl-clang.git
+git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git llvm-spirv -b llvm_release_90
+git clone https://github.com/intel/opencl-clang.git -b ocl-open-90
 ```
 
 Then we need to create a build directory and run the build:
