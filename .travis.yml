@@ -5,7 +5,6 @@ os:
 
 # Use Ubuntu 18.04 LTS (Bionic) as the Linux testing environment.
 dist: bionic
-sudo: false
 
 git:
   depth: 1
@@ -13,25 +12,22 @@ git:
 branches:
   only:
     - master
-    - ocl-open-70
-    - ocl-open-80
 
 env:
+  global:
+    - LLVM_VERSION=11
   matrix:
     - BUILD_TYPE=Release
     - BUILD_TYPE=Debug
 
-addons:
-  apt:
-    sources:
-      - sourceline: 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main'
-        key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
-      - ubuntu-toolchain-r-test
-    packages:
-      - llvm-10-tools
-      - llvm-10-dev
-      - libclang-10-dev
-      - lldb-10
+before_install:
+  - curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
+  - echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main" | sudo tee -a ${TRAVIS_ROOT}/etc/apt/sources.list
+  - sudo apt-get update
+  - sudo apt-get -yq --no-install-suggests --no-install-recommends install
+      llvm-${LLVM_VERSION}-dev
+      llvm-${LLVM_VERSION}-tools
+      libclang-${LLVM_VERSION}-dev
 
 install:
   - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
