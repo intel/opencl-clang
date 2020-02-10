@@ -45,7 +45,7 @@ unsigned OpenCLArgList::MakeIndex(llvm::StringRef str) const {
   unsigned index = m_argStrings.size();
 
   // Tuck away so we have a reliable const char *.
-  m_synthesizedStrings.push_back(str);
+  m_synthesizedStrings.push_back(std::string(str));
   m_argStrings.push_back(m_synthesizedStrings.back().c_str());
 
   return index;
