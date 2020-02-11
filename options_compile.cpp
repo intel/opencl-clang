@@ -75,13 +75,15 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     case OPT_COMPILE_I:
     case OPT_COMPILE_Werror:
     case OPT_COMPILE_cl_single_precision_constant:
-    case OPT_COMPILE_cl_denorms_are_zero:
     case OPT_COMPILE_cl_fp32_correctly_rounded_divide_sqrt:
     case OPT_COMPILE_cl_opt_disable:
     case OPT_COMPILE_cl_mad_enable:
     case OPT_COMPILE_cl_no_signed_zeros:
     case OPT_COMPILE_cl_unsafe_math_optimizations:
       effectiveArgs.push_back((*it)->getAsString(args));
+      break;
+    case OPT_COMPILE_cl_denorms_are_zero:
+      effectiveArgs.push_back("-fdenormal-fp-math=preserve-sign");
       break;
     case OPT_COMPILE_s: {
       std::string newSourceName = (*it)->getValue();
