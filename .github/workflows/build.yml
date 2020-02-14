@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - master
+      - ocl-open-*
+  pull_request:
+    branches:
+      - master
+      - ocl-open-*
+  schedule:
+    - cron: "0 1 * * *"
+
+env:
+  LLVM_VERSION: 11
+
+jobs:
+  out_of_tree_build:
+    strategy:
+      matrix:
+        build_type: [Release, Debug]
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Install dependencies (llvm & clang)
+        run: |
+          curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
+          echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main" | sudo tee -a /etc/apt/sources.list
+          sudo apt-get update
+          sudo apt-get -yq --no-install-suggests --no-install-recommends install \
+            llvm-${{ env.LLVM_VERSION }}-dev \
+            llvm-${{ env.LLVM_VERSION }}-tools \
+            libclang-${{ env.LLVM_VERSION }}-dev
+      - name: Install dependencies (SPIRV-LLVM-Translator)
+        run: |
+          wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-${{ matrix.build_type }}.zip \
+            -O ${{ runner.temp }}/translator.zip
+          unzip ${{ runner.temp }}/translator.zip -d ${{ runner.temp }}/spirv-llvm-translator
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          # Use pull request HEAD commit instead of merge commit
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Configure
+        run: |
+          cd ${{ github.workspace }}
+          mkdir build && cd build
+          cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
+            -DSPIRV_TRANSLATOR_DIR=${{ runner.temp }}/spirv-llvm-translator \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install ${{ github.workspace }}
+      - name: Build
+        run: |
+          cd ${{ github.workspace}}/build
+          make install

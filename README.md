@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/intel/opencl-clang.svg?branch=master)](https://travis-ci.com/intel/opencl-clang)
+![Nightly build status](https://github.com/intel/opencl-clang/workflows/Build/badge.svg?event=schedule)
 
 opencl-clang is a thin wrapper library around clang. The library has
 OpenCL-oriented API and is capable to compile OpenCL C kernels to SPIR-V
