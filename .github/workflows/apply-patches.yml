@@ -1,0 +1,44 @@
+name: Apply patches
+
+on:
+  push:
+    branches:
+      - ocl-open-*
+  pull_request:
+    branches:
+      - ocl-open-*
+  schedule:
+    - cron: "0 1 * * *"
+
+jobs:
+  apply_patches:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout llvm-project sources
+        uses: actions/checkout@v2
+        with:
+          repository: llvm/llvm-project
+          path: llvm-project
+          ref: master # replace with particular release branch
+      - name: Checkout SPIRV-LLVM-Translator sources
+        uses: actions/checkout@v2
+        with:
+          repository: KhronosGroup/SPIRV-LLVM-Translator
+          clean: false
+          path: llvm-project/SPIRV-LLVM-Translator
+          ref: master # replace with particular release branch
+      - name: Checkout opencl-clang sources
+        uses: actions/checkout@v2
+        with:
+          clean: false
+          path: llvm-project/opencl-clang
+      - name: Configure
+        run: |
+          cd ${{ github.workspace }}
+          mkdir build && cd build
+          cmake -DLLVM_TARGETS_TO_BUILD="X86" \
+            -DLLVM_ENABLE_PROJECTS="clang" \
+            -DLLVM_EXTERNAL_PROJECTS="llvm-spirv;opencl-clang" \
+            -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR="${{ github.workspace }}/SPIRV-LLVM-Translator" \
+            -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR="${{ github.workspace }}/opencl-clang" \
+            ${{ github.workspace }}/llvm-project/llvm
