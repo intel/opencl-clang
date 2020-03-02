@@ -34,7 +34,7 @@ addons:
       - libclang-9-dev
 
 install:
-  - export TAG=v9.0.0-1
+  - export TAG=v9.0.1-1
   - export TARBALL=SPIRV-LLVM-Translator-${TAG}-linux-${BUILD_TYPE}.zip
   - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/${TAG}/${TARBALL} -O /tmp/${TARBALL}
   - unzip /tmp/${TARBALL} -d spirv-llvm-translator
