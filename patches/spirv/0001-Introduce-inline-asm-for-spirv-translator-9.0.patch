@@ -1,0 +1,580 @@
+From 527ab3afeb389fe5b54207e9ccd125a8b9a172e5 Mon Sep 17 00:00:00 2001
+From: "Sidorenko, Anton" <anton.sidorenko@intel.com>
+Date: Fri, 13 Mar 2020 17:48:12 +0300
+Subject: [PATCH] Introduce inline asm for spirv-translator 9.0
+
+---
+ include/LLVMSPIRVExtensions.inc       |   1 +
+ lib/SPIRV/SPIRVReader.cpp             |  27 +++++
+ lib/SPIRV/SPIRVReader.h               |   4 +
+ lib/SPIRV/SPIRVWriter.cpp             |  30 +++++
+ lib/SPIRV/SPIRVWriter.h               |   2 +
+ lib/SPIRV/libSPIRV/SPIRVAsm.h         | 158 ++++++++++++++++++++++++++
+ lib/SPIRV/libSPIRV/SPIRVEntry.cpp     |   1 +
+ lib/SPIRV/libSPIRV/SPIRVEnum.h        |   1 +
+ lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h |   3 +
+ lib/SPIRV/libSPIRV/SPIRVModule.cpp    |  34 ++++++
+ lib/SPIRV/libSPIRV/SPIRVModule.h      |  10 ++
+ lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h |   2 +
+ lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h  |   3 +
+ lib/SPIRV/libSPIRV/spirv.hpp          |   5 +
+ 14 files changed, 281 insertions(+)
+ create mode 100755 lib/SPIRV/libSPIRV/SPIRVAsm.h
+
+diff --git a/include/LLVMSPIRVExtensions.inc b/include/LLVMSPIRVExtensions.inc
+index 869fef8..7ac6d3c 100644
+--- a/include/LLVMSPIRVExtensions.inc
++++ b/include/LLVMSPIRVExtensions.inc
+@@ -13,3 +13,4 @@ EXT(SPV_INTEL_unstructured_loop_controls)
+ EXT(SPV_INTEL_fpga_reg)
+ EXT(SPV_INTEL_blocking_pipes)
+ EXT(SPV_INTEL_function_pointers)
++EXT(SPV_INTEL_inline_assembly)
+diff --git a/lib/SPIRV/SPIRVReader.cpp b/lib/SPIRV/SPIRVReader.cpp
+index 37946a2..41ddb17 100644
+--- a/lib/SPIRV/SPIRVReader.cpp
++++ b/lib/SPIRV/SPIRVReader.cpp
+@@ -49,6 +49,7 @@
+ #include "SPIRVType.h"
+ #include "SPIRVUtil.h"
+ #include "SPIRVValue.h"
++#include "SPIRVAsm.h"
+ 
+ #include "llvm/ADT/DenseMap.h"
+ #include "llvm/BinaryFormat/Dwarf.h"
+@@ -61,6 +62,7 @@
+ #include "llvm/IR/Metadata.h"
+ #include "llvm/IR/Module.h"
+ #include "llvm/IR/Type.h"
++#include "llvm/IR/InlineAsm.h"
+ #include "llvm/Support/Casting.h"
+ #include "llvm/Support/CommandLine.h"
+ #include "llvm/Support/Debug.h"
+@@ -1374,6 +1376,10 @@ Value *SPIRVToLLVM::transValueWithoutDecoration(SPIRVValue *BV, Function *F,
+   case OpFunction:
+     return mapValue(BV, transFunction(static_cast<SPIRVFunction *>(BV)));
+ 
++  case OpAsmINTEL: {
++    return mapValue(BV, transAsmINTEL(static_cast<SPIRVAsmINTEL *>(BV), F, BB));
++  }
++
+   case OpLabel:
+     return mapValue(BV, BasicBlock::Create(*Context, BV->getName(), F));
+ 
+@@ -1737,6 +1743,11 @@ Value *SPIRVToLLVM::transValueWithoutDecoration(SPIRVValue *BV, Function *F,
+     return mapValue(BV, Call);
+   }
+ 
++  case OpAsmCallINTEL: {
++    return mapValue(
++        BV, transAsmCallINTEL(static_cast<SPIRVAsmCallINTEL *>(BV), F, BB));
++  }
++
+   case OpFunctionPointerCallINTEL: {
+     SPIRVFunctionPointerCallINTEL *BC =
+         static_cast<SPIRVFunctionPointerCallINTEL *>(BV);
+@@ -1992,6 +2003,22 @@ Function *SPIRVToLLVM::transFunction(SPIRVFunction *BF) {
+   return F;
+ }
+ 
++Value *SPIRVToLLVM::transAsmINTEL(SPIRVAsmINTEL *BA, Function *F, BasicBlock *BB) {
++  bool HasSideEffect = BA->hasDecorate(DecorationSideEffectsINTEL);
++  return InlineAsm::get(
++      dyn_cast<FunctionType>(transType(BA->getFunctionType())),
++      BA->getInstructions(), BA->getConstraints(), HasSideEffect,
++      /* IsAlignStack */ false, InlineAsm::AsmDialect::AD_ATT);
++}
++
++CallInst *SPIRVToLLVM::transAsmCallINTEL(SPIRVAsmCallINTEL *BI, Function *F,
++                                         BasicBlock *BB) {
++  auto *IA = dyn_cast<InlineAsm>(transValue(BI->getAsm(), F, BB));
++  auto Args = transValue(BM->getValues(BI->getArguments()), F, BB);
++  return CallInst::Create(cast<FunctionType>(IA->getFunctionType()), IA, Args,
++                          BI->getName(), BB);
++}
++
+ /// LLVM convert builtin functions is translated to two instructions:
+ /// y = i32 islessgreater(float x, float z) ->
+ ///     y = i32 ZExt(bool LessOrGreater(float x, float z))
+diff --git a/lib/SPIRV/SPIRVReader.h b/lib/SPIRV/SPIRVReader.h
+index f77efa5..ed8d3b1 100644
+--- a/lib/SPIRV/SPIRVReader.h
++++ b/lib/SPIRV/SPIRVReader.h
+@@ -103,6 +103,10 @@ public:
+   Instruction *transSGSizeQueryBI(SPIRVInstruction *BI, BasicBlock *BB);
+   bool transFPContractMetadata();
+   bool transKernelMetadata();
++  /*InlineAsm*/ Value *transAsmINTEL(SPIRVAsmINTEL *BA, Function *F,
++                                     BasicBlock *BB);
++  CallInst *transAsmCallINTEL(SPIRVAsmCallINTEL *BI, Function *F,
++                              BasicBlock *BB);
+   bool transNonTemporalMetadata(Instruction *I);
+   bool transSourceLanguage();
+   bool transSourceExtension();
+diff --git a/lib/SPIRV/SPIRVWriter.cpp b/lib/SPIRV/SPIRVWriter.cpp
+index d604cf4..7505680 100644
+--- a/lib/SPIRV/SPIRVWriter.cpp
++++ b/lib/SPIRV/SPIRVWriter.cpp
+@@ -52,6 +52,7 @@
+ #include "SPIRVType.h"
+ #include "SPIRVUtil.h"
+ #include "SPIRVValue.h"
++#include "SPIRVAsm.h"
+ 
+ #include "llvm/ADT/DenseMap.h"
+ #include "llvm/ADT/StringSwitch.h"
+@@ -71,6 +72,7 @@
+ #include "llvm/Support/CommandLine.h"
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Transforms/Utils.h" // loop-simplify pass
++#include "llvm/IR/InlineAsm.h"
+ 
+ #include <cstdlib>
+ #include <functional>
+@@ -1025,6 +1027,9 @@ SPIRVValue *LLVMToSPIRV::transValueWithoutDecoration(Value *V,
+     return BV ? mapValue(V, BV) : nullptr;
+   }
+ 
++  if (InlineAsm *IA = dyn_cast<InlineAsm>(V))
++    return mapValue(V, transAsmINTEL(IA, BB));
++
+   if (CallInst *CI = dyn_cast<CallInst>(V))
+     return mapValue(V, transCallInst(CI, BB));
+ 
+@@ -1488,6 +1493,9 @@ SPIRVValue *LLVMToSPIRV::transIntrinsicInst(IntrinsicInst *II,
+ }
+ 
+ SPIRVValue *LLVMToSPIRV::transCallInst(CallInst *CI, SPIRVBasicBlock *BB) {
++  if (isa<InlineAsm>(CI->getCalledOperand()))
++    return transAsmCallINTEL(CI, BB);
++
+   if (CI->isIndirectCall())
+     return transIndirectCallInst(CI, BB);
+   return transDirectCallInst(CI, BB);
+@@ -1538,6 +1546,28 @@ SPIRVValue *LLVMToSPIRV::transIndirectCallInst(CallInst *CI,
+       BB);
+ }
+ 
++SPIRVValue *LLVMToSPIRV::transAsmINTEL(InlineAsm *IA, SPIRVBasicBlock *BB) {
++  assert(IA);
++  StringRef TripleStr(M->getTargetTriple());
++  auto AsmTarget =
++      static_cast<SPIRVAsmTargetINTEL *>(BM->addAsmTargetINTEL(TripleStr));
++  auto SIA = BM->addAsmINTEL(
++      static_cast<SPIRVTypeFunction *>(transType(IA->getFunctionType())),
++      AsmTarget, IA->getAsmString(), IA->getConstraintString());
++  if (IA->hasSideEffects())
++    SIA->addDecorate(DecorationSideEffectsINTEL);
++  return SIA;
++}
++
++SPIRVValue *LLVMToSPIRV::transAsmCallINTEL(CallInst *CI, SPIRVBasicBlock *BB) {
++  assert(CI);
++  auto IA = dyn_cast<InlineAsm>(CI->getCalledOperand());
++  return BM->addAsmCallINTELInst(
++      static_cast<SPIRVAsmINTEL *>(transValue(IA, BB, false)),
++      transArguments(CI, BB, SPIRVEntry::createUnique(OpAsmCallINTEL).get()),
++      BB);
++}
++
+ bool LLVMToSPIRV::transAddressingMode() {
+   Triple TargetTriple(M->getTargetTriple());
+ 
+diff --git a/lib/SPIRV/SPIRVWriter.h b/lib/SPIRV/SPIRVWriter.h
+index e70f9c8..637239c 100644
+--- a/lib/SPIRV/SPIRVWriter.h
++++ b/lib/SPIRV/SPIRVWriter.h
+@@ -97,6 +97,8 @@ public:
+   SPIRVValue *transCallInst(CallInst *Call, SPIRVBasicBlock *BB);
+   SPIRVValue *transDirectCallInst(CallInst *Call, SPIRVBasicBlock *BB);
+   SPIRVValue *transIndirectCallInst(CallInst *Call, SPIRVBasicBlock *BB);
++  SPIRVValue *transAsmINTEL(InlineAsm *Asm, SPIRVBasicBlock *BB);
++  SPIRVValue *transAsmCallINTEL(CallInst *Call, SPIRVBasicBlock *BB);
+   bool transDecoration(Value *V, SPIRVValue *BV);
+   SPIRVWord transFunctionControlMask(Function *);
+   SPIRVFunction *transFunctionDecl(Function *F);
+diff --git a/lib/SPIRV/libSPIRV/SPIRVAsm.h b/lib/SPIRV/libSPIRV/SPIRVAsm.h
+new file mode 100755
+index 0000000..410e38b
+--- /dev/null
++++ b/lib/SPIRV/libSPIRV/SPIRVAsm.h
+@@ -0,0 +1,158 @@
++//===- SPIRVAsm.h - This file declares SPIR-V Inline Assembler Entries --*- C++
++//-*-===//
++//
++//                     The LLVM/SPIRV Translator
++//
++// This file is distributed under the University of Illinois Open Source
++// License. See LICENSE.TXT for details.
++//
++//===----------------------------------------------------------------------===//
++/// \file
++///
++/// This file defines the inline assembler entries defined in SPIRV spec with op
++/// codes.
++///
++///
++//===----------------------------------------------------------------------===//
++
++#ifndef SPIRV_LIBSPIRV_SPIRVASM_H
++#define SPIRV_LIBSPIRV_SPIRVASM_H
++
++#include "SPIRVEntry.h"
++#include "SPIRVInstruction.h"
++#include "SPIRVStream.h"
++
++#include <cassert>
++#include <iostream>
++#include <map>
++#include <tuple>
++#include <vector>
++
++namespace SPIRV {
++
++class SPIRVAsmTargetINTEL : public SPIRVEntry {
++public:
++  static const SPIRVWord FixedWC = 2;
++  static const Op OC = OpAsmTargetINTEL;
++  // Complete constructor
++  SPIRVAsmTargetINTEL(SPIRVModule *M, SPIRVId TheId,
++                      const std::string &TheTarget)
++      : SPIRVEntry(M, FixedWC + getSizeInWords(TheTarget), OC, TheId),
++        Target(TheTarget) {
++    validate();
++  }
++  // Incomplete constructor
++  SPIRVAsmTargetINTEL() : SPIRVEntry(OC) {}
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(CapabilityAsmINTEL);
++  }
++  SPIRVExtSet getRequiredExtensions() const override {
++    return getSet(ExtensionID::SPV_INTEL_inline_assembly);
++  }
++  const std::string &getTarget() const { return Target; }
++
++protected:
++  void validate() const override {
++    SPIRVEntry::validate();
++    assert(WordCount > FixedWC);
++    assert(OpCode == OC);
++  }
++  _SPIRV_DEF_ENCDEC2(Id, Target)
++  std::string Target;
++};
++
++class SPIRVAsmINTEL : public SPIRVValue {
++public:
++  static const SPIRVWord FixedWC = 5;
++  static const Op OC = OpAsmINTEL;
++  // Complete constructor
++  SPIRVAsmINTEL(SPIRVModule *M, SPIRVTypeFunction *TheFunctionType,
++                SPIRVId TheId, SPIRVAsmTargetINTEL *TheTarget,
++                const std::string &TheInstructions,
++                const std::string &TheConstraints)
++      : SPIRVValue(M,
++                   FixedWC + getSizeInWords(TheInstructions) +
++                       getSizeInWords(TheConstraints),
++                   OC, TheFunctionType->getReturnType(), TheId),
++        Target(TheTarget), FunctionType(TheFunctionType),
++        Instructions(TheInstructions), Constraints(TheConstraints) {
++    validate();
++  }
++  // Incomplete constructor
++  SPIRVAsmINTEL() : SPIRVValue(OC) {}
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(CapabilityAsmINTEL);
++  }
++  SPIRVExtSet getRequiredExtensions() const override {
++    return getSet(ExtensionID::SPV_INTEL_inline_assembly);
++  }
++  const std::string &getInstructions() const { return Instructions; }
++  const std::string &getConstraints() const { return Constraints; }
++  SPIRVTypeFunction *getFunctionType() const { return FunctionType; }
++
++protected:
++  _SPIRV_DEF_ENCDEC6(Type, Id, FunctionType, Target, Instructions, Constraints)
++  void encodeParents(spv_ostream &O) const {
++    O << SPIRVNL();
++    O << *Target;
++  }
++  void encodeAll(spv_ostream &O) const override {
++    encodeParents(O);
++    SPIRVEntry::encodeAll(O);
++  }
++  void validate() const override {
++    SPIRVValue::validate();
++    assert(WordCount > FixedWC);
++    assert(OpCode == OC);
++  }
++  SPIRVAsmTargetINTEL *Target;
++  SPIRVTypeFunction *FunctionType;
++  std::string Instructions;
++  std::string Constraints;
++};
++
++class SPIRVAsmCallINTEL : public SPIRVInstruction {
++public:
++  static const SPIRVWord FixedWC = 4;
++  static const Op OC = OpAsmCallINTEL;
++  // Complete constructor
++  SPIRVAsmCallINTEL(SPIRVId TheId, SPIRVAsmINTEL *TheAsm,
++                    const std::vector<SPIRVWord> &TheArgs,
++                    SPIRVBasicBlock *TheBB)
++      : SPIRVInstruction(FixedWC + TheArgs.size(), OC, TheAsm->getType(), TheId,
++                         TheBB),
++        Asm(TheAsm), Args(TheArgs) {
++    validate();
++  }
++  // Incomplete constructor
++  SPIRVAsmCallINTEL() : SPIRVInstruction(OC) {}
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(CapabilityAsmINTEL);
++  }
++  SPIRVExtSet getRequiredExtensions() const override {
++    return getSet(ExtensionID::SPV_INTEL_inline_assembly);
++  }
++  bool isOperandLiteral(unsigned int Index) const override { return false; }
++  void setWordCount(SPIRVWord TheWordCount) override {
++    SPIRVEntry::setWordCount(TheWordCount);
++    Args.resize(TheWordCount - FixedWC);
++  }
++  const std::vector<SPIRVWord> &getArguments() const { return Args; }
++
++  SPIRVAsmINTEL *getAsm() const { return Asm; }
++
++protected:
++  _SPIRV_DEF_ENCDEC4(Type, Id, Asm, Args)
++  void validate() const override {
++    SPIRVInstruction::validate();
++    assert(WordCount >= FixedWC);
++    assert(OpCode == OC);
++    assert(getBasicBlock() && "Invalid BB");
++    assert(getBasicBlock()->getModule() == Asm->getModule());
++  }
++  SPIRVAsmINTEL *Asm;
++  std::vector<SPIRVWord> Args;
++};
++
++} // namespace SPIRV
++#endif // SPIRV_LIBSPIRV_SPIRVASM_H
+diff --git a/lib/SPIRV/libSPIRV/SPIRVEntry.cpp b/lib/SPIRV/libSPIRV/SPIRVEntry.cpp
+index 31fd2d4..2010818 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVEntry.cpp
++++ b/lib/SPIRV/libSPIRV/SPIRVEntry.cpp
+@@ -45,6 +45,7 @@
+ #include "SPIRVInstruction.h"
+ #include "SPIRVStream.h"
+ #include "SPIRVType.h"
++#include "SPIRVAsm.h"
+ 
+ #include <algorithm>
+ #include <map>
+diff --git a/lib/SPIRV/libSPIRV/SPIRVEnum.h b/lib/SPIRV/libSPIRV/SPIRVEnum.h
+index 220b717..709fa5a 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVEnum.h
+@@ -364,6 +364,7 @@ template <> inline void SPIRVMap<Decoration, SPIRVCapVec>::init() {
+   ADD_VEC_INIT(DecorationMergeINTEL, {CapabilityFPGAMemoryAttributesINTEL});
+   ADD_VEC_INIT(DecorationReferencedIndirectlyINTEL,
+                {CapabilityIndirectReferencesINTEL});
++  ADD_VEC_INIT(DecorationSideEffectsINTEL, {CapabilityAsmINTEL});
+ }
+ 
+ template <> inline void SPIRVMap<BuiltIn, SPIRVCapVec>::init() {
+diff --git a/lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h b/lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h
+index f3987e1..efc8320 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVIsValidEnum.h
+@@ -886,6 +886,9 @@ inline bool isValid(spv::Op V) {
+   case OpSubgroupImageBlockWriteINTEL:
+   case OpSubgroupImageMediaBlockReadINTEL:
+   case OpSubgroupImageMediaBlockWriteINTEL:
++  case OpAsmTargetINTEL:
++  case OpAsmINTEL:
++  case OpAsmCallINTEL:
+   case OpVmeImageINTEL:
+   case OpTypeVmeImageINTEL:
+   case OpTypeAvcImePayloadINTEL:
+diff --git a/lib/SPIRV/libSPIRV/SPIRVModule.cpp b/lib/SPIRV/libSPIRV/SPIRVModule.cpp
+index aa5b48c..f23a815 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVModule.cpp
++++ b/lib/SPIRV/libSPIRV/SPIRVModule.cpp
+@@ -46,6 +46,7 @@
+ #include "SPIRVStream.h"
+ #include "SPIRVType.h"
+ #include "SPIRVValue.h"
++#include "SPIRVAsm.h"
+ 
+ #include <set>
+ #include <unordered_map>
+@@ -110,6 +111,7 @@ public:
+   }
+   std::set<std::string> &getExtension() override { return SPIRVExt; }
+   SPIRVFunction *getFunction(unsigned I) const override { return FuncVec[I]; }
++  SPIRVAsmINTEL *getAsm(unsigned I) const override { return AsmVec[I]; }
+   SPIRVVariable *getVariable(unsigned I) const override {
+     return VariableVec[I];
+   }
+@@ -296,6 +298,11 @@ public:
+                                         SPIRVBasicBlock *) override;
+   SPIRVInstruction *addFunctionPointerINTELInst(SPIRVType *, SPIRVFunction *,
+                                                 SPIRVBasicBlock *) override;
++  SPIRVEntry *addAsmTargetINTEL(const std::string &) override;
++  SPIRVValue *addAsmINTEL(SPIRVTypeFunction *, SPIRVAsmTargetINTEL *,
++                          const std::string &, const std::string &) override;
++  SPIRVInstruction *addAsmCallINTELInst(SPIRVAsmINTEL *, const std::vector<SPIRVWord> &,
++                                   SPIRVBasicBlock *) override;
+   SPIRVInstruction *addCmpInst(Op, SPIRVType *, SPIRVValue *, SPIRVValue *,
+                                SPIRVBasicBlock *) override;
+   SPIRVInstruction *addLoadInst(SPIRVValue *, const std::vector<SPIRVWord> &,
+@@ -434,7 +441,10 @@ private:
+   typedef std::unordered_map<std::string, SPIRVString *> SPIRVStringMap;
+   typedef std::map<SPIRVTypeStruct *, std::vector<std::pair<unsigned, SPIRVId>>>
+       SPIRVUnknownStructFieldMap;
++  typedef std::vector<SPIRVAsmINTEL *> SPIRVAsmVector;
+ 
++
++  SPIRVAsmVector AsmVec;
+   SPIRVForwardPointerVec ForwardPointerVec;
+   SPIRVTypeVec TypeVec;
+   SPIRVIdToEntryMap IdEntryMap;
+@@ -1146,6 +1156,29 @@ SPIRVInstruction *SPIRVModuleImpl::addFunctionPointerINTELInst(
+       new SPIRVFunctionPointerINTEL(getId(), TheType, TheFunction, BB), BB);
+ }
+ 
++SPIRVEntry *SPIRVModuleImpl::addAsmTargetINTEL(const std::string &TheTarget) {
++  auto Asm = new SPIRVAsmTargetINTEL(this, getId(), TheTarget);
++  return add(Asm);
++}
++
++SPIRVValue *SPIRVModuleImpl::addAsmINTEL(SPIRVTypeFunction *TheType,
++                                         SPIRVAsmTargetINTEL *TheTarget,
++                                         const std::string &TheInstructions,
++                                         const std::string &TheConstraints) {
++  auto Asm = new SPIRVAsmINTEL(this, TheType, getId(), TheTarget,
++                               TheInstructions, TheConstraints);
++  AsmVec.push_back(Asm);
++  return add(Asm);
++}
++
++SPIRVInstruction *
++SPIRVModuleImpl::addAsmCallINTELInst(SPIRVAsmINTEL *TheAsm,
++                                     const std::vector<SPIRVWord> &TheArguments,
++                                     SPIRVBasicBlock *BB) {
++  return addInstruction(
++      new SPIRVAsmCallINTEL(getId(), TheAsm, TheArguments, BB), BB);
++}
++
+ SPIRVInstruction *SPIRVModuleImpl::addBinaryInst(Op TheOpCode, SPIRVType *Type,
+                                                  SPIRVValue *Op1,
+                                                  SPIRVValue *Op2,
+@@ -1541,6 +1574,7 @@ spv_ostream &operator<<(spv_ostream &O, SPIRVModule &M) {
+     << MI.ForwardPointerVec
+     << TopologicalSort(MI.TypeVec, MI.ConstVec, MI.VariableVec,
+                        MI.ForwardPointerVec)
++    << MI.AsmVec
+     << SPIRVNL() << MI.DebugInstVec << SPIRVNL() << MI.FuncVec;
+   return O;
+ }
+diff --git a/lib/SPIRV/libSPIRV/SPIRVModule.h b/lib/SPIRV/libSPIRV/SPIRVModule.h
+index d271cf4..0e396aa 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVModule.h
++++ b/lib/SPIRV/libSPIRV/SPIRVModule.h
+@@ -86,6 +86,9 @@ class SPIRVGroupDecorate;
+ class SPIRVGroupMemberDecorate;
+ class SPIRVGroupDecorateGeneric;
+ class SPIRVInstTemplateBase;
++class SPIRVAsmTargetINTEL;
++class SPIRVAsmINTEL;
++class SPIRVAsmCallINTEL;
+ 
+ typedef SPIRVBasicBlock SPIRVLabel;
+ struct SPIRVTypeImageDescriptor;
+@@ -127,6 +130,7 @@ public:
+                                        unsigned) const = 0;
+   virtual std::set<std::string> &getExtension() = 0;
+   virtual SPIRVFunction *getFunction(unsigned) const = 0;
++  virtual SPIRVAsmINTEL *getAsm(unsigned) const = 0;
+   virtual SPIRVVariable *getVariable(unsigned) const = 0;
+   virtual SPIRVMemoryModelKind getMemoryModel() const = 0;
+   virtual unsigned getNumFunctions() const = 0;
+@@ -302,6 +306,12 @@ public:
+   virtual SPIRVInstruction *addFunctionPointerINTELInst(SPIRVType *,
+                                                         SPIRVFunction *,
+                                                         SPIRVBasicBlock *) = 0;
++  virtual SPIRVEntry *addAsmTargetINTEL(const std::string &) = 0;
++  virtual SPIRVValue *addAsmINTEL(SPIRVTypeFunction *, SPIRVAsmTargetINTEL *,
++                                  const std::string &, const std::string &) = 0;
++  virtual SPIRVInstruction *addAsmCallINTELInst(SPIRVAsmINTEL *,
++                                                const std::vector<SPIRVWord> &,
++                                                SPIRVBasicBlock *) = 0;
+   virtual SPIRVInstruction *
+   addCompositeConstructInst(SPIRVType *, const std::vector<SPIRVId> &,
+                             SPIRVBasicBlock *) = 0;
+diff --git a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+index 6a2a26a..4c28b4d 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+@@ -331,6 +331,7 @@ template <> inline void SPIRVMap<Decoration, std::string>::init() {
+   add(DecorationMaxByteOffset, "MaxByteOffset");
+   add(DecorationNoSignedWrap, "NoSignedWrap");
+   add(DecorationNoUnsignedWrap, "NoUnsignedWrap");
++  add(DecorationSideEffectsINTEL, "SideEffectsINTEL");
+   add(DecorationUserSemantic, "UserSemantic");
+   add(DecorationRegisterINTEL, "RegisterINTEL");
+   add(DecorationMemoryINTEL, "MemoryINTEL");
+@@ -482,6 +483,7 @@ template <> inline void SPIRVMap<Capability, std::string>::init() {
+   add(CapabilitySubgroupImageBlockIOINTEL, "SubgroupImageBlockIOINTEL");
+   add(CapabilitySubgroupImageMediaBlockIOINTEL,
+       "SubgroupImageMediaBlockIOINTEL");
++  add(CapabilityAsmINTEL, "AsmINTEL");
+   add(CapabilitySubgroupAvcMotionEstimationINTEL,
+       "SubgroupAvcMotionEstimationINTEL");
+   add(CapabilitySubgroupAvcMotionEstimationIntraINTEL,
+diff --git a/lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h b/lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h
+index 1279603..be24e40 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVOpCodeEnum.h
+@@ -307,6 +307,9 @@ _SPIRV_OP(SubgroupImageMediaBlockReadINTEL, 5580)
+ _SPIRV_OP(SubgroupImageMediaBlockWriteINTEL, 5581)
+ _SPIRV_OP(FunctionPointerINTEL, 5600)
+ _SPIRV_OP(FunctionPointerCallINTEL, 5601)
++_SPIRV_OP(AsmTargetINTEL, 5609)
++_SPIRV_OP(AsmINTEL, 5610)
++_SPIRV_OP(AsmCallINTEL, 5611)
+ _SPIRV_OP(VmeImageINTEL, 5699)
+ _SPIRV_OP(TypeVmeImageINTEL, 5700)
+ _SPIRV_OP(TypeAvcImePayloadINTEL, 5701)
+diff --git a/lib/SPIRV/libSPIRV/spirv.hpp b/lib/SPIRV/libSPIRV/spirv.hpp
+index 28a7c71..a222b49 100644
+--- a/lib/SPIRV/libSPIRV/spirv.hpp
++++ b/lib/SPIRV/libSPIRV/spirv.hpp
+@@ -389,6 +389,7 @@ enum Decoration {
+     DecorationViewportRelativeNV = 5252,
+     DecorationSecondaryViewportRelativeNV = 5256,
+     DecorationReferencedIndirectlyINTEL = 5602,
++    DecorationSideEffectsINTEL = 5608,
+     DecorationUserSemantic = 5635,
+     DecorationRegisterINTEL = 5825,
+     DecorationMemoryINTEL = 5826,
+@@ -678,6 +679,7 @@ enum Capability {
+   CapabilitySubgroupImageMediaBlockIOINTEL = 5579,
+   CapabilityFunctionPointersINTEL = 5603,
+   CapabilityIndirectReferencesINTEL = 5604,
++  CapabilityAsmINTEL = 5606,
+   CapabilitySubgroupAvcMotionEstimationINTEL = 5696,
+   CapabilitySubgroupAvcMotionEstimationIntraINTEL = 5697,
+   CapabilitySubgroupAvcMotionEstimationChromaINTEL = 5698,
+@@ -1013,6 +1015,9 @@ enum Op {
+   OpSubgroupImageMediaBlockWriteINTEL = 5581,
+   OpFunctionPointerINTEL = 5600,
+   OpFunctionPointerCallINTEL = 5601,
++  OpAsmTargetINTEL = 5609,
++  OpAsmINTEL = 5610,
++  OpAsmCallINTEL = 5611,
+   OpVmeImageINTEL = 5699,
+   OpTypeVmeImageINTEL = 5700,
+   OpTypeAvcImePayloadINTEL = 5701,
+-- 
+2.17.1
+
