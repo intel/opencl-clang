@@ -30,11 +30,17 @@ addons:
       - llvm-10-tools
       - llvm-10-dev
       - libclang-10-dev
-      - lldb-10
 
 install:
   - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
   - unzip /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip -d spirv-llvm-translator
+# This is a work-around for a "wrong" dependency between libclang-10-dev and
+# libclang-cpp10-dev packages from apt.llv.org. Normally, we should just
+# install them both, as it is done on the master(ocl-open-110) branch. But for
+# some reason (a bug?) they remove each other when being installed via apt get.
+# Basically, all we need from libclang-cpp10-dev is the symlink below. Without
+# this symlink linker can't find libclang-cpp.so.10.
+  - sudo ln -s ${TRAVIS_ROOT}/usr/lib/llvm-10/lib/libclang-cpp.so.10 ${TRAVIS_ROOT}/usr/lib/llvm-10/lib/libclang-cpp.so
 
 compiler:
   - gcc
