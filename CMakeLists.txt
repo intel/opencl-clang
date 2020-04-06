@@ -206,27 +206,22 @@ link_directories(
     ${LLVM_LIBRARY_DIRS}
 )
 
-set(ADDITIONAL_LIBS ${CMAKE_DL_LIBS})
+set(OPENCL_CLANG_LINK_LIBS ${CMAKE_DL_LIBS})
 
 if(NOT LLVMSPIRVLib IN_LIST LLVM_AVAILABLE_LIBS)
   # SPIRV-LLVM-Translator is not included into LLVM as a component.
   # So, we need to list it here explicitly as an external library
-  list(APPEND ADDITIONAL_LIBS LLVMSPIRVLib)
+  list(APPEND OPENCL_CLANG_LINK_LIBS LLVMSPIRVLib)
 endif()
 
 add_subdirectory(cl_headers)
 
 set(LLVM_REQUIRES_EH ON)
 
-add_llvm_library(${TARGET_NAME} SHARED
-  ${TARGET_INCLUDE_FILES}
-  ${TARGET_SOURCE_FILES}
-  $<TARGET_OBJECTS:cl_headers>
-
-  DEPENDS CClangCompileOptions
-  LINK_COMPONENTS
-    all
-  LINK_LIBS
+if(USE_PREBUILT_LLVM OR CLANG_LINK_CLANG_DYLIB)
+  list(APPEND OPENCL_CLANG_LINK_LIBS clang-cpp)
+else()
+  list(APPEND OPENCL_CLANG_LINK_LIBS
 # The list of clang libraries is taken from clang makefile
 # (build/tools/clang/tools/driver/CMakeFiles/clang.dir/link.txt)
 # All duplicate libraries are there on purpose
@@ -258,7 +253,19 @@ add_llvm_library(${TARGET_NAME} SHARED
     clangAST
     clangLex
     clangBasic
-    ${ADDITIONAL_LIBS}
+  )
+endif()
+
+add_llvm_library(${TARGET_NAME} SHARED
+  ${TARGET_INCLUDE_FILES}
+  ${TARGET_SOURCE_FILES}
+  $<TARGET_OBJECTS:cl_headers>
+
+  DEPENDS CClangCompileOptions
+  LINK_COMPONENTS
+    all
+  LINK_LIBS
+    ${OPENCL_CLANG_LINK_LIBS}
   )
 
 # Configure resource file on Windows
