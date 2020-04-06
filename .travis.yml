@@ -28,6 +28,7 @@ before_install:
       llvm-${LLVM_VERSION}-dev
       llvm-${LLVM_VERSION}-tools
       libclang-${LLVM_VERSION}-dev
+      libclang-cpp${LLVM_VERSION}-dev
 
 install:
   - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
