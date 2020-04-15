@@ -208,7 +208,7 @@ link_directories(
 
 set(OPENCL_CLANG_LINK_LIBS ${CMAKE_DL_LIBS})
 
-if(NOT LLVMSPIRVLib IN_LIST LLVM_AVAILABLE_LIBS)
+if(NOT LLVMSPIRVLib IN_LIST LLVM_AVAILABLE_LIBS OR (USE_PREBUILT_LLVM AND LLVM_LINK_LLVM_DYLIB))
   # SPIRV-LLVM-Translator is not included into LLVM as a component.
   # So, we need to list it here explicitly as an external library
   list(APPEND OPENCL_CLANG_LINK_LIBS LLVMSPIRVLib)
