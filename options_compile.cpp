@@ -60,10 +60,12 @@ int EffectiveOptionsFilter::s_progID = 1;
 // Options filter that validates the opencl used options
 //
 std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
+                                                   const OpenCLArgList &argsEx,
                                                    const char *pszOptionsEx,
                                                    ArgsVector &effectiveArgs) {
   // Reset args
   int iCLStdSet = 0;
+  int fp64Enable = 0;
   std::string szTriple;
   std::string sourceName(llvm::Twine(s_progID++).str());
 
@@ -194,6 +196,49 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 
   effectiveArgs.push_back(szTriple);
 
+  for (OpenCLArgList::const_iterator it = argsEx.begin(), ie = argsEx.end();
+       it != ie; ++it) {
+    switch ((*it)->getOption().getID()) {
+      case OPT_COMPILE_cl_khr_fp64:
+        fp64Enable = 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  effectiveArgs.push_back("-fmodules");
+  if (fp64Enable == 0) {
+    if (szTriple.find("spir64") != szTriple.npos) {
+      if (iCLStdSet <= 120) {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
+      } else {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
+      }
+    } else if (szTriple.find("spir") != szTriple.npos) {
+      if (iCLStdSet <= 120) {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
+      } else {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
+      }
+    }
+  }
+  else if (fp64Enable == 1) {
+    if (szTriple.find("spir64") != szTriple.npos) {
+      if (iCLStdSet <= 120) {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
+      } else {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64-fp64.pcm");
+      }
+    } else if (szTriple.find("spir") != szTriple.npos) {
+      if (iCLStdSet <= 120) {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir-fp64.pcm");
+      } else {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir-fp64.pcm");
+      }
+    }
+  }
+
   effectiveArgs.push_back("-include");
   effectiveArgs.push_back("opencl-c.h");
 
@@ -235,10 +280,12 @@ void CompileOptionsParser::processOptions(const char *pszOptions,
   unsigned missingArgIndex, missingArgCount;
   std::unique_ptr<OpenCLArgList> pArgs(
       m_optTbl.ParseArgs(pszOptions, missingArgIndex, missingArgCount));
+  std::unique_ptr<OpenCLArgList> pArgsEx(
+    m_optTbl.ParseArgs(pszOptionsEx, missingArgIndex, missingArgCount));
 
   // post process logic
   m_sourceName =
-      m_commonFilter.processOptions(*pArgs, pszOptionsEx, m_effectiveArgs);
+      m_commonFilter.processOptions(*pArgs, *pArgsEx, pszOptionsEx, m_effectiveArgs);
 
   // build the raw options array
   for (ArgsVector::iterator it = m_effectiveArgs.begin(),

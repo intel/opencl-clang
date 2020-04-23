@@ -129,6 +129,7 @@ public:
   }
 
   std::string processOptions(const OpenCLArgList &args,
+                             const OpenCLArgList &argsEx,
                              const char *pszOptionsEx,
                              ArgsVector &effectiveArgs);
 

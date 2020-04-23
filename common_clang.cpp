@@ -19,6 +19,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "common_clang.h"
 #include "pch_mgr.h"
 #include "cl_headers/resource.h"
+#include "exceptions.h"
 #include "binary_result.h"
 #include "options.h"
 
@@ -116,6 +117,11 @@ static bool GetHeaders(std::vector<Resource> &Result) {
   struct {const char *ID; const char *Name;} Headers[] = {
     {OPENCL_C_H,             "opencl-c.h"},
     {OPENCL_C_BASE_H,        "opencl-c-base.h"},
+    {OPENCL_C_12_SPIR_PCM,   "opencl-c-12-spir.pcm"},
+    {OPENCL_C_20_SPIR_PCM,   "opencl-c-20-spir.pcm"},
+    {OPENCL_C_12_SPIR64_PCM, "opencl-c-12-spir64.pcm"},
+    {OPENCL_C_20_SPIR64_PCM, "opencl-c-20-spir64.pcm"},
+    {OPENCL_C_MODULE_MAP,    "module.modulemap"}
   };
 
   Result.clear();
@@ -344,5 +350,11 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       *pBinaryResult = NULL;
     }
     return CL_OUT_OF_HOST_MEMORY;
+  } catch (pch_error &) {
+    if (pBinaryResult) {
+      *pBinaryResult = NULL;
+    }
+    assert(false && " Common_clang. Something wrong with PCHs.");
+    return CL_COMPILE_PROGRAM_FAILURE;
   }
 }
