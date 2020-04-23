@@ -1,6 +1,6 @@
 /*****************************************************************************\
 
-Copyright (c) Intel Corporation (2009-2017).
+Copyright (c) Intel Corporation (2009-2020).
 
     INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE.  THIS CODE IS
     LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
@@ -12,20 +12,18 @@ Copyright (c) Intel Corporation (2009-2017).
     use of the code. No license, express or implied, by estoppel or otherwise,
     to any intellectual property rights is granted herein.
 
-  \file resource.h
+  \file exceptions.h
 
 \*****************************************************************************/
 
-#ifndef __RESOURCE__
-#define __RESOURCE__
+#pragma once
+#include <stdexcept>
 
-#define OPENCL_C_H             "OPENCL_C_H"
-#define OPENCL_C_BASE_H        "OPENCL_C_BASE_H"
+/// macro for convenient definition of common clang exceptions
+#define DEFINE_COMMON_CLANG_EXCEPTION(__name)                                      \
+  class __name : public std::domain_error {                                    \
+  public:                                                                      \
+    __name(const std::string &str) : std::domain_error(str) {}                 \
+  };
 
-#define OPENCL_C_12_SPIR_PCM   "OPENCL_C_12_SPIR_PCM"
-#define OPENCL_C_20_SPIR_PCM   "OPENCL_C_20_SPIR_PCM"
-#define OPENCL_C_12_SPIR64_PCM "OPENCL_C_12_SPIR64_PCM"
-#define OPENCL_C_20_SPIR64_PCM "OPENCL_C_20_SPIR64_PCM"
-#define OPENCL_C_MODULE_MAP   "OPENCL_C_MODULE_MAP"
-
-#endif /* __RESOURCE__ */
+DEFINE_COMMON_CLANG_EXCEPTION(pch_error)
