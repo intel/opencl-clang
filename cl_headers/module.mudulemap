@@ -1,0 +1,16 @@
+module cl12spir {
+  header "opencl-c.h"
+  export *
+}
+module cl20spir {
+  header "opencl-c.h"
+  export *
+}
+module cl12spir64 {
+  header "opencl-c.h"
+  export *
+}
+module cl20spir64 {
+  header "opencl-c.h"
+  export *
+}
