@@ -13,3 +13,10 @@ END
 
 OPENCL_C_H                PCM   "opencl-c.h"
 OPENCL_C_BASE_H           PCM   "opencl-c-base.h"
+
+OPENCL_C_12_SPIR_PCM      PCM   "opencl-c-12-spir.pcm"
+OPENCL_C_20_SPIR_PCM      PCM   "opencl-c-20-spir.pcm"
+OPENCL_C_12_SPIR64_PCM    PCM   "opencl-c-12-spir64.pcm"
+OPENCL_C_20_SPIR64_PCM    PCM   "opencl-c-20-spir64.pcm"
+
+OPENCL_C_MODULE_MAP       PCM   "module.modulemap"
