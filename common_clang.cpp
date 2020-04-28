@@ -331,7 +331,14 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       SmallVectorBuffer StreamBuf(pResult->getIRBufferRef());
       std::ostream OS(&StreamBuf);
       std::string Err;
-      success = llvm::writeSpirv(M.get(), OS, Err);
+      if (!(optionsParser.hasOptDisable())){
+        SPIRV::TranslatorOpts OCLOpts;
+        OCLOpts.enableAllExtensions();
+        OCLOpts.setMemToRegEnabled(true);
+        success = llvm::writeSpirv(M.get(), OCLOpts, OS, Err);
+      }
+      else
+        success = llvm::writeSpirv(M.get(), OS, Err);
       err_ostream << Err.c_str();
       err_ostream.flush();
     }
