@@ -325,14 +325,12 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       SmallVectorBuffer StreamBuf(pResult->getIRBufferRef());
       std::ostream OS(&StreamBuf);
       std::string Err;
-      if (!(optionsParser.hasOptDisable())){
-        SPIRV::TranslatorOpts OCLOpts;
-        OCLOpts.enableAllExtensions();
-        OCLOpts.setMemToRegEnabled(true);
-        success = llvm::writeSpirv(M.get(), OCLOpts, OS, Err);
+      SPIRV::TranslatorOpts SPIRVOpts;
+      SPIRVOpts.enableAllExtensions();
+      if (!optionsParser.hasOptDisable()) {
+        SPIRVOpts.setMemToRegEnabled(true);
       }
-      else
-        success = llvm::writeSpirv(M.get(), OS, Err);
+      success = llvm::writeSpirv(M.get(), SPIRVOpts, OS, Err);
       err_ostream << Err.c_str();
       err_ostream.flush();
     }
