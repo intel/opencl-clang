@@ -64,6 +64,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
                                                    ArgsVector &effectiveArgs) {
   // Reset args
   int iCLStdSet = 0;
+  int fp64Enable = 0;
   std::string szTriple;
   std::string sourceName(llvm::Twine(s_progID++).str());
 
@@ -191,7 +192,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   }
 
   effectiveArgs.push_back(szTriple);
-
   effectiveArgs.push_back("-include");
   effectiveArgs.push_back("opencl-c.h");
 
@@ -219,6 +219,45 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   // add the extended options verbatim
   std::back_insert_iterator<ArgsVector> it(std::back_inserter(effectiveArgs));
   quoted_tokenize(it, pszOptionsEx, " \t", '"', '\x00');
+
+  for (ArgsVector::iterator it = effectiveArgs.begin(),
+                            end = effectiveArgs.end();
+       it != end; ++it) {
+    if (it->compare("+cl_khr_fp64") == 0) {
+      fp64Enable = true;
+    }
+  }
+  effectiveArgs.push_back("-fmodules");
+  if (fp64Enable == 0) {
+    if (szTriple.find("spir64") != szTriple.npos) {
+      if (iCLStdSet <= 120) {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
+      } else {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
+      }
+    } else if (szTriple.find("spir") != szTriple.npos) {
+      if (iCLStdSet <= 120) {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
+      } else {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
+      }
+    }
+  }
+  else if (fp64Enable == 1) {
+    if (szTriple.find("spir64") != szTriple.npos) {
+      if (iCLStdSet <= 120) {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
+      } else {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64-fp64.pcm");
+      }
+    } else if (szTriple.find("spir") != szTriple.npos) {
+      if (iCLStdSet <= 120) {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir-fp64.pcm");
+      } else {
+        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir-fp64.pcm");
+      }
+    }
+  }
 
   // add source name to options as an input file
   assert(!sourceName.empty() && "Empty source name.");

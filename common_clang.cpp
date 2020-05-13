@@ -116,6 +116,11 @@ static bool GetHeaders(std::vector<Resource> &Result) {
   struct {const char *ID; const char *Name;} Headers[] = {
     {OPENCL_C_H,             "opencl-c.h"},
     {OPENCL_C_BASE_H,        "opencl-c-base.h"},
+    {OPENCL_C_12_SPIR_PCM,   "opencl-c-12-spir.pcm"},
+    {OPENCL_C_20_SPIR_PCM,   "opencl-c-20-spir.pcm"},
+    {OPENCL_C_12_SPIR64_PCM, "opencl-c-12-spir64.pcm"},
+    {OPENCL_C_20_SPIR64_PCM, "opencl-c-20-spir64.pcm"},
+    {OPENCL_C_MODULE_MAP,    "module.modulemap"}
   };
 
   Result.clear();
