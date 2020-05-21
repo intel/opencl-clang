@@ -223,7 +223,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   for (ArgsVector::iterator it = effectiveArgs.begin(),
                             end = effectiveArgs.end();
        it != end; ++it) {
-    if (it->compare("-Dcl_khr_fp64") == 0) {
+    if (it->compare("+cl_khr_fp64") == 0) {
       fp64Enable = true;
     }
   }
