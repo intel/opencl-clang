@@ -143,7 +143,7 @@ private:
 class CompileOptionsParser {
 public:
   CompileOptionsParser(const char *pszOpenCLVersion)
-      : m_commonFilter(pszOpenCLVersion), m_emitSPIRV(false) {}
+      : m_commonFilter(pszOpenCLVersion), m_emitSPIRV(false), m_optDisable(false) {}
 
   //
   // Validates and prepares the effective options to pass to clang upon
@@ -175,6 +175,7 @@ public:
   std::string getEffectiveOptionsAsString() const;
 
   bool hasEmitSPIRV() const { return m_emitSPIRV; }
+  bool hasOptDisable() const { return m_optDisable; }
 
 private:
   OpenCLCompileOptTable m_optTbl;
@@ -183,6 +184,7 @@ private:
   llvm::SmallVector<const char *, 16> m_effectiveArgsRaw;
   std::string m_sourceName;
   bool m_emitSPIRV;
+  bool m_optDisable;
 };
 
 // Tokenize a string into tokens separated by any char in 'delims'.
