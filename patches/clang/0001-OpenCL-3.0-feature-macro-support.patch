@@ -1,0 +1,3153 @@
+From 5eab689a0deab3a16ce7b121e1437b7b2d94a05b Mon Sep 17 00:00:00 2001
+From: Anton Zabaznov <anton.zabaznov@intel.com>
+Date: Tue, 26 May 2020 13:29:55 +0300
+Subject: [PATCH] [OpenCL] OpenCL 3.0 feature macro support
+
+---
+ clang/docs/CommandGuide/clang.rst             |  12 +-
+ clang/include/clang/Basic/Builtins.def        |  48 ++---
+ clang/include/clang/Basic/Builtins.h          |  11 +-
+ .../clang/Basic/DiagnosticSemaKinds.td        |  19 ++
+ clang/include/clang/Basic/LangStandards.def   |   4 +
+ clang/include/clang/Basic/OpenCLFeatures.def  |  42 ++++
+ .../include/clang/Basic/OpenCLImageTypes.def  |  26 +--
+ clang/include/clang/Basic/OpenCLOptions.h     | 194 +++++++++++++-----
+ clang/include/clang/Basic/TargetInfo.h        |   8 +-
+ clang/include/clang/Basic/TargetOptions.h     |   4 +
+ clang/include/clang/Driver/CC1Options.td      |   5 +
+ clang/include/clang/Driver/Options.td         |   2 +-
+ clang/include/clang/Sema/Sema.h               |  22 +-
+ clang/lib/AST/ASTContext.cpp                  |   4 +-
+ clang/lib/Basic/Builtins.cpp                  |  10 +-
+ clang/lib/Basic/TargetInfo.cpp                |   6 +
+ clang/lib/Basic/Targets.cpp                   |   1 +
+ clang/lib/Basic/Targets/AMDGPU.h              |  32 +--
+ clang/lib/Basic/Targets/NVPTX.h               |  20 +-
+ clang/lib/Basic/Targets/SPIR.h                |   2 +-
+ clang/lib/Basic/Targets/X86.h                 |   2 +-
+ clang/lib/Frontend/CompilerInvocation.cpp     |   7 +-
+ clang/lib/Frontend/InitPreprocessor.cpp       |  10 +
+ clang/lib/Headers/opencl-c.h                  | 168 ++++++++-------
+ clang/lib/Parse/ParseDecl.cpp                 |   4 +-
+ clang/lib/Parse/ParsePragma.cpp               |  10 +-
+ clang/lib/Sema/DeclSpec.cpp                   |   4 +-
+ clang/lib/Sema/OpenCLBuiltins.td              |  44 ++--
+ clang/lib/Sema/Sema.cpp                       |  36 +++-
+ clang/lib/Sema/SemaCast.cpp                   |   2 +-
+ clang/lib/Sema/SemaChecking.cpp               | 163 +++++++++++++--
+ clang/lib/Sema/SemaDecl.cpp                   |  29 ++-
+ clang/lib/Sema/SemaExpr.cpp                   |  15 +-
+ clang/lib/Sema/SemaInit.cpp                   |   4 +-
+ clang/lib/Sema/SemaLookup.cpp                 |   3 +
+ clang/lib/Sema/SemaType.cpp                   |  12 +-
+ clang/lib/Serialization/ASTReader.cpp         |   1 +
+ clang/lib/Serialization/ASTWriter.cpp         |   1 +
+ clang/test/CodeGenOpenCL/address-spaces.cl    |   6 +-
+ .../CodeGenOpenCL/feature-address-spaces.cl   | 186 +++++++++++++++++
+ clang/test/CodeGenOpenCL/to_addr_builtin.cl   |   2 +
+ clang/test/Driver/unknown-std.cl              |   1 +
+ .../address-spaces-conversions-cl2.0.cl       |   3 +
+ clang/test/SemaOpenCL/address-spaces.cl       |   1 +
+ .../SemaOpenCL/fdeclare-opencl-builtins.cl    |  18 +-
+ .../test/SemaOpenCL/feature-device-enqueue.cl |  29 +++
+ clang/test/SemaOpenCL/feature-images.cl       |  28 +++
+ clang/test/SemaOpenCL/feature-memory-scope.cl | 118 +++++++++++
+ clang/test/SemaOpenCL/feature-pipes.cl        |  71 +++++++
+ clang/test/SemaOpenCL/invalid-block.cl        |   1 -
+ clang/test/SemaOpenCL/storageclass-cl20.cl    |   1 +
+ clang/test/SemaOpenCL/storageclass.cl         |   1 -
+ clang/test/SemaOpenCL/to_addr_builtin.cl      |   2 +-
+ .../TableGen/ClangOpenCLBuiltinEmitter.cpp    |  25 ++-
+ 54 files changed, 1184 insertions(+), 296 deletions(-)
+ create mode 100644 clang/include/clang/Basic/OpenCLFeatures.def
+ create mode 100644 clang/test/CodeGenOpenCL/feature-address-spaces.cl
+ create mode 100644 clang/test/SemaOpenCL/feature-device-enqueue.cl
+ create mode 100644 clang/test/SemaOpenCL/feature-images.cl
+ create mode 100644 clang/test/SemaOpenCL/feature-memory-scope.cl
+ create mode 100644 clang/test/SemaOpenCL/feature-pipes.cl
+
+diff --git a/clang/docs/CommandGuide/clang.rst b/clang/docs/CommandGuide/clang.rst
+index 6947450beb4..5d50f01a8f5 100644
+--- a/clang/docs/CommandGuide/clang.rst
++++ b/clang/docs/CommandGuide/clang.rst
+@@ -199,19 +199,23 @@ Language Selection and Mode Options
+ 
+   | ``cl1.0``
+ 
+-   OpenCL 1.0
++   OpenCL C 1.0
+ 
+   | ``cl1.1``
+ 
+-   OpenCL 1.1
++   OpenCL C 1.1
+ 
+   | ``cl1.2``
+ 
+-   OpenCL 1.2
++   OpenCL C 1.2
+ 
+   | ``cl2.0``
+ 
+-   OpenCL 2.0
++   OpenCL C 2.0
++
++  | ``cl3.0``
++
++   OpenCL C 3.0
+ 
+  The default OpenCL language standard is ``cl1.0``.
+ 
+diff --git a/clang/include/clang/Basic/Builtins.def b/clang/include/clang/Basic/Builtins.def
+index 1a6c85ce2dd..e34e3b918d7 100644
+--- a/clang/include/clang/Basic/Builtins.def
++++ b/clang/include/clang/Basic/Builtins.def
+@@ -1514,44 +1514,44 @@ BUILTIN(__builtin_coro_param, "bv*v*", "n")
+ 
+ // OpenCL v2.0 s6.13.16, s9.17.3.5 - Pipe functions.
+ // We need the generic prototype, since the packet type could be anything.
+-LANGBUILTIN(read_pipe, "i.", "tn", OCLC20_LANG)
+-LANGBUILTIN(write_pipe, "i.", "tn", OCLC20_LANG)
++LANGBUILTIN(read_pipe, "i.", "tn", OCL20_30_LANG)
++LANGBUILTIN(write_pipe, "i.", "tn", OCL20_30_LANG)
+ 
+-LANGBUILTIN(reserve_read_pipe, "i.", "tn", OCLC20_LANG)
+-LANGBUILTIN(reserve_write_pipe, "i.", "tn", OCLC20_LANG)
++LANGBUILTIN(reserve_read_pipe, "i.", "tn", OCL20_30_LANG)
++LANGBUILTIN(reserve_write_pipe, "i.", "tn", OCL20_30_LANG)
+ 
+-LANGBUILTIN(commit_write_pipe, "v.", "tn", OCLC20_LANG)
+-LANGBUILTIN(commit_read_pipe, "v.", "tn", OCLC20_LANG)
++LANGBUILTIN(commit_write_pipe, "v.", "tn", OCL20_30_LANG)
++LANGBUILTIN(commit_read_pipe, "v.", "tn", OCL20_30_LANG)
+ 
+-LANGBUILTIN(sub_group_reserve_read_pipe, "i.", "tn", OCLC20_LANG)
+-LANGBUILTIN(sub_group_reserve_write_pipe, "i.", "tn", OCLC20_LANG)
++LANGBUILTIN(sub_group_reserve_read_pipe, "i.", "tn", OCL20_30_LANG)
++LANGBUILTIN(sub_group_reserve_write_pipe, "i.", "tn", OCL20_30_LANG)
+ 
+-LANGBUILTIN(sub_group_commit_read_pipe, "v.", "tn", OCLC20_LANG)
+-LANGBUILTIN(sub_group_commit_write_pipe, "v.", "tn", OCLC20_LANG)
++LANGBUILTIN(sub_group_commit_read_pipe, "v.", "tn", OCL20_30_LANG)
++LANGBUILTIN(sub_group_commit_write_pipe, "v.", "tn", OCL20_30_LANG)
+ 
+-LANGBUILTIN(work_group_reserve_read_pipe, "i.", "tn", OCLC20_LANG)
+-LANGBUILTIN(work_group_reserve_write_pipe, "i.", "tn", OCLC20_LANG)
++LANGBUILTIN(work_group_reserve_read_pipe, "i.", "tn", OCL20_30_LANG)
++LANGBUILTIN(work_group_reserve_write_pipe, "i.", "tn", OCL20_30_LANG)
+ 
+-LANGBUILTIN(work_group_commit_read_pipe, "v.", "tn", OCLC20_LANG)
+-LANGBUILTIN(work_group_commit_write_pipe, "v.", "tn", OCLC20_LANG)
++LANGBUILTIN(work_group_commit_read_pipe, "v.", "tn", OCL20_30_LANG)
++LANGBUILTIN(work_group_commit_write_pipe, "v.", "tn", OCL20_30_LANG)
+ 
+-LANGBUILTIN(get_pipe_num_packets, "Ui.", "tn", OCLC20_LANG)
+-LANGBUILTIN(get_pipe_max_packets, "Ui.", "tn", OCLC20_LANG)
++LANGBUILTIN(get_pipe_num_packets, "Ui.", "tn", OCL20_30_LANG)
++LANGBUILTIN(get_pipe_max_packets, "Ui.", "tn", OCL20_30_LANG)
+ 
+ // OpenCL v2.0 s6.13.17 - Enqueue kernel functions.
+ // Custom builtin check allows to perform special check of passed block arguments.
+-LANGBUILTIN(enqueue_kernel, "i.", "tn", OCLC20_LANG)
+-LANGBUILTIN(get_kernel_work_group_size, "Ui.", "tn", OCLC20_LANG)
+-LANGBUILTIN(get_kernel_preferred_work_group_size_multiple, "Ui.", "tn", OCLC20_LANG)
+-LANGBUILTIN(get_kernel_max_sub_group_size_for_ndrange, "Ui.", "tn", OCLC20_LANG)
+-LANGBUILTIN(get_kernel_sub_group_count_for_ndrange, "Ui.", "tn", OCLC20_LANG)
++LANGBUILTIN(enqueue_kernel, "i.", "tn", OCL20_30_LANG)
++LANGBUILTIN(get_kernel_work_group_size, "Ui.", "tn", OCL20_30_LANG)
++LANGBUILTIN(get_kernel_preferred_work_group_size_multiple, "Ui.", "tn", OCL20_30_LANG)
++LANGBUILTIN(get_kernel_max_sub_group_size_for_ndrange, "Ui.", "tn", OCL20_30_LANG)
++LANGBUILTIN(get_kernel_sub_group_count_for_ndrange, "Ui.", "tn", OCL20_30_LANG)
+ 
+ // OpenCL v2.0 s6.13.9 - Address space qualifier functions.
+ // FIXME: Pointer parameters of OpenCL builtins should have their address space
+ // requirement defined.
+-LANGBUILTIN(to_global, "v*v*", "tn", OCLC20_LANG)
+-LANGBUILTIN(to_local, "v*v*", "tn", OCLC20_LANG)
+-LANGBUILTIN(to_private, "v*v*", "tn", OCLC20_LANG)
++LANGBUILTIN(to_global, "v*v*", "tn", OCL20_30_LANG)
++LANGBUILTIN(to_local, "v*v*", "tn", OCL20_30_LANG)
++LANGBUILTIN(to_private, "v*v*", "tn", OCL20_30_LANG)
+ 
+ // OpenCL half load/store builtin
+ LANGBUILTIN(__builtin_store_half, "vdh*", "n", ALL_OCLC_LANGUAGES)
+diff --git a/clang/include/clang/Basic/Builtins.h b/clang/include/clang/Basic/Builtins.h
+index e4ed482d906..75436abe751 100644
+--- a/clang/include/clang/Basic/Builtins.h
++++ b/clang/include/clang/Basic/Builtins.h
+@@ -33,13 +33,16 @@ enum LanguageID {
+   CXX_LANG = 0x4,     // builtin for cplusplus only.
+   OBJC_LANG = 0x8,    // builtin for objective-c and objective-c++
+   MS_LANG = 0x10,     // builtin requires MS mode.
+-  OCLC20_LANG = 0x20, // builtin for OpenCL C 2.0 only.
+-  OCLC1X_LANG = 0x40, // builtin for OpenCL C 1.x only.
+-  OMP_LANG = 0x80,    // builtin requires OpenMP.
++  OCLC30_LANG = 0x20, // builtin for OpenCL C 3.0 only
++  OCLC20_LANG = 0x40, // builtin for OpenCL C 2.0 only.
++  OCLC1X_LANG = 0x80, // builtin for OpenCL C 1.x only.
++  OMP_LANG = 0x100,   // builtin requires OpenMP.
++  OCL20_30_LANG = OCLC30_LANG | OCLC20_LANG,     // builtin for OCL2.0 and OCLC3.0
+   ALL_LANGUAGES = C_LANG | CXX_LANG | OBJC_LANG, // builtin for all languages.
+   ALL_GNU_LANGUAGES = ALL_LANGUAGES | GNU_LANG,  // builtin requires GNU mode.
+   ALL_MS_LANGUAGES = ALL_LANGUAGES | MS_LANG,    // builtin requires MS mode.
+-  ALL_OCLC_LANGUAGES = OCLC1X_LANG | OCLC20_LANG // builtin for OCLC languages.
++  ALL_OCLC_LANGUAGES =
++      OCLC1X_LANG | OCLC20_LANG | OCLC30_LANG    // builtin for OCLC languages.
+ };
+ 
+ namespace Builtin {
+diff --git a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+index 91737742050..5653b384942 100644
+--- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
++++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+@@ -9314,6 +9314,8 @@ def err_opencl_variadic_function : Error<
+   "invalid prototype, variadic arguments are not allowed in OpenCL">;
+ def err_opencl_requires_extension : Error<
+   "use of %select{type|declaration}0 %1 requires %2 extension to be enabled">;
++def err_opencl_requires_feature : Error<
++  "use of %select{type|declaration}0 %1 requires %2 feature to be supported">;
+ def warn_opencl_generic_address_space_arg : Warning<
+   "passing non-generic address space pointer to %0"
+   " may cause dynamic conversion affecting performance">,
+@@ -9329,6 +9331,10 @@ def err_opencl_builtin_pipe_invalid_arg : Error<
+ def err_opencl_builtin_pipe_invalid_access_modifier : Error<
+   "invalid pipe access modifier (expecting %0)">;
+ 
++// OpenCL v3.0 s6.13.6 -- Builtin Pipe Functions
++def err_opencl_builtin_pipe_requires_feature : Error<
++  "pipe functions require __opencl_c_pipes feature to be supported">;
++
+ // OpenCL access qualifier
+ def err_opencl_invalid_access_qualifier : Error<
+   "access qualifier can only be used for pipe and image type">;
+@@ -9378,6 +9384,19 @@ def ext_opencl_ext_vector_type_rgba_selector: ExtWarn<
+ def err_openclcxx_placement_new : Error<
+   "use of placement new requires explicit declaration">;
+ 
++def err_opencl_unsupported_memory_order : Error<
++  "OpenCL memory order requires feature support">;
++def err_opencl_unsupported_memory_scope : Error<
++  "OpenCL memory scope requires feature support">;
++def err_opencl_builtin_enqueue_requires_feature : Error<
++  "OpenCL builtin enqueue kernels require feature support">;
++def err_opencl_builtin_address_space_requires_feature : Error<
++  "OpenCL address space qualifier builtins require feature support">; 
++def err_opencl_builtin_subgroup_query_requires_feature : Error<
++  "OpenCL builtin subgroup kernel query require feature support">;
++def err_opencl_blocks_support_requires_feature : Error<
++  "OpenCL blocks usage requires feature support">;
++
+ // MIG routine annotations.
+ def warn_mig_server_routine_does_not_return_kern_return_t : Warning<
+   "'mig_server_routine' attribute only applies to routines that return a kern_return_t">,
+diff --git a/clang/include/clang/Basic/LangStandards.def b/clang/include/clang/Basic/LangStandards.def
+index 7f1a24db7e9..69aaba3ff5a 100644
+--- a/clang/include/clang/Basic/LangStandards.def
++++ b/clang/include/clang/Basic/LangStandards.def
+@@ -167,6 +167,9 @@ LANGSTANDARD(opencl12, "cl1.2",
+ LANGSTANDARD(opencl20, "cl2.0",
+              OpenCL, "OpenCL 2.0",
+              LineComment | C99 | Digraphs | HexFloat | OpenCL)
++LANGSTANDARD(opencl30, "cl3.0",
++             OpenCL, "OpenCL 3.0",
++             LineComment | C99 | Digraphs | HexFloat | OpenCL)
+ LANGSTANDARD(openclcpp, "clc++",
+              OpenCL, "C++ for OpenCL",
+              LineComment | CPlusPlus | CPlusPlus11 | CPlusPlus14 | CPlusPlus17 |
+@@ -176,6 +179,7 @@ LANGSTANDARD_ALIAS_DEPR(opencl10, "CL")
+ LANGSTANDARD_ALIAS_DEPR(opencl11, "CL1.1")
+ LANGSTANDARD_ALIAS_DEPR(opencl12, "CL1.2")
+ LANGSTANDARD_ALIAS_DEPR(opencl20, "CL2.0")
++LANGSTANDARD_ALIAS_DEPR(opencl30, "CL3.0")
+ LANGSTANDARD_ALIAS_DEPR(openclcpp, "CLC++")
+ 
+ // CUDA
+diff --git a/clang/include/clang/Basic/OpenCLFeatures.def b/clang/include/clang/Basic/OpenCLFeatures.def
+new file mode 100644
+index 00000000000..75e859c25b4
+--- /dev/null
++++ b/clang/include/clang/Basic/OpenCLFeatures.def
+@@ -0,0 +1,42 @@
++//===--- OpenCLFeatures.def - OpenCL 3.0 feature list -----------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file defines the list of supported OpenCL features. Features are
++// supported only since OpenCL 3.0.
++//
++//===----------------------------------------------------------------------===//
++
++// Macro OPENCLFEATURE or OPENCLFEATURE_INTERNAL can be defined to enumerate the
++// OpenCL extensions listed in this file.
++
++#ifndef OPENCLFEATURE_INTERNAL
++#ifndef OPENCLFEATURE
++#pragma error "macro OPENCLFEATURE or OPENCLFEATURE_INTERNAL is required"
++#else
++#define OPENCLFEATURE_INTERNAL(feat, ...) OPENCLFEATURE(feat)
++#endif // OPENCLFEATURE
++#endif // OPENCLFEATURE_INTERNAL
++
++OPENCLFEATURE_INTERNAL(__opencl_c_3d_image_writes, 100, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_atomic_order_acq_rel, 100, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_atomic_order_seq_cst, 100, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_atomic_scope_device, 100, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_atomic_scope_all_devices, 100, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_device_enqueue, 200, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_generic_address_space, 200, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_pipes, 200, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_program_scope_global_variables, 200, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_read_write_images, 200, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_subgroups, 200, ~0U)
++OPENCLFEATURE_INTERNAL(__opencl_c_work_group_collective_functions, 100, ~0U)
++
++#undef OPENCLFEATURE_INTERNAL
++
++#ifdef OPENCLFEATURE
++#undef OPENCLFEATURE
++#endif
+diff --git a/clang/include/clang/Basic/OpenCLImageTypes.def b/clang/include/clang/Basic/OpenCLImageTypes.def
+index cfb018a661a..d30afa07605 100644
+--- a/clang/include/clang/Basic/OpenCLImageTypes.def
++++ b/clang/include/clang/Basic/OpenCLImageTypes.def
+@@ -65,20 +65,20 @@ IMAGE_WRITE_TYPE(image2d_msaa, OCLImage2dMSAA, "cl_khr_gl_msaa_sharing")
+ IMAGE_WRITE_TYPE(image2d_array_msaa, OCLImage2dArrayMSAA, "cl_khr_gl_msaa_sharing")
+ IMAGE_WRITE_TYPE(image2d_msaa_depth, OCLImage2dMSAADepth, "cl_khr_gl_msaa_sharing")
+ IMAGE_WRITE_TYPE(image2d_array_msaa_depth, OCLImage2dArrayMSAADepth, "cl_khr_gl_msaa_sharing")
+-IMAGE_WRITE_TYPE(image3d, OCLImage3d, "cl_khr_3d_image_writes")
++IMAGE_WRITE_TYPE(image3d, OCLImage3d, "cl_khr_3d_image_writes __opencl_c_3d_image_writes")
+ 
+-IMAGE_READ_WRITE_TYPE(image1d, OCLImage1d, "")
+-IMAGE_READ_WRITE_TYPE(image1d_array, OCLImage1dArray, "")
+-IMAGE_READ_WRITE_TYPE(image1d_buffer, OCLImage1dBuffer, "")
+-IMAGE_READ_WRITE_TYPE(image2d, OCLImage2d, "")
+-IMAGE_READ_WRITE_TYPE(image2d_array, OCLImage2dArray, "")
+-IMAGE_READ_WRITE_TYPE(image2d_depth, OCLImage2dDepth, "")
+-IMAGE_READ_WRITE_TYPE(image2d_array_depth, OCLImage2dArrayDepth, "")
+-IMAGE_READ_WRITE_TYPE(image2d_msaa, OCLImage2dMSAA, "cl_khr_gl_msaa_sharing")
+-IMAGE_READ_WRITE_TYPE(image2d_array_msaa, OCLImage2dArrayMSAA, "cl_khr_gl_msaa_sharing")
+-IMAGE_READ_WRITE_TYPE(image2d_msaa_depth, OCLImage2dMSAADepth, "cl_khr_gl_msaa_sharing")
+-IMAGE_READ_WRITE_TYPE(image2d_array_msaa_depth, OCLImage2dArrayMSAADepth, "cl_khr_gl_msaa_sharing")
+-IMAGE_READ_WRITE_TYPE(image3d, OCLImage3d, "")
++IMAGE_READ_WRITE_TYPE(image1d, OCLImage1d, "__opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image1d_array, OCLImage1dArray, "__opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image1d_buffer, OCLImage1dBuffer, "__opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image2d, OCLImage2d, "__opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image2d_array, OCLImage2dArray, "__opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image2d_depth, OCLImage2dDepth, "__opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image2d_array_depth, OCLImage2dArrayDepth, "__opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image2d_msaa, OCLImage2dMSAA, "cl_khr_gl_msaa_sharing __opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image2d_array_msaa, OCLImage2dArrayMSAA, "cl_khr_gl_msaa_sharing __opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image2d_msaa_depth, OCLImage2dMSAADepth, "cl_khr_gl_msaa_sharing __opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image2d_array_msaa_depth, OCLImage2dArrayMSAADepth, "cl_khr_gl_msaa_sharing __opencl_c_read_write_images")
++IMAGE_READ_WRITE_TYPE(image3d, OCLImage3d, "__opencl_c_read_write_images")
+ 
+ #undef IMAGE_TYPE
+ #undef GENERIC_IMAGE_TYPE
+diff --git a/clang/include/clang/Basic/OpenCLOptions.h b/clang/include/clang/Basic/OpenCLOptions.h
+index 15661154eab..12d907013c5 100644
+--- a/clang/include/clang/Basic/OpenCLOptions.h
++++ b/clang/include/clang/Basic/OpenCLOptions.h
+@@ -16,28 +16,106 @@
+ 
+ #include "clang/Basic/LangOptions.h"
+ #include "llvm/ADT/StringMap.h"
++#include "llvm/Support/Debug.h"
+ 
+ namespace clang {
+ 
+ /// OpenCL supported extensions and optional core features
+ class OpenCLOptions {
++  // There are two types of OpenCL options:
++  // extensions and (since OpenCL 3.0) features
++  enum OpenCLOptionType { Extension, Feature };
++
+   struct Info {
++    OpenCLOptionType OptType;
+     bool Supported; // Is this option supported
+-    bool Enabled;   // Is this option enabled
++    bool Enabled;   // Is this option enabled (used only for extensions)
+     unsigned Avail; // Option starts to be available in this OpenCL version
+     unsigned Core;  // Option becomes (optional) core feature in this OpenCL
+                     // version
+-    Info(bool S = false, bool E = false, unsigned A = 100, unsigned C = ~0U)
+-      :Supported(S), Enabled(E), Avail(A), Core(C){}
++
++    Info(OpenCLOptionType Ty = OpenCLOptionType::Extension, bool S = false,
++         bool E = false, unsigned A = 100, unsigned C = ~0U)
++        : OptType(Ty), Supported(S), Enabled(E), Avail(A), Core(C) {}
++    bool isFeature() const { return OptType == OpenCLOptionType::Feature; }
++    bool isExtension() const { return OptType == OpenCLOptionType::Extension; }
+   };
++
+   llvm::StringMap<Info> OptMap;
++
++  /// Enable or disable support for OpenCL extensions or
++  /// feature macro. Option name optionally prefixed with '+' or '-'
++
++  void supportOption(llvm::StringRef Option,
++                     OpenCLOptionType OCLOptType = OpenCLOptionType::Extension,
++                     bool V = true) {
++    assert(!Option.empty() && "Option is empty.");
++
++    switch (Option[0]) {
++    case '+':
++      V = true;
++      Option = Option.drop_front();
++      break;
++    case '-':
++      V = false;
++      Option = Option.drop_front();
++      break;
++    }
++
++    if (Option.equals("all")) {
++      if (OCLOptType == OpenCLOptionType::Extension)
++        supportAllExtensions(V);
++      // Not supported option for features
++      return;
++    }
++
++    OptMap[Option].Supported = V;
++    OptMap[Option].OptType = OCLOptType;
++    // Enabled flag for features must be the same as Supported
++    if (OCLOptType == OpenCLOptionType::Feature)
++      OptMap[Option].Enabled = V;
++  }
++
++  template <OpenCLOptionType OCLOptType> void disableAllOptions() {
++    llvm::for_each(OptMap, [&](llvm::StringMapEntry<Info> &OptVal) {
++      if (OptVal.getValue().OptType == OCLOptType)
++        OptVal.getValue().Enabled = false;
++    });
++  }
++
++  template <OpenCLOptionType OCLOptType>
++  bool isKnownOption(llvm::StringRef Opt) const {
++    auto It = OptMap.find(Opt);
++    return It != OptMap.end() && (It->second.OptType == OCLOptType);
++  }
++
++  // Turn on or off support of all options.
++  template <OpenCLOptionType OCLOptType>
++  void supportAllOptions(bool On = true) {
++    llvm::for_each(OptMap, [&](llvm::StringMapEntry<Info> &OptVal) {
++      if (OptVal.getValue().OptType == OCLOptType)
++        supportOption(OptVal.getKey(), OCLOptType, On);
++    });
++  }
++
+ public:
+-  bool isKnown(llvm::StringRef Ext) const {
+-    return OptMap.find(Ext) != OptMap.end();
++
++  bool isKnownExtension(llvm::StringRef Opt) const {
++    return isKnownOption<OpenCLOptionType::Extension>(Opt);
++  }
++
++  bool isKnownFeature(llvm::StringRef Opt) const {
++    return isKnownOption<OpenCLOptionType::Feature>(Opt);
++  }
++
++  // Check if extension is enabled or disabled, feature supported or
++  // unssupported
++  bool isAvailableOption(llvm::StringRef OptName) {
++    return OptMap.find(OptName)->getValue().Enabled;
+   }
+ 
+-  bool isEnabled(llvm::StringRef Ext) const {
+-    return OptMap.find(Ext)->second.Enabled;
++  bool isAvailableOption(llvm::StringRef OptName) const {
++      return OptMap.find(OptName)->getValue().Enabled;
+   }
+ 
+   // Is supported as either an extension or an (optional) core feature for
+@@ -58,79 +136,85 @@ public:
+     return I.Supported && I.Avail <= CLVer && I.Core != ~0U && CLVer >= I.Core;
+   }
+ 
+-  // Is supported OpenCL extension for OpenCL version \p CLVer.
+-  // For supported (optional) core feature, return false.
+   bool isSupportedExtension(llvm::StringRef Ext, const LangOptions &LO) const {
+     // In C++ mode all extensions should work at least as in v2.0.
+     auto CLVer = LO.OpenCLCPlusPlus ? 200 : LO.OpenCLVersion;
+     auto I = OptMap.find(Ext)->getValue();
+-    return I.Supported && I.Avail <= CLVer && (I.Core == ~0U || CLVer < I.Core);
++    return I.isExtension() && I.Supported && I.Avail <= CLVer &&
++           (I.Core == ~0U || CLVer < I.Core);
+   }
+ 
+-  void enable(llvm::StringRef Ext, bool V = true) {
+-    OptMap[Ext].Enabled = V;
++  // All features since OpenCL 3.0 version must be supported explicitly
++  bool isSupportedFeature(llvm::StringRef Feat, const LangOptions &LO) const {
++    auto I = OptMap.find(Feat)->getValue();
++    auto CLVer = LO.OpenCLCPlusPlus ? 200 : LO.OpenCLVersion;
++    // Till 3.0 all features are supported implicitly
++    // since appropriate version
++    if (CLVer < 300)
++      return I.isFeature() && I.Avail <= CLVer;
++    return I.isFeature() && I.Supported;
+   }
+ 
+-  /// Enable or disable support for OpenCL extensions
+-  /// \param Ext name of the extension optionally prefixed with
+-  ///        '+' or '-'
+-  /// \param V used when \p Ext is not prefixed by '+' or '-'
+-  void support(llvm::StringRef Ext, bool V = true) {
+-    assert(!Ext.empty() && "Extension is empty.");
++  void enable(llvm::StringRef Ext, bool V = true) { OptMap[Ext].Enabled = V; }
+ 
+-    switch (Ext[0]) {
+-    case '+':
+-      V = true;
+-      Ext = Ext.drop_front();
+-      break;
+-    case '-':
+-      V = false;
+-      Ext = Ext.drop_front();
+-      break;
+-    }
++  void supportExtension(llvm::StringRef Option, bool V = true) {
++    supportOption(Option, OpenCLOptionType::Extension, V);
++  }
+ 
+-    if (Ext.equals("all")) {
+-      supportAll(V);
+-      return;
+-    }
+-    OptMap[Ext].Supported = V;
++  void supportFeature(llvm::StringRef Option, bool V = true) {
++    supportOption(Option, OpenCLOptionType::Feature, V);
+   }
+ 
+-  OpenCLOptions(){
+-#define OPENCLEXT_INTERNAL(Ext, AvailVer, CoreVer) \
+-    OptMap[#Ext].Avail = AvailVer; \
+-    OptMap[#Ext].Core = CoreVer;
++  OpenCLOptions() {
++#define OPENCLEXT_INTERNAL(Ext, AvailVer, CoreVer)                             \
++  OptMap[#Ext].OptType = OpenCLOptionType::Extension;                          \
++  OptMap[#Ext].Avail = AvailVer;                                               \
++  OptMap[#Ext].Core = CoreVer;
+ #include "clang/Basic/OpenCLExtensions.def"
++
++    // OpenCL features supported only since 3.0
++#define OPENCLFEATURE_INTERNAL(Feat, AvailVer, CoreVer)                        \
++  OptMap[#Feat].OptType = OpenCLOptionType::Feature;                           \
++  OptMap[#Feat].Avail = AvailVer;                                              \
++  OptMap[#Feat].Core = CoreVer;
++#include "clang/Basic/OpenCLFeatures.def"
+   }
+ 
+   void addSupport(const OpenCLOptions &Opts) {
+-    for (auto &I:Opts.OptMap)
++    for (auto &I : Opts.OptMap)
+       if (I.second.Supported)
+-        OptMap[I.getKey()].Supported = true;
++        supportOption(I.getKey(), I.getValue().OptType, true);
+   }
+ 
+-  void copy(const OpenCLOptions &Opts) {
+-    OptMap = Opts.OptMap;
++  void copy(const OpenCLOptions &Opts) { OptMap = Opts.OptMap; }
++
++  // Turn on or off support of all extensions.
++  void supportAllExtensions(bool On = true) {
++    supportAllOptions<OpenCLOptionType::Extension>(On);
+   }
+ 
+-  // Turn on or off support of all options.
+-  void supportAll(bool On = true) {
+-    for (llvm::StringMap<Info>::iterator I = OptMap.begin(),
+-         E = OptMap.end(); I != E; ++I)
+-      I->second.Supported = On;
++  // Turn on or off support of all features.
++  void supportAllFeatures(bool On = true) {
++    supportAllOptions<OpenCLOptionType::Feature>(On);
++  }
++
++  void disableAllExtensions() {
++    disableAllOptions<OpenCLOptionType::Extension>();
+   }
+ 
+-  void disableAll() {
+-    for (llvm::StringMap<Info>::iterator I = OptMap.begin(),
+-         E = OptMap.end(); I != E; ++I)
+-      I->second.Enabled = false;
++  void enableSupportedCoreExtensions(LangOptions LO) {
++    llvm::for_each(OptMap, [&](llvm::StringMapEntry<Info> &OptVal) {
++      if (OptVal.getValue().isExtension() &&
++          isSupportedCore(OptVal.getKey(), LO))
++        enable(OptVal.getKey());
++    });
+   }
+ 
+-  void enableSupportedCore(LangOptions LO) {
+-    for (llvm::StringMap<Info>::iterator I = OptMap.begin(), E = OptMap.end();
+-         I != E; ++I)
+-      if (isSupportedCore(I->getKey(), LO))
+-        I->second.Enabled = true;
++  void supportCoreFeatures(LangOptions LO) {
++    llvm::for_each(OptMap, [&](llvm::StringMapEntry<Info> &OptVal) {
++      if (OptVal.getValue().isFeature() && isSupportedCore(OptVal.getKey(), LO))
++        supportFeature(OptVal.getKey(), true);
++    });
+   }
+ 
+   friend class ASTWriter;
+diff --git a/clang/include/clang/Basic/TargetInfo.h b/clang/include/clang/Basic/TargetInfo.h
+index 3a8e3552469..e8042bc893a 100644
+--- a/clang/include/clang/Basic/TargetInfo.h
++++ b/clang/include/clang/Basic/TargetInfo.h
+@@ -1331,7 +1331,13 @@ public:
+   /// Set supported OpenCL extensions as written on command line
+   virtual void setOpenCLExtensionOpts() {
+     for (const auto &Ext : getTargetOpts().OpenCLExtensionsAsWritten) {
+-      getTargetOpts().SupportedOpenCLOptions.support(Ext);
++      getTargetOpts().SupportedOpenCLOptions.supportExtension(Ext);
++    }
++  }
++
++  virtual void setOpenCLFeatureOpts() {
++    for (const auto &Feat : getTargetOpts().OpenCLFeaturesAsWritten) {
++      getTargetOpts().SupportedOpenCLOptions.supportFeature(Feat);
+     }
+   }
+ 
+diff --git a/clang/include/clang/Basic/TargetOptions.h b/clang/include/clang/Basic/TargetOptions.h
+index bbe86aebb07..6946b8e507c 100644
+--- a/clang/include/clang/Basic/TargetOptions.h
++++ b/clang/include/clang/Basic/TargetOptions.h
+@@ -61,6 +61,10 @@ public:
+   /// the command line.
+   std::vector<std::string> OpenCLExtensionsAsWritten;
+ 
++  /// The list of OpenCL features to enable or disable, as written on
++  /// the command line.
++  std::vector<std::string> OpenCLFeaturesAsWritten;
++
+   /// If given, enables support for __int128_t and __uint128_t types.
+   bool ForceEnableInt128 = false;
+ 
+diff --git a/clang/include/clang/Driver/CC1Options.td b/clang/include/clang/Driver/CC1Options.td
+index d1f5ec5a3d4..711df503dde 100644
+--- a/clang/include/clang/Driver/CC1Options.td
++++ b/clang/include/clang/Driver/CC1Options.td
+@@ -869,6 +869,11 @@ def disable_pragma_debug_crash : Flag<["-"], "disable-pragma-debug-crash">,
+ def cl_ext_EQ : CommaJoined<["-"], "cl-ext=">,
+   HelpText<"OpenCL only. Enable or disable OpenCL extensions. The argument is a comma-separated sequence of one or more extension names, each prefixed by '+' or '-'.">;
+ 
++
++def cl_feature_EQ : CommaJoined<["-"], "cl-feature=">,
++  HelpText<"OpenCL only. Enable or disable OpenCL features. The argument is a comma-separated sequence of one or more feature names, each prefixed by '+' or '-'.">;
++
++
+ //===----------------------------------------------------------------------===//
+ // CUDA Options
+ //===----------------------------------------------------------------------===//
+diff --git a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
+index 0a60873443f..598eb1f9515 100644
+--- a/clang/include/clang/Driver/Options.td
++++ b/clang/include/clang/Driver/Options.td
+@@ -522,7 +522,7 @@ def cl_mad_enable : Flag<["-"], "cl-mad-enable">, Group<opencl_Group>, Flags<[CC
+ def cl_no_signed_zeros : Flag<["-"], "cl-no-signed-zeros">, Group<opencl_Group>, Flags<[CC1Option]>,
+   HelpText<"OpenCL only. Allow use of less precise no signed zeros computations in the generated binary.">;
+ def cl_std_EQ : Joined<["-"], "cl-std=">, Group<opencl_Group>, Flags<[CC1Option]>,
+-  HelpText<"OpenCL language standard to compile for.">, Values<"cl,CL,cl1.1,CL1.1,cl1.2,CL1.2,cl2.0,CL2.0,clc++,CLC++">;
++  HelpText<"OpenCL language standard to compile for.">, Values<"cl,CL,cl1.1,CL1.1,cl1.2,CL1.2,cl2.0,CL2.0,cl3.0,CL3.0,clc++,CLC++">;
+ def cl_denorms_are_zero : Flag<["-"], "cl-denorms-are-zero">, Group<opencl_Group>, Flags<[CC1Option]>,
+   HelpText<"OpenCL only. Allow denormals to be flushed to zero.">;
+ def cl_fp32_correctly_rounded_divide_sqrt : Flag<["-"], "cl-fp32-correctly-rounded-divide-sqrt">, Group<opencl_Group>, Flags<[CC1Option]>,
+diff --git a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
+index 842e4960227..2cff85aa6f3 100644
+--- a/clang/include/clang/Sema/Sema.h
++++ b/clang/include/clang/Sema/Sema.h
+@@ -9566,19 +9566,22 @@ public:
+                                            SourceLocation FuncLoc);
+ 
+   //===--------------------------------------------------------------------===//
+-  // OpenCL extensions.
++  // OpenCL extensions and features
+   //
+ private:
+   std::string CurrOpenCLExtension;
++  std::string CurrOpenCLFeature;
+   /// Extensions required by an OpenCL type.
+-  llvm::DenseMap<const Type*, std::set<std::string>> OpenCLTypeExtMap;
++  llvm::DenseMap<const Type *, std::set<std::string>> OpenCLTypeExtMap;
++  /// Features required by an OpenCL type (since 3.0).
++  llvm::DenseMap<const Type *, std::set<std::string>> OpenCLTypeFeatureMap;
+   /// Extensions required by an OpenCL declaration.
+   llvm::DenseMap<const Decl*, std::set<std::string>> OpenCLDeclExtMap;
+ public:
+   llvm::StringRef getCurrentOpenCLExtension() const {
+     return CurrOpenCLExtension;
+   }
+-
++  llvm::StringRef getCurrentOpenCLFeature() const { return CurrOpenCLFeature; }
+   /// Check if a function declaration \p FD associates with any
+   /// extensions present in OpenCLDeclExtMap and if so return the
+   /// extension(s) name(s).
+@@ -9597,6 +9600,10 @@ public:
+     CurrOpenCLExtension = Ext;
+   }
+ 
++  void setCurrentOpenCLFeature(llvm::StringRef Feat) {
++    CurrOpenCLFeature = std::string(Feat);
++  }
++
+   /// Set OpenCL extensions for a type which can only be used when these
+   /// OpenCL extensions are enabled. If \p Exts is empty, do nothing.
+   /// \param Exts A space separated list of OpenCL extensions.
+@@ -9613,11 +9620,15 @@ public:
+   /// empty, do nothing.
+   void setCurrentOpenCLExtensionForType(QualType T);
+ 
++  void setCurrentOpenCLFeatureForType(QualType T);
++
+   /// Set current OpenCL extensions for a declaration which
+   /// can only be used when these OpenCL extensions are enabled. If current
+   /// OpenCL extension is empty, do nothing.
+   void setCurrentOpenCLExtensionForDecl(Decl *FD);
+ 
++  void setCurrentOpenCLFeatureForDecl(Decl *FD);
++
+   bool isOpenCLDisabledDecl(Decl *FD);
+ 
+   /// Check if type \p T corresponding to declaration specifier \p DS
+@@ -9632,6 +9643,11 @@ public:
+   /// \return true if type is disabled.
+   bool checkOpenCLDisabledDecl(const NamedDecl &D, const Expr &E);
+ 
++  bool isSupportedOpenCLOMemoryrdering(int64_t Ordering);
++
++  bool isSupportedOpenCLMemoryScope(SyncScope Scope);
++
++  bool checkOpenCLFeatureSupportForBuiltin(CallExpr* Call);
+   //===--------------------------------------------------------------------===//
+   // OpenMP directives and clauses.
+   //
+diff --git a/clang/lib/AST/ASTContext.cpp b/clang/lib/AST/ASTContext.cpp
+index 1be72efe4de..a102861f23b 100644
+--- a/clang/lib/AST/ASTContext.cpp
++++ b/clang/lib/AST/ASTContext.cpp
+@@ -1490,7 +1490,9 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
+   ObjCSuperType = QualType();
+ 
+   // void * type
+-  if (LangOpts.OpenCLVersion >= 200) {
++  if (!LangOpts.OpenCLCPlusPlus &&
++      Target.getSupportedOpenCLOpts().isAvailableOption(
++          "__opencl_c_generic_address_space")) {
+     auto Q = VoidTy.getQualifiers();
+     Q.setAddressSpace(LangAS::opencl_generic);
+     VoidPtrTy = getPointerType(getCanonicalType(
+diff --git a/clang/lib/Basic/Builtins.cpp b/clang/lib/Basic/Builtins.cpp
+index 0cd89df41b6..a407bbed8f4 100644
+--- a/clang/lib/Basic/Builtins.cpp
++++ b/clang/lib/Basic/Builtins.cpp
+@@ -69,6 +69,10 @@ bool Builtin::Context::builtinIsSupported(const Builtin::Info &BuiltinInfo,
+   bool ObjCUnsupported = !LangOpts.ObjC && BuiltinInfo.Langs == OBJC_LANG;
+   bool OclC1Unsupported = (LangOpts.OpenCLVersion / 100) != 1 &&
+                           (BuiltinInfo.Langs & ALL_OCLC_LANGUAGES ) ==  OCLC1X_LANG;
++  bool OclC2030Unsupported =
++      (LangOpts.OpenCLVersion < 200 && LangOpts.OpenCLVersion != 300 &&
++       !LangOpts.OpenCLCPlusPlus) &&
++      (BuiltinInfo.Langs & ALL_OCLC_LANGUAGES) == OCL20_30_LANG;
+   bool OclC2Unsupported =
+       (LangOpts.OpenCLVersion != 200 && !LangOpts.OpenCLCPlusPlus) &&
+       (BuiltinInfo.Langs & ALL_OCLC_LANGUAGES) == OCLC20_LANG;
+@@ -78,9 +82,9 @@ bool Builtin::Context::builtinIsSupported(const Builtin::Info &BuiltinInfo,
+   bool CPlusPlusUnsupported =
+       !LangOpts.CPlusPlus && BuiltinInfo.Langs == CXX_LANG;
+   return !BuiltinsUnsupported && !MathBuiltinsUnsupported && !OclCUnsupported &&
+-         !OclC1Unsupported && !OclC2Unsupported && !OpenMPUnsupported &&
+-         !GnuModeUnsupported && !MSModeUnsupported && !ObjCUnsupported &&
+-         !CPlusPlusUnsupported;
++         !OclC1Unsupported && !OclC2Unsupported && !OclC2030Unsupported &&
++         !OpenMPUnsupported && !GnuModeUnsupported && !MSModeUnsupported &&
++         !ObjCUnsupported && !CPlusPlusUnsupported;
+ }
+ 
+ /// initializeBuiltins - Mark the identifiers for all the builtins with their
+diff --git a/clang/lib/Basic/TargetInfo.cpp b/clang/lib/Basic/TargetInfo.cpp
+index 3a21a19e1f1..25be5c41cbd 100644
+--- a/clang/lib/Basic/TargetInfo.cpp
++++ b/clang/lib/Basic/TargetInfo.cpp
+@@ -377,6 +377,12 @@ void TargetInfo::adjust(LangOptions &Opts) {
+     HalfFormat = &llvm::APFloat::IEEEhalf();
+     FloatFormat = &llvm::APFloat::IEEEsingle();
+     LongDoubleFormat = &llvm::APFloat::IEEEquad();
++
++    // OpenCL features.
++#define OPENCLFEATURE(Feat)                                                \
++  if (getSupportedOpenCLOpts().isSupportedFeature(#Feat, Opts))         \
++    getSupportedOpenCLOpts().supportFeature(#Feat);
++#include "clang/Basic/OpenCLFeatures.def"
+   }
+ 
+   if (Opts.LongDoubleSize) {
+diff --git a/clang/lib/Basic/Targets.cpp b/clang/lib/Basic/Targets.cpp
+index c063f8ca447..d95622beeb1 100644
+--- a/clang/lib/Basic/Targets.cpp
++++ b/clang/lib/Basic/Targets.cpp
+@@ -671,6 +671,7 @@ TargetInfo::CreateTargetInfo(DiagnosticsEngine &Diags,
+ 
+   Target->setSupportedOpenCLOpts();
+   Target->setOpenCLExtensionOpts();
++  Target->setOpenCLFeatureOpts();
+   Target->setMaxAtomicWidth();
+ 
+   if (!Target->validateTarget(Diags))
+diff --git a/clang/lib/Basic/Targets/AMDGPU.h b/clang/lib/Basic/Targets/AMDGPU.h
+index 456cb2ebb8b..b4d006eda07 100644
+--- a/clang/lib/Basic/Targets/AMDGPU.h
++++ b/clang/lib/Basic/Targets/AMDGPU.h
+@@ -242,31 +242,31 @@ public:
+ 
+   void setSupportedOpenCLOpts() override {
+     auto &Opts = getSupportedOpenCLOpts();
+-    Opts.support("cl_clang_storage_class_specifiers");
+-    Opts.support("cl_khr_icd");
++    Opts.supportExtension("cl_clang_storage_class_specifiers");
++    Opts.supportExtension("cl_khr_icd");
+ 
+     bool IsAMDGCN = isAMDGCN(getTriple());
+ 
+     if (hasFP64())
+-      Opts.support("cl_khr_fp64");
++      Opts.supportExtension("cl_khr_fp64");
+ 
+     if (IsAMDGCN || GPUKind >= llvm::AMDGPU::GK_CEDAR) {
+-      Opts.support("cl_khr_byte_addressable_store");
+-      Opts.support("cl_khr_global_int32_base_atomics");
+-      Opts.support("cl_khr_global_int32_extended_atomics");
+-      Opts.support("cl_khr_local_int32_base_atomics");
+-      Opts.support("cl_khr_local_int32_extended_atomics");
++      Opts.supportExtension("cl_khr_byte_addressable_store");
++      Opts.supportExtension("cl_khr_global_int32_base_atomics");
++      Opts.supportExtension("cl_khr_global_int32_extended_atomics");
++      Opts.supportExtension("cl_khr_local_int32_base_atomics");
++      Opts.supportExtension("cl_khr_local_int32_extended_atomics");
+     }
+ 
+     if (IsAMDGCN) {
+-      Opts.support("cl_khr_fp16");
+-      Opts.support("cl_khr_int64_base_atomics");
+-      Opts.support("cl_khr_int64_extended_atomics");
+-      Opts.support("cl_khr_mipmap_image");
+-      Opts.support("cl_khr_subgroups");
+-      Opts.support("cl_khr_3d_image_writes");
+-      Opts.support("cl_amd_media_ops");
+-      Opts.support("cl_amd_media_ops2");
++      Opts.supportExtension("cl_khr_fp16");
++      Opts.supportExtension("cl_khr_int64_base_atomics");
++      Opts.supportExtension("cl_khr_int64_extended_atomics");
++      Opts.supportExtension("cl_khr_mipmap_image");
++      Opts.supportExtension("cl_khr_subgroups");
++      Opts.supportExtension("cl_khr_3d_image_writes");
++      Opts.supportExtension("cl_amd_media_ops");
++      Opts.supportExtension("cl_amd_media_ops2");
+     }
+   }
+ 
+diff --git a/clang/lib/Basic/Targets/NVPTX.h b/clang/lib/Basic/Targets/NVPTX.h
+index 63780789c47..a2b61b2861b 100644
+--- a/clang/lib/Basic/Targets/NVPTX.h
++++ b/clang/lib/Basic/Targets/NVPTX.h
+@@ -125,16 +125,16 @@ public:
+ 
+   void setSupportedOpenCLOpts() override {
+     auto &Opts = getSupportedOpenCLOpts();
+-    Opts.support("cl_clang_storage_class_specifiers");
+-    Opts.support("cl_khr_gl_sharing");
+-    Opts.support("cl_khr_icd");
+-
+-    Opts.support("cl_khr_fp64");
+-    Opts.support("cl_khr_byte_addressable_store");
+-    Opts.support("cl_khr_global_int32_base_atomics");
+-    Opts.support("cl_khr_global_int32_extended_atomics");
+-    Opts.support("cl_khr_local_int32_base_atomics");
+-    Opts.support("cl_khr_local_int32_extended_atomics");
++    Opts.supportExtension("cl_clang_storage_class_specifiers");
++    Opts.supportExtension("cl_khr_gl_sharing");
++    Opts.supportExtension("cl_khr_icd");
++
++    Opts.supportExtension("cl_khr_fp64");
++    Opts.supportExtension("cl_khr_byte_addressable_store");
++    Opts.supportExtension("cl_khr_global_int32_base_atomics");
++    Opts.supportExtension("cl_khr_global_int32_extended_atomics");
++    Opts.supportExtension("cl_khr_local_int32_base_atomics");
++    Opts.supportExtension("cl_khr_local_int32_extended_atomics");
+   }
+ 
+   /// \returns If a target requires an address within a target specific address
+diff --git a/clang/lib/Basic/Targets/SPIR.h b/clang/lib/Basic/Targets/SPIR.h
+index 279d1866a42..39f1c420993 100644
+--- a/clang/lib/Basic/Targets/SPIR.h
++++ b/clang/lib/Basic/Targets/SPIR.h
+@@ -98,7 +98,7 @@ public:
+   void setSupportedOpenCLOpts() override {
+     // Assume all OpenCL extensions and optional core features are supported
+     // for SPIR since it is a generic target.
+-    getSupportedOpenCLOpts().supportAll();
++    getSupportedOpenCLOpts().supportAllExtensions();
+   }
+ };
+ class LLVM_LIBRARY_VISIBILITY SPIR32TargetInfo : public SPIRTargetInfo {
+diff --git a/clang/lib/Basic/Targets/X86.h b/clang/lib/Basic/Targets/X86.h
+index 5b5e284e514..0929f748d33 100644
+--- a/clang/lib/Basic/Targets/X86.h
++++ b/clang/lib/Basic/Targets/X86.h
+@@ -345,7 +345,7 @@ public:
+   bool hasSjLjLowering() const override { return true; }
+ 
+   void setSupportedOpenCLOpts() override {
+-    getSupportedOpenCLOpts().supportAll();
++    getSupportedOpenCLOpts().supportAllExtensions();
+   }
+ 
+   uint64_t getPointerWidthV(unsigned AddrSpace) const override {
+diff --git a/clang/lib/Frontend/CompilerInvocation.cpp b/clang/lib/Frontend/CompilerInvocation.cpp
+index e98a407ac42..96dd1442a47 100644
+--- a/clang/lib/Frontend/CompilerInvocation.cpp
++++ b/clang/lib/Frontend/CompilerInvocation.cpp
+@@ -2298,6 +2298,8 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
+     Opts.OpenCLVersion = 120;
+   else if (LangStd == LangStandard::lang_opencl20)
+     Opts.OpenCLVersion = 200;
++  else if (LangStd == LangStandard::lang_opencl30)
++    Opts.OpenCLVersion = 300;
+   else if (LangStd == LangStandard::lang_openclcpp)
+     Opts.OpenCLCPlusPlusVersion = 100;
+ 
+@@ -2504,6 +2506,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
+         .Cases("cl1.1", "CL1.1", LangStandard::lang_opencl11)
+         .Cases("cl1.2", "CL1.2", LangStandard::lang_opencl12)
+         .Cases("cl2.0", "CL2.0", LangStandard::lang_opencl20)
++        .Cases("cl3.0", "CL3.0", LangStandard::lang_opencl30)
+         .Cases("clc++", "CLC++", LangStandard::lang_openclcpp)
+         .Default(LangStandard::lang_unspecified);
+ 
+@@ -2788,7 +2791,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
+   Opts.RTTI = Opts.CPlusPlus && !Args.hasArg(OPT_fno_rtti);
+   Opts.RTTIData = Opts.RTTI && !Args.hasArg(OPT_fno_rtti_data);
+   Opts.Blocks = Args.hasArg(OPT_fblocks) || (Opts.OpenCL
+-    && Opts.OpenCLVersion == 200);
++    && Opts.OpenCLVersion >= 200);
+   Opts.BlocksRuntimeOptional = Args.hasArg(OPT_fblocks_runtime_optional);
+   Opts.Coroutines = Opts.CPlusPlus2a || Args.hasArg(OPT_fcoroutines_ts);
+ 
+@@ -3489,6 +3492,8 @@ static void ParseTargetArgs(TargetOptions &Opts, ArgList &Args,
+     Opts.Triple = llvm::sys::getDefaultTargetTriple();
+   Opts.Triple = llvm::Triple::normalize(Opts.Triple);
+   Opts.OpenCLExtensionsAsWritten = Args.getAllArgValues(OPT_cl_ext_EQ);
++  Opts.OpenCLFeaturesAsWritten = Args.getAllArgValues(OPT_cl_feature_EQ);
++
+   Opts.ForceEnableInt128 = Args.hasArg(OPT_fforce_enable_int128);
+   Opts.NVPTXUseShortPointers = Args.hasFlag(
+       options::OPT_fcuda_short_ptr, options::OPT_fno_cuda_short_ptr, false);
+diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
+index c273cb96d9b..fef09c5841d 100644
+--- a/clang/lib/Frontend/InitPreprocessor.cpp
++++ b/clang/lib/Frontend/InitPreprocessor.cpp
+@@ -445,6 +445,9 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
+       case 200:
+         Builder.defineMacro("__OPENCL_C_VERSION__", "200");
+         break;
++      case 300:
++        Builder.defineMacro("__OPENCL_C_VERSION__", "300");
++        break;
+       default:
+         llvm_unreachable("Unsupported OpenCL version");
+       }
+@@ -453,6 +456,7 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
+     Builder.defineMacro("CL_VERSION_1_1", "110");
+     Builder.defineMacro("CL_VERSION_1_2", "120");
+     Builder.defineMacro("CL_VERSION_2_0", "200");
++    Builder.defineMacro("CL_VERSION_3_0", "300");
+ 
+     if (TI.isLittleEndian())
+       Builder.defineMacro("__ENDIAN_LITTLE__");
+@@ -1105,6 +1109,12 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
+     Builder.defineMacro(#Ext);
+ #include "clang/Basic/OpenCLExtensions.def"
+ 
++    // OpenCL features.
++#define OPENCLFEATURE(Feat)                                                    \
++  if (TI.getSupportedOpenCLOpts().isSupportedFeature(#Feat, LangOpts))         \
++    Builder.defineMacro(#Feat);
++#include "clang/Basic/OpenCLFeatures.def"
++
+     if (TI.getTriple().isSPIR())
+       Builder.defineMacro("__IMAGE_SUPPORT__");
+   }
+diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
+index 06c5ab6a72f..8459e37817c 100644
+--- a/clang/lib/Headers/opencl-c.h
++++ b/clang/lib/Headers/opencl-c.h
+@@ -7352,7 +7352,7 @@ half16 __ovld __cnfn fmod(half16 x, half16 y);
+  * Returns fmin(x - floor (x), 0x1.fffffep-1f ).
+  * floor(x) is returned in iptr.
+  */
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#if __opencl_c_generic_address_space
+ float __ovld fract(float x, float *iptr);
+ float2 __ovld fract(float2 x, float2 *iptr);
+ float3 __ovld fract(float3 x, float3 *iptr);
+@@ -7434,7 +7434,7 @@ half4 __ovld fract(half4 x, __private half4 *iptr);
+ half8 __ovld fract(half8 x, __private half8 *iptr);
+ half16 __ovld fract(half16 x, __private half16 *iptr);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ 
+ /**
+  * Extract mantissa and exponent from x. For each
+@@ -7442,7 +7442,7 @@ half16 __ovld fract(half16 x, __private half16 *iptr);
+  * magnitude in the interval [1/2, 1) or 0. Each
+  * component of x equals mantissa returned * 2^exp.
+  */
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_generic_address_space
+ float __ovld frexp(float x, int *exp);
+ float2 __ovld frexp(float2 x, int2 *exp);
+ float3 __ovld frexp(float3 x, int3 *exp);
+@@ -7524,7 +7524,7 @@ half4 __ovld frexp(half4 x, __private int4 *exp);
+ half8 __ovld frexp(half8 x, __private int8 *exp);
+ half16 __ovld frexp(half16 x, __private int16 *exp);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif ////__opencl_c_generic_address_space
+ 
+ /**
+  * Compute the value of the square root of x^2 + y^2
+@@ -7649,7 +7649,7 @@ half8 __ovld __cnfn lgamma(half8 x);
+ half16 __ovld __cnfn lgamma(half16 x);
+ #endif //cl_khr_fp16
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_generic_address_space
+ float __ovld lgamma_r(float x, int *signp);
+ float2 __ovld lgamma_r(float2 x, int2 *signp);
+ float3 __ovld lgamma_r(float3 x, int3 *signp);
+@@ -7731,7 +7731,7 @@ half4 __ovld lgamma_r(half4 x, __private int4 *signp);
+ half8 __ovld lgamma_r(half8 x, __private int8 *signp);
+ half16 __ovld lgamma_r(half16 x, __private int16 *signp);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ 
+ /**
+  * Compute natural logarithm.
+@@ -7955,7 +7955,7 @@ half16 __ovld __cnfn minmag(half16 x, half16 y);
+  * the argument. It stores the integral part in the object
+  * pointed to by iptr.
+  */
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_generic_address_space
+ float __ovld modf(float x, float *iptr);
+ float2 __ovld modf(float2 x, float2 *iptr);
+ float3 __ovld modf(float3 x, float3 *iptr);
+@@ -8037,7 +8037,7 @@ half4 __ovld modf(half4 x, __private half4 *iptr);
+ half8 __ovld modf(half8 x, __private half8 *iptr);
+ half16 __ovld modf(half16 x, __private half16 *iptr);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ 
+ /**
+  * Returns a quiet NaN. The nancode may be placed
+@@ -8215,7 +8215,7 @@ half16 __ovld __cnfn remainder(half16 x, half16 y);
+  * sign as x/y. It stores this signed value in the object
+  * pointed to by quo.
+  */
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#if __opencl_c_generic_address_space
+ float __ovld remquo(float x, float y, int *quo);
+ float2 __ovld remquo(float2 x, float2 y, int2 *quo);
+ float3 __ovld remquo(float3 x, float3 y, int3 *quo);
+@@ -8298,7 +8298,7 @@ half4 __ovld remquo(half4 x, half4 y, __private int4 *quo);
+ half8 __ovld remquo(half8 x, half8 y, __private int8 *quo);
+ half16 __ovld remquo(half16 x, half16 y, __private int16 *quo);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ /**
+  * Round to integral value (using round to nearest
+  * even rounding mode) in floating-point format.
+@@ -8439,7 +8439,7 @@ half16 __ovld __cnfn sin(half16);
+  * is the return value and computed cosine is returned
+  * in cosval.
+  */
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_generic_address_space
+ float __ovld sincos(float x, float *cosval);
+ float2 __ovld sincos(float2 x, float2 *cosval);
+ float3 __ovld sincos(float3 x, float3 *cosval);
+@@ -8521,7 +8521,7 @@ half4 __ovld sincos(half4 x, __private half4 *cosval);
+ half8 __ovld sincos(half8 x, __private half8 *cosval);
+ half16 __ovld sincos(half16 x, __private half16 *cosval);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ 
+ /**
+  * Compute hyperbolic sine.
+@@ -11340,7 +11340,7 @@ half8 __ovld vload8(size_t offset, const __constant half *p);
+ half16 __ovld vload16(size_t offset, const __constant half *p);
+ #endif //cl_khr_fp16
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_generic_address_space
+ char2 __ovld vload2(size_t offset, const char *p);
+ uchar2 __ovld vload2(size_t offset, const uchar *p);
+ short2 __ovld vload2(size_t offset, const short *p);
+@@ -11578,9 +11578,9 @@ half4 __ovld vload4(size_t offset, const __private half *p);
+ half8 __ovld vload8(size_t offset, const __private half *p);
+ half16 __ovld vload16(size_t offset, const __private half *p);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_generic_address_space
+ void __ovld vstore2(char2 data, size_t offset, char *p);
+ void __ovld vstore2(uchar2 data, size_t offset, uchar *p);
+ void __ovld vstore2(short2 data, size_t offset, short *p);
+@@ -11814,7 +11814,7 @@ void __ovld vstore4(half4 data, size_t offset, __private half *p);
+ void __ovld vstore8(half8 data, size_t offset, __private half *p);
+ void __ovld vstore16(half16 data, size_t offset, __private half *p);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ 
+ /**
+  * Read sizeof (half) bytes of data from address
+@@ -11881,7 +11881,7 @@ float16 __ovld vload_half16(size_t offset, const __private half *p);
+  * The default current rounding mode is round to
+  * nearest even.
+  */
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_generic_address_space
+ void __ovld vstore_half(float data, size_t offset, half *p);
+ void __ovld vstore_half_rte(float data, size_t offset, half *p);
+ void __ovld vstore_half_rtz(float data, size_t offset, half *p);
+@@ -11927,7 +11927,7 @@ void __ovld vstore_half_rtz(double data, size_t offset, __private half *p);
+ void __ovld vstore_half_rtp(double data, size_t offset, __private half *p);
+ void __ovld vstore_half_rtn(double data, size_t offset, __private half *p);
+ #endif //cl_khr_fp64
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ 
+ /**
+  * The floatn value given by data is converted to
+@@ -11940,7 +11940,7 @@ void __ovld vstore_half_rtn(double data, size_t offset, __private half *p);
+  * The default current rounding mode is round to
+  * nearest even.
+  */
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_generic_address_space
+ void __ovld vstore_half2(float2 data, size_t offset, half *p);
+ void __ovld vstore_half3(float3 data, size_t offset, half *p);
+ void __ovld vstore_half4(float4 data, size_t offset, half *p);
+@@ -12146,7 +12146,7 @@ void __ovld vstore_half4_rtn(double4 data, size_t offset, __private half *p);
+ void __ovld vstore_half8_rtn(double8 data, size_t offset, __private half *p);
+ void __ovld vstore_half16_rtn(double16 data, size_t offset, __private half *p);
+ #endif //cl_khr_fp64
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_generic_address_space
+ 
+ /**
+  * For n = 1, 2, 4, 8 and 16 read sizeof (halfn)
+@@ -14475,7 +14475,7 @@ half4 __purefn __ovld read_imageh(read_only image1d_buffer_t image, int coord);
+ #endif //cl_khr_fp16
+ 
+ // Image read functions for read_write images
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ float4 __purefn __ovld read_imagef(read_write image1d_t image, int coord);
+ int4 __purefn __ovld read_imagei(read_write image1d_t image, int coord);
+ uint4 __purefn __ovld read_imageui(read_write image1d_t image, int coord);
+@@ -14518,7 +14518,7 @@ float __purefn __ovld read_imagef(read_write image2d_msaa_depth_t image, int2 co
+ float __purefn __ovld read_imagef(read_write image2d_array_msaa_depth_t image, int4 coord, int sample);
+ #endif //cl_khr_gl_msaa_sharing
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ #ifdef cl_khr_mipmap_image
+ float4 __purefn __ovld read_imagef(read_write image1d_t image, sampler_t sampler, float coord, float lod);
+ int4 __purefn __ovld read_imagei(read_write image1d_t image, sampler_t sampler, float coord, float lod);
+@@ -14569,7 +14569,7 @@ int4 __purefn __ovld read_imagei(read_write image3d_t image, sampler_t sampler,
+ uint4 __purefn __ovld read_imageui(read_write image3d_t image, sampler_t sampler, float4 coord, float4 gradientX, float4 gradientY);
+ 
+ #endif //cl_khr_mipmap_image
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ // Image read functions returning half4 type
+ #ifdef cl_khr_fp16
+@@ -14580,7 +14580,7 @@ half4 __purefn __ovld read_imageh(read_write image1d_array_t image, int2 coord);
+ half4 __purefn __ovld read_imageh(read_write image2d_array_t image, int4 coord);
+ half4 __purefn __ovld read_imageh(read_write image1d_buffer_t image, int coord);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ /**
+  * Write color value to location specified by coordinate
+@@ -14669,7 +14669,7 @@ void __ovld write_imagef(write_only image1d_array_t image_array, int2 coord, flo
+ void __ovld write_imagei(write_only image1d_array_t image_array, int2 coord, int4 color);
+ void __ovld write_imageui(write_only image1d_array_t image_array, int2 coord, uint4 color);
+ 
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ void __ovld write_imagef(write_only image3d_t image, int4 coord, float4 color);
+ void __ovld write_imagei(write_only image3d_t image, int4 coord, int4 color);
+ void __ovld write_imageui(write_only image3d_t image, int4 coord, uint4 color);
+@@ -14682,7 +14682,7 @@ void __ovld write_imagef(write_only image2d_array_depth_t image, int4 coord, flo
+ 
+ // OpenCL Extension v2.0 s9.18 - Mipmaps
+ #if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
+-#ifdef cl_khr_mipmap_image
++#if defined(cl_khr_mipmap_image_writes)
+ void __ovld write_imagef(write_only image1d_t image, int coord, int lod, float4 color);
+ void __ovld write_imagei(write_only image1d_t image, int coord, int lod, int4 color);
+ void __ovld write_imageui(write_only image1d_t image, int coord, int lod, uint4 color);
+@@ -14702,19 +14702,20 @@ void __ovld write_imageui(write_only image2d_array_t image_array, int4 coord, in
+ void __ovld write_imagef(write_only image2d_depth_t image, int2 coord, int lod, float color);
+ void __ovld write_imagef(write_only image2d_array_depth_t image, int4 coord, int lod, float color);
+ 
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ void __ovld write_imagef(write_only image3d_t image, int4 coord, int lod, float4 color);
+ void __ovld write_imagei(write_only image3d_t image, int4 coord, int lod, int4 color);
+ void __ovld write_imageui(write_only image3d_t image, int4 coord, int lod, uint4 color);
+-#endif
+-#endif //cl_khr_mipmap_image
++#endif //defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
++
++#endif //defined(cl_khr_mipmap_image_writes)
+ #endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
+ 
+ // Image write functions for half4 type
+ #ifdef cl_khr_fp16
+ void __ovld write_imageh(write_only image1d_t image, int coord, half4 color);
+ void __ovld write_imageh(write_only image2d_t image, int2 coord, half4 color);
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ void __ovld write_imageh(write_only image3d_t image, int4 coord, half4 color);
+ #endif
+ void __ovld write_imageh(write_only image1d_array_t image, int2 coord, half4 color);
+@@ -14723,7 +14724,7 @@ void __ovld write_imageh(write_only image1d_buffer_t image, int coord, half4 col
+ #endif //cl_khr_fp16
+ 
+ // Image write functions for read_write images
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ void __ovld write_imagef(read_write image2d_t image, int2 coord, float4 color);
+ void __ovld write_imagei(read_write image2d_t image, int2 coord, int4 color);
+ void __ovld write_imageui(read_write image2d_t image, int2 coord, uint4 color);
+@@ -14755,8 +14756,8 @@ void __ovld write_imagef(read_write image2d_depth_t image, int2 coord, float col
+ void __ovld write_imagef(read_write image2d_array_depth_t image, int4 coord, float color);
+ #endif //cl_khr_depth_images
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
+-#ifdef cl_khr_mipmap_image
++#ifdef __opencl_c_read_write_images
++#if defined(cl_khr_mipmap_image_writes)
+ void __ovld write_imagef(read_write image1d_t image, int coord, int lod, float4 color);
+ void __ovld write_imagei(read_write image1d_t image, int coord, int lod, int4 color);
+ void __ovld write_imageui(read_write image1d_t image, int coord, int lod, uint4 color);
+@@ -14780,9 +14781,10 @@ void __ovld write_imagef(read_write image2d_array_depth_t image, int4 coord, int
+ void __ovld write_imagef(read_write image3d_t image, int4 coord, int lod, float4 color);
+ void __ovld write_imagei(read_write image3d_t image, int4 coord, int lod, int4 color);
+ void __ovld write_imageui(read_write image3d_t image, int4 coord, int lod, uint4 color);
+-#endif
+-#endif //cl_khr_mipmap_image
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //cl_khr_3d_image_writes
++
++#endif //cl_khr_mipmap_image_writes
++#endif //__opencl_c_read_write_images
+ 
+ // Image write functions for half4 type
+ #ifdef cl_khr_fp16
+@@ -14795,7 +14797,7 @@ void __ovld write_imageh(read_write image1d_array_t image, int2 coord, half4 col
+ void __ovld write_imageh(read_write image2d_array_t image, int4 coord, half4 color);
+ void __ovld write_imageh(read_write image1d_buffer_t image, int coord, half4 color);
+ #endif //cl_khr_fp16
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ // Note: In OpenCL v1.0/1.1/1.2, image argument of image query builtin functions does not have
+ // access qualifier, which by default assume read_only access qualifier. Image query builtin
+@@ -14827,7 +14829,7 @@ int __ovld __cnfn get_image_width(read_only image2d_array_msaa_depth_t image);
+ int __ovld __cnfn get_image_width(write_only image1d_t image);
+ int __ovld __cnfn get_image_width(write_only image1d_buffer_t image);
+ int __ovld __cnfn get_image_width(write_only image2d_t image);
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ int __ovld __cnfn get_image_width(write_only image3d_t image);
+ #endif
+ int __ovld __cnfn get_image_width(write_only image1d_array_t image);
+@@ -14843,7 +14845,7 @@ int __ovld __cnfn get_image_width(write_only image2d_array_msaa_t image);
+ int __ovld __cnfn get_image_width(write_only image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#if __opencl_c_read_write_images
+ int __ovld __cnfn get_image_width(read_write image1d_t image);
+ int __ovld __cnfn get_image_width(read_write image1d_buffer_t image);
+ int __ovld __cnfn get_image_width(read_write image2d_t image);
+@@ -14860,7 +14862,7 @@ int __ovld __cnfn get_image_width(read_write image2d_msaa_depth_t image);
+ int __ovld __cnfn get_image_width(read_write image2d_array_msaa_t image);
+ int __ovld __cnfn get_image_width(read_write image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ /**
+  * Return the image height in pixels.
+@@ -14880,7 +14882,7 @@ int __ovld __cnfn get_image_height(read_only image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+ 
+ int __ovld __cnfn get_image_height(write_only image2d_t image);
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ int __ovld __cnfn get_image_height(write_only image3d_t image);
+ #endif
+ int __ovld __cnfn get_image_height(write_only image2d_array_t image);
+@@ -14895,7 +14897,7 @@ int __ovld __cnfn get_image_height(write_only image2d_array_msaa_t image);
+ int __ovld __cnfn get_image_height(write_only image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ int __ovld __cnfn get_image_height(read_write image2d_t image);
+ int __ovld __cnfn get_image_height(read_write image3d_t image);
+ int __ovld __cnfn get_image_height(read_write image2d_array_t image);
+@@ -14909,18 +14911,18 @@ int __ovld __cnfn get_image_height(read_write image2d_msaa_depth_t image);
+ int __ovld __cnfn get_image_height(read_write image2d_array_msaa_t image);
+ int __ovld __cnfn get_image_height(read_write image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ /**
+  * Return the image depth in pixels.
+  */
+ int __ovld __cnfn get_image_depth(read_only image3d_t image);
+ 
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ int __ovld __cnfn get_image_depth(write_only image3d_t image);
+ #endif
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ int __ovld __cnfn get_image_depth(read_write image3d_t image);
+ #endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
+ 
+@@ -14937,13 +14939,15 @@ int __ovld get_image_num_mip_levels(read_only image3d_t image);
+ 
+ int __ovld get_image_num_mip_levels(write_only image1d_t image);
+ int __ovld get_image_num_mip_levels(write_only image2d_t image);
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ int __ovld get_image_num_mip_levels(write_only image3d_t image);
+ #endif
+ 
++#ifdef __opencl_c_read_write_images
+ int __ovld get_image_num_mip_levels(read_write image1d_t image);
+ int __ovld get_image_num_mip_levels(read_write image2d_t image);
+ int __ovld get_image_num_mip_levels(read_write image3d_t image);
++#endif //__opencl_c_read_write_images
+ 
+ int __ovld get_image_num_mip_levels(read_only image1d_array_t image);
+ int __ovld get_image_num_mip_levels(read_only image2d_array_t image);
+@@ -14955,10 +14959,12 @@ int __ovld get_image_num_mip_levels(write_only image2d_array_t image);
+ int __ovld get_image_num_mip_levels(write_only image2d_array_depth_t image);
+ int __ovld get_image_num_mip_levels(write_only image2d_depth_t image);
+ 
++#ifdef __opencl_c_read_write_images
+ int __ovld get_image_num_mip_levels(read_write image1d_array_t image);
+ int __ovld get_image_num_mip_levels(read_write image2d_array_t image);
+ int __ovld get_image_num_mip_levels(read_write image2d_array_depth_t image);
+ int __ovld get_image_num_mip_levels(read_write image2d_depth_t image);
++#endif
+ 
+ #endif //cl_khr_mipmap_image
+ #endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
+@@ -15002,7 +15008,7 @@ int __ovld __cnfn get_image_channel_data_type(read_only image2d_array_msaa_depth
+ int __ovld __cnfn get_image_channel_data_type(write_only image1d_t image);
+ int __ovld __cnfn get_image_channel_data_type(write_only image1d_buffer_t image);
+ int __ovld __cnfn get_image_channel_data_type(write_only image2d_t image);
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ int __ovld __cnfn get_image_channel_data_type(write_only image3d_t image);
+ #endif
+ int __ovld __cnfn get_image_channel_data_type(write_only image1d_array_t image);
+@@ -15018,7 +15024,7 @@ int __ovld __cnfn get_image_channel_data_type(write_only image2d_array_msaa_t im
+ int __ovld __cnfn get_image_channel_data_type(write_only image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ int __ovld __cnfn get_image_channel_data_type(read_write image1d_t image);
+ int __ovld __cnfn get_image_channel_data_type(read_write image1d_buffer_t image);
+ int __ovld __cnfn get_image_channel_data_type(read_write image2d_t image);
+@@ -15035,7 +15041,7 @@ int __ovld __cnfn get_image_channel_data_type(read_write image2d_msaa_depth_t im
+ int __ovld __cnfn get_image_channel_data_type(read_write image2d_array_msaa_t image);
+ int __ovld __cnfn get_image_channel_data_type(read_write image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ /**
+  * Return the image channel order. Valid values are:
+@@ -15074,7 +15080,7 @@ int __ovld __cnfn get_image_channel_order(read_only image2d_array_msaa_depth_t i
+ int __ovld __cnfn get_image_channel_order(write_only image1d_t image);
+ int __ovld __cnfn get_image_channel_order(write_only image1d_buffer_t image);
+ int __ovld __cnfn get_image_channel_order(write_only image2d_t image);
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ int __ovld __cnfn get_image_channel_order(write_only image3d_t image);
+ #endif
+ int __ovld __cnfn get_image_channel_order(write_only image1d_array_t image);
+@@ -15090,7 +15096,7 @@ int __ovld __cnfn get_image_channel_order(write_only image2d_array_msaa_t image)
+ int __ovld __cnfn get_image_channel_order(write_only image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ int __ovld __cnfn get_image_channel_order(read_write image1d_t image);
+ int __ovld __cnfn get_image_channel_order(read_write image1d_buffer_t image);
+ int __ovld __cnfn get_image_channel_order(read_write image2d_t image);
+@@ -15107,7 +15113,7 @@ int __ovld __cnfn get_image_channel_order(read_write image2d_msaa_depth_t image)
+ int __ovld __cnfn get_image_channel_order(read_write image2d_array_msaa_t image);
+ int __ovld __cnfn get_image_channel_order(read_write image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ /**
+  * Return the 2D image width and height as an int2
+@@ -15140,7 +15146,7 @@ int2 __ovld __cnfn get_image_dim(write_only image2d_array_msaa_t image);
+ int2 __ovld __cnfn get_image_dim(write_only image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ int2 __ovld __cnfn get_image_dim(read_write image2d_t image);
+ int2 __ovld __cnfn get_image_dim(read_write image2d_array_t image);
+ #ifdef cl_khr_depth_images
+@@ -15153,7 +15159,7 @@ int2 __ovld __cnfn get_image_dim(read_write image2d_msaa_depth_t image);
+ int2 __ovld __cnfn get_image_dim(read_write image2d_array_msaa_t image);
+ int2 __ovld __cnfn get_image_dim(read_write image2d_array_msaa_depth_t image);
+ #endif //cl_khr_gl_msaa_sharing
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ /**
+  * Return the 3D image width, height, and depth as an
+@@ -15162,12 +15168,12 @@ int2 __ovld __cnfn get_image_dim(read_write image2d_array_msaa_depth_t image);
+  * component and the w component is 0.
+  */
+ int4 __ovld __cnfn get_image_dim(read_only image3d_t image);
+-#ifdef cl_khr_3d_image_writes
++#if defined(cl_khr_3d_image_writes) && defined(__opencl_c_3d_image_writes)
+ int4 __ovld __cnfn get_image_dim(write_only image3d_t image);
+ #endif
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ int4 __ovld __cnfn get_image_dim(read_write image3d_t image);
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif
+ 
+ /**
+  * Return the image array size.
+@@ -15193,7 +15199,7 @@ size_t __ovld __cnfn get_image_array_size(write_only image2d_array_msaa_t image_
+ size_t __ovld __cnfn get_image_array_size(write_only image2d_array_msaa_depth_t image_array);
+ #endif //cl_khr_gl_msaa_sharing
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ size_t __ovld __cnfn get_image_array_size(read_write image1d_array_t image_array);
+ size_t __ovld __cnfn get_image_array_size(read_write image2d_array_t image_array);
+ #ifdef cl_khr_depth_images
+@@ -15203,7 +15209,7 @@ size_t __ovld __cnfn get_image_array_size(read_write image2d_array_depth_t image
+ size_t __ovld __cnfn get_image_array_size(read_write image2d_array_msaa_t image_array);
+ size_t __ovld __cnfn get_image_array_size(read_write image2d_array_msaa_depth_t image_array);
+ #endif //cl_khr_gl_msaa_sharing
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ /**
+ * Return the number of samples associated with image
+@@ -15219,17 +15225,17 @@ int __ovld get_image_num_samples(write_only image2d_msaa_depth_t image);
+ int __ovld get_image_num_samples(write_only image2d_array_msaa_t image);
+ int __ovld get_image_num_samples(write_only image2d_array_msaa_depth_t image);
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ int __ovld get_image_num_samples(read_write image2d_msaa_t image);
+ int __ovld get_image_num_samples(read_write image2d_msaa_depth_t image);
+ int __ovld get_image_num_samples(read_write image2d_array_msaa_t image);
+ int __ovld get_image_num_samples(read_write image2d_array_msaa_depth_t image);
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ #endif
+ 
+ // OpenCL v2.0 s6.13.15 - Work-group Functions
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_work_group_collective_functions
+ int __ovld __conv work_group_all(int predicate);
+ int __ovld __conv work_group_any(int predicate);
+ 
+@@ -15327,16 +15333,17 @@ double __ovld __conv work_group_scan_inclusive_min(double x);
+ double __ovld __conv work_group_scan_inclusive_max(double x);
+ #endif //cl_khr_fp64
+ 
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_work_group_collective_functions
++
+ 
+ // OpenCL v2.0 s6.13.16 - Pipe Functions
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_pipes
+ bool __ovld is_valid_reserve_id(reserve_id_t reserve_id);
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_pipes
+ 
+ 
+ // OpenCL v2.0 s6.13.17 - Enqueue Kernels
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_device_enqueue 
+ 
+ ndrange_t __ovld ndrange_1D(size_t);
+ ndrange_t __ovld ndrange_1D(size_t, size_t);
+@@ -15365,10 +15372,12 @@ bool __ovld is_valid_event (clk_event_t event);
+ void __ovld capture_event_profiling_info(clk_event_t, clk_profiling_info, __global void* value);
+ 
+ queue_t __ovld get_default_queue(void);
+-#endif //defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_device_enqueue
+ 
+ // OpenCL Extension v2.0 s9.17 - Sub-groups
+ 
++#ifdef __opencl_c_subgroups
++
+ #if defined(cl_intel_subgroups) || defined(cl_khr_subgroups)
+ // Shared Sub Group Functions
+ uint    __ovld get_sub_group_size(void);
+@@ -15573,12 +15582,12 @@ uint2   __ovld __conv intel_sub_group_block_read2( read_only image2d_t image, in
+ uint4   __ovld __conv intel_sub_group_block_read4( read_only image2d_t image, int2 coord );
+ uint8   __ovld __conv intel_sub_group_block_read8( read_only image2d_t image, int2 coord );
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ uint    __ovld __conv intel_sub_group_block_read(read_write image2d_t image, int2 coord);
+ uint2   __ovld __conv intel_sub_group_block_read2(read_write image2d_t image, int2 coord);
+ uint4   __ovld __conv intel_sub_group_block_read4(read_write image2d_t image, int2 coord);
+ uint8   __ovld __conv intel_sub_group_block_read8(read_write image2d_t image, int2 coord);
+-#endif // defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ uint    __ovld __conv intel_sub_group_block_read( const __global uint* p );
+ uint2   __ovld __conv intel_sub_group_block_read2( const __global uint* p );
+@@ -15590,12 +15599,12 @@ void    __ovld __conv intel_sub_group_block_write2(write_only image2d_t image, i
+ void    __ovld __conv intel_sub_group_block_write4(write_only image2d_t image, int2 coord, uint4 data);
+ void    __ovld __conv intel_sub_group_block_write8(write_only image2d_t image, int2 coord, uint8 data);
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ void    __ovld __conv intel_sub_group_block_write(read_write image2d_t image, int2 coord, uint data);
+ void    __ovld __conv intel_sub_group_block_write2(read_write image2d_t image, int2 coord, uint2 data);
+ void    __ovld __conv intel_sub_group_block_write4(read_write image2d_t image, int2 coord, uint4 data);
+ void    __ovld __conv intel_sub_group_block_write8(read_write image2d_t image, int2 coord, uint8 data);
+-#endif // defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ void    __ovld __conv intel_sub_group_block_write( __global uint* p, uint data );
+ void    __ovld __conv intel_sub_group_block_write2( __global uint* p, uint2 data );
+@@ -15713,12 +15722,12 @@ uint2      __ovld __conv intel_sub_group_block_read_ui2( read_only image2d_t ima
+ uint4      __ovld __conv intel_sub_group_block_read_ui4( read_only image2d_t image, int2 byte_coord );
+ uint8      __ovld __conv intel_sub_group_block_read_ui8( read_only image2d_t image, int2 byte_coord );
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ uint       __ovld __conv intel_sub_group_block_read_ui( read_write image2d_t image, int2 byte_coord );
+ uint2      __ovld __conv intel_sub_group_block_read_ui2( read_write image2d_t image, int2 byte_coord );
+ uint4      __ovld __conv intel_sub_group_block_read_ui4( read_write image2d_t image, int2 byte_coord );
+ uint8      __ovld __conv intel_sub_group_block_read_ui8( read_write image2d_t image, int2 byte_coord );
+-#endif // defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ uint       __ovld __conv intel_sub_group_block_read_ui( const __global uint* p );
+ uint2      __ovld __conv intel_sub_group_block_read_ui2( const __global uint* p );
+@@ -15730,12 +15739,12 @@ void       __ovld __conv intel_sub_group_block_write_ui2( read_only image2d_t im
+ void       __ovld __conv intel_sub_group_block_write_ui4( read_only image2d_t image, int2 byte_coord, uint4 data );
+ void       __ovld __conv intel_sub_group_block_write_ui8( read_only image2d_t image, int2 byte_coord, uint8 data );
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ void       __ovld __conv intel_sub_group_block_write_ui( read_write image2d_t image, int2 byte_coord, uint data );
+ void       __ovld __conv intel_sub_group_block_write_ui2( read_write image2d_t image, int2 byte_coord, uint2 data );
+ void       __ovld __conv intel_sub_group_block_write_ui4( read_write image2d_t image, int2 byte_coord, uint4 data );
+ void       __ovld __conv intel_sub_group_block_write_ui8( read_write image2d_t image, int2 byte_coord, uint8 data );
+-#endif // defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ void       __ovld __conv intel_sub_group_block_write_ui( __global uint* p, uint data );
+ void       __ovld __conv intel_sub_group_block_write_ui2( __global uint* p, uint2 data );
+@@ -15747,12 +15756,12 @@ ushort2     __ovld __conv intel_sub_group_block_read_us2( read_only image2d_t im
+ ushort4     __ovld __conv intel_sub_group_block_read_us4( read_only image2d_t image, int2 coord );
+ ushort8     __ovld __conv intel_sub_group_block_read_us8( read_only image2d_t image, int2 coord );
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ ushort      __ovld __conv intel_sub_group_block_read_us(read_write image2d_t image, int2 coord);
+ ushort2     __ovld __conv intel_sub_group_block_read_us2(read_write image2d_t image, int2 coord);
+ ushort4     __ovld __conv intel_sub_group_block_read_us4(read_write image2d_t image, int2 coord);
+ ushort8     __ovld __conv intel_sub_group_block_read_us8(read_write image2d_t image, int2 coord);
+-#endif // defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif
+ 
+ ushort      __ovld __conv intel_sub_group_block_read_us(  const __global ushort* p );
+ ushort2     __ovld __conv intel_sub_group_block_read_us2( const __global ushort* p );
+@@ -15764,18 +15773,19 @@ void        __ovld __conv intel_sub_group_block_write_us2(write_only image2d_t i
+ void        __ovld __conv intel_sub_group_block_write_us4(write_only image2d_t image, int2 coord, ushort4 data);
+ void        __ovld __conv intel_sub_group_block_write_us8(write_only image2d_t image, int2 coord, ushort8 data);
+ 
+-#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#ifdef __opencl_c_read_write_images
+ void        __ovld __conv intel_sub_group_block_write_us(read_write image2d_t image, int2 coord, ushort  data);
+ void        __ovld __conv intel_sub_group_block_write_us2(read_write image2d_t image, int2 coord, ushort2 data);
+ void        __ovld __conv intel_sub_group_block_write_us4(read_write image2d_t image, int2 coord, ushort4 data);
+ void        __ovld __conv intel_sub_group_block_write_us8(read_write image2d_t image, int2 coord, ushort8 data);
+-#endif // defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
++#endif //__opencl_c_read_write_images
+ 
+ void        __ovld __conv intel_sub_group_block_write_us(  __global ushort* p, ushort  data );
+ void        __ovld __conv intel_sub_group_block_write_us2( __global ushort* p, ushort2 data );
+ void        __ovld __conv intel_sub_group_block_write_us4( __global ushort* p, ushort4 data );
+ void        __ovld __conv intel_sub_group_block_write_us8( __global ushort* p, ushort8 data );
+ #endif // cl_intel_subgroups_short
++#endif // __opencl_c_subgroups
+ 
+ #ifdef cl_intel_device_side_avc_motion_estimation
+ #pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : begin
+diff --git a/clang/lib/Parse/ParseDecl.cpp b/clang/lib/Parse/ParseDecl.cpp
+index 6353e14bc41..601bca86a17 100644
+--- a/clang/lib/Parse/ParseDecl.cpp
++++ b/clang/lib/Parse/ParseDecl.cpp
+@@ -4027,8 +4027,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
+     case tok::kw___generic:
+       // generic address space is introduced only in OpenCL v2.0
+       // see OpenCL C Spec v2.0 s6.5.5
+-      if (Actions.getLangOpts().OpenCLVersion < 200 &&
+-          !Actions.getLangOpts().OpenCLCPlusPlus) {
++      if (!Actions.getOpenCLOptions().isAvailableOption(
++              "__opencl_c_generic_address_space")) {
+         DiagID = diag::err_opencl_unknown_type_specifier;
+         PrevSpec = Tok.getIdentifierInfo()->getNameStart();
+         isInvalid = true;
+diff --git a/clang/lib/Parse/ParsePragma.cpp b/clang/lib/Parse/ParsePragma.cpp
+index df411e1928d..d62bdbd221d 100644
+--- a/clang/lib/Parse/ParsePragma.cpp
++++ b/clang/lib/Parse/ParsePragma.cpp
+@@ -696,21 +696,21 @@ void Parser::HandlePragmaOpenCLExtension() {
+   // behavior is set to disable."
+   if (Name == "all") {
+     if (State == Disable) {
+-      Opt.disableAll();
+-      Opt.enableSupportedCore(getLangOpts());
++      Opt.disableAllExtensions();
++      Opt.enableSupportedCoreExtensions(getLangOpts());
+     } else {
+       PP.Diag(NameLoc, diag::warn_pragma_expected_predicate) << 1;
+     }
+   } else if (State == Begin) {
+-    if (!Opt.isKnown(Name) || !Opt.isSupported(Name, getLangOpts())) {
+-      Opt.support(Name);
++    if (!Opt.isKnownExtension(Name) || !Opt.isSupported(Name, getLangOpts())) {
++      Opt.supportExtension(Name);
+     }
+     Actions.setCurrentOpenCLExtension(Name);
+   } else if (State == End) {
+     if (Name != Actions.getCurrentOpenCLExtension())
+       PP.Diag(NameLoc, diag::warn_pragma_begin_end_mismatch);
+     Actions.setCurrentOpenCLExtension("");
+-  } else if (!Opt.isKnown(Name))
++  } else if (!Opt.isKnownExtension(Name))
+     PP.Diag(NameLoc, diag::warn_pragma_unknown_extension) << Ident;
+   else if (Opt.isSupportedExtension(Name, getLangOpts()))
+     Opt.enable(Name, State == Enable);
+diff --git a/clang/lib/Sema/DeclSpec.cpp b/clang/lib/Sema/DeclSpec.cpp
+index 94d87974624..c8b66fbaa73 100644
+--- a/clang/lib/Sema/DeclSpec.cpp
++++ b/clang/lib/Sema/DeclSpec.cpp
+@@ -597,8 +597,8 @@ bool DeclSpec::SetStorageClassSpec(Sema &S, SCS SC, SourceLocation Loc,
+   // these storage-class specifiers.
+   // OpenCL v1.2 s6.8 changes this to "The auto and register storage-class
+   // specifiers are not supported."
+-  if (S.getLangOpts().OpenCL &&
+-      !S.getOpenCLOptions().isEnabled("cl_clang_storage_class_specifiers")) {
++  if (S.getLangOpts().OpenCL && !S.getOpenCLOptions().isAvailableOption(
++                                    "cl_clang_storage_class_specifiers")) {
+     switch (SC) {
+     case SCS_extern:
+     case SCS_private_extern:
+diff --git a/clang/lib/Sema/OpenCLBuiltins.td b/clang/lib/Sema/OpenCLBuiltins.td
+index 9d6bb411eff..e2bcb7b84c2 100644
+--- a/clang/lib/Sema/OpenCLBuiltins.td
++++ b/clang/lib/Sema/OpenCLBuiltins.td
+@@ -27,6 +27,7 @@ def CL10  : Version<100>;
+ def CL11  : Version<110>;
+ def CL12  : Version<120>;
+ def CL20  : Version<200>;
++def CL30  : Version<300>;
+ 
+ // Address spaces
+ // Pointer types need to be assigned an address space.
+@@ -50,6 +51,8 @@ class AbstractExtension<string _Ext> {
+ // Extension associated to a builtin function.
+ class FunctionExtension<string _Ext> : AbstractExtension<_Ext>;
+ 
++class FunctionFeature<string _Ext> : AbstractExtension<_Ext>;
++
+ // FunctionExtension definitions.
+ def FuncExtNone                          : FunctionExtension<"">;
+ def FuncExtKhrSubgroups                  : FunctionExtension<"cl_khr_subgroups">;
+@@ -65,6 +68,12 @@ def FuncExtKhrGlMsaaSharing              : FunctionExtension<"cl_khr_gl_msaa_sha
+ // Multiple extensions
+ def FuncExtKhrMipmapAndWrite3d           : FunctionExtension<"cl_khr_mipmap_image cl_khr_3d_image_writes">;
+ 
++// OpenCL features
++def FuncFeatNone                                : FunctionFeature<"">;
++def FuncFeatureGenericAddressSpace              : FunctionFeature<"__opencl_c_generic_address_space">;
++def FuncFeatureSubgroups                        : FunctionFeature<"__opencl_c_subgroups">;
++def FuncFeatureWorkGroupCollective              : FunctionFeature<"__opencl_c_work_group_collective_functions">;
++
+ // Qualified Type.  These map to ASTContext::QualType.
+ class QualType<string _Name, bit _IsAbstract=0> {
+   // Name of the field or function in a clang::ASTContext
+@@ -230,6 +239,7 @@ class Builtin<string _Name, list<Type> _Signature, list<bit> _Attributes = Attr.
+   bit IsConv = _Attributes[2];
+   // OpenCL extensions to which the function belongs.
+   FunctionExtension Extension = FuncExtNone;
++  FunctionFeature Feature = FuncFeatNone;
+   // Version of OpenCL from which the function is available (e.g.: CL10).
+   // MinVersion is inclusive.
+   Version MinVersion = CL10;
+@@ -489,16 +499,18 @@ let MaxVersion = CL20 in {
+   }
+ }
+ let MinVersion = CL20 in {
+-  foreach name = ["fract", "modf", "sincos"] in {
+-    def : Builtin<name, [FGenTypeN, FGenTypeN, PointerType<FGenTypeN, GenericAS>]>;
+-  }
+-  foreach name = ["frexp", "lgamma_r"] in {
+-    foreach Type = [GenTypeFloatVecAndScalar, GenTypeDoubleVecAndScalar, GenTypeHalfVecAndScalar] in {
+-      def : Builtin<name, [Type, Type, PointerType<GenTypeIntVecAndScalar, GenericAS>]>;
+-    }  }
+-  foreach name = ["remquo"] in {
+-    foreach Type = [GenTypeFloatVecAndScalar, GenTypeDoubleVecAndScalar, GenTypeHalfVecAndScalar] in {
+-      def : Builtin<name, [Type, Type, Type, PointerType<GenTypeIntVecAndScalar, GenericAS>]>;
++  let Feature = FuncFeatureGenericAddressSpace in { 
++    foreach name = ["fract", "modf", "sincos"] in {
++      def : Builtin<name, [FGenTypeN, FGenTypeN, PointerType<FGenTypeN, GenericAS>]>;
++    }
++    foreach name = ["frexp", "lgamma_r"] in {
++      foreach Type = [GenTypeFloatVecAndScalar, GenTypeDoubleVecAndScalar, GenTypeHalfVecAndScalar] in {
++        def : Builtin<name, [Type, Type, PointerType<GenTypeIntVecAndScalar, GenericAS>]>;
++      }  }
++    foreach name = ["remquo"] in {
++      foreach Type = [GenTypeFloatVecAndScalar, GenTypeDoubleVecAndScalar, GenTypeHalfVecAndScalar] in {
++        def : Builtin<name, [Type, Type, Type, PointerType<GenTypeIntVecAndScalar, GenericAS>]>;
++      }
+     }
+   }
+ }
+@@ -749,6 +761,7 @@ let MaxVersion = CL20 in {
+ // Variants for OpenCL versions above 2.0, using pointers to the generic
+ // address space.
+ let MinVersion = CL20 in {
++  let Feature = FuncFeatureGenericAddressSpace in {
+   foreach VSize = [2, 3, 4, 8, 16] in {
+     foreach name = ["vload" # VSize] in {
+       def : Builtin<name, [VectorType<Char, VSize>, Size, PointerType<ConstType<Char>, GenericAS>]>;
+@@ -786,6 +799,7 @@ let MinVersion = CL20 in {
+       }
+     }
+   }
++ }
+ }
+ // Variants using pointers to the constant address space.
+ foreach VSize = [2, 3, 4, 8, 16] in {
+@@ -851,7 +865,7 @@ let MinVersion = CL20 in {
+       }
+     }
+   }
+-}
++ }
+ 
+ foreach AS = [ConstantAS] in {
+   def : Builtin<"vload_half", [Float, Size, PointerType<ConstType<Half>, AS>]>;
+@@ -875,7 +889,9 @@ foreach name = ["async_work_group_strided_copy"] in {
+   def : Builtin<name, [Event, PointerType<AGenTypeN, GlobalAS>, PointerType<ConstType<AGenTypeN>, LocalAS>, Size, Size, Event]>;
+ }
+ foreach name = ["wait_group_events"] in {
+-  def : Builtin<name, [Void, Int, PointerType<Event, GenericAS>]>;
++  let Feature = FuncFeatureGenericAddressSpace in {
++    def : Builtin<name, [Void, Int, PointerType<Event, GenericAS>]>;
++  }
+ }
+ foreach name = ["prefetch"] in {
+   def : Builtin<name, [Void, PointerType<ConstType<AGenTypeN>, GlobalAS>, Size]>;
+@@ -1155,6 +1171,7 @@ foreach aQual = ["WO", "RW"] in {
+ // OpenCL v2.0 s6.13.15 - Work-group Functions
+ // --- Table 26 ---
+ let MinVersion = CL20 in {
++  let Feature = FuncFeatureWorkGroupCollective in {
+   foreach name = ["work_group_all", "work_group_any"] in {
+     def : Builtin<name, [Int, Int], Attr.Convergent>;
+   }
+@@ -1169,16 +1186,19 @@ let MinVersion = CL20 in {
+       def : Builtin<name # op, [IntLongFloatGenType1, IntLongFloatGenType1], Attr.Convergent>;
+     }
+   }
++ }
+ }
+ 
+ 
+ // OpenCL v2.0 s9.17.3: Additions to section 6.13.1: Work-Item Functions
+ let MinVersion = CL20 in {
++  let Feature = FuncFeatureSubgroups in { 
+   let Extension = FuncExtKhrSubgroups in {
+     def get_sub_group_size : Builtin<"get_sub_group_size", [UInt]>;
+     def get_max_sub_group_size : Builtin<"get_max_sub_group_size", [UInt]>;
+     def get_num_sub_groups : Builtin<"get_num_sub_groups", [UInt]>;
+   }
++ }
+ }
+ 
+ //--------------------------------------------------------------------
+diff --git a/clang/lib/Sema/Sema.cpp b/clang/lib/Sema/Sema.cpp
+index 9cfce5a63b1..92cd087e333 100644
+--- a/clang/lib/Sema/Sema.cpp
++++ b/clang/lib/Sema/Sema.cpp
+@@ -139,6 +139,7 @@ public:
+   }
+ };
+ 
++
+ } // end namespace sema
+ } // end namespace clang
+ 
+@@ -288,13 +289,17 @@ void Sema::Initialize() {
+   if (getLangOpts().OpenCL) {
+     getOpenCLOptions().addSupport(
+         Context.getTargetInfo().getSupportedOpenCLOpts());
+-    getOpenCLOptions().enableSupportedCore(getLangOpts());
++    getOpenCLOptions().enableSupportedCoreExtensions(getLangOpts());
++    getOpenCLOptions().supportCoreFeatures(getLangOpts());
+     addImplicitTypedef("sampler_t", Context.OCLSamplerTy);
+     addImplicitTypedef("event_t", Context.OCLEventTy);
+     if (getLangOpts().OpenCLCPlusPlus || getLangOpts().OpenCLVersion >= 200) {
+       addImplicitTypedef("clk_event_t", Context.OCLClkEventTy);
++      setOpenCLExtensionForType(Context.OCLClkEventTy, "__opencl_c_device_enqueue");
+       addImplicitTypedef("queue_t", Context.OCLQueueTy);
++      setOpenCLExtensionForType(Context.OCLQueueTy, "__opencl_c_device_enqueue");
+       addImplicitTypedef("reserve_id_t", Context.OCLReserveIDTy);
++      setOpenCLExtensionForType(Context.OCLReserveIDTy, "__opencl_c_pipes");
+       addImplicitTypedef("atomic_int", Context.getAtomicType(Context.IntTy));
+       addImplicitTypedef("atomic_uint",
+                          Context.getAtomicType(Context.UnsignedIntTy));
+@@ -362,7 +367,6 @@ void Sema::Initialize() {
+     addImplicitTypedef(Name, Context.SingletonId);
+ #include "clang/Basic/AArch64SVEACLETypes.def"
+   }
+-
+   if (Context.getTargetInfo().hasBuiltinMSVaList()) {
+     DeclarationName MSVaList = &Context.Idents.get("__builtin_ms_va_list");
+     if (IdResolver.begin(MSVaList) == IdResolver.end())
+@@ -2248,12 +2252,25 @@ void Sema::setCurrentOpenCLExtensionForType(QualType T) {
+   setOpenCLExtensionForType(T, CurrOpenCLExtension);
+ }
+ 
++void Sema::setCurrentOpenCLFeatureForType(QualType T) {
++  if (CurrOpenCLFeature.empty())
++    return;
++  setOpenCLExtensionForType(T, CurrOpenCLFeature);
++}
++
+ void Sema::setCurrentOpenCLExtensionForDecl(Decl *D) {
+   if (CurrOpenCLExtension.empty())
+     return;
+   setOpenCLExtensionForDecl(D, CurrOpenCLExtension);
+ }
+ 
++void Sema::setCurrentOpenCLFeatureForDecl(Decl *D) {
++  if (CurrOpenCLFeature.empty())
++    return;
++  setOpenCLExtensionForDecl(D, CurrOpenCLFeature);
++}
++
++
+ std::string Sema::getOpenCLExtensionsFromDeclExtMap(FunctionDecl *FD) {
+   if (!OpenCLDeclExtMap.empty())
+     return getOpenCLExtensionsFromExtMap(FD, OpenCLDeclExtMap);
+@@ -2287,7 +2304,7 @@ bool Sema::isOpenCLDisabledDecl(Decl *FD) {
+   if (Loc == OpenCLDeclExtMap.end())
+     return false;
+   for (auto &I : Loc->second) {
+-    if (!getOpenCLOptions().isEnabled(I))
++    if (!getOpenCLOptions().isAvailableOption(I))
+       return true;
+   }
+   return false;
+@@ -2303,11 +2320,18 @@ bool Sema::checkOpenCLDisabledTypeOrDecl(T D, DiagLocT DiagLoc,
+     return false;
+   bool Disabled = false;
+   for (auto &I : Loc->second) {
+-    if (I != CurrOpenCLExtension && !getOpenCLOptions().isEnabled(I)) {
+-      Diag(DiagLoc, diag::err_opencl_requires_extension) << Selector << DiagInfo
+-                                                         << I << SrcRange;
++    if (getOpenCLOptions().isKnownExtension(I) && I != CurrOpenCLExtension &&
++        !getOpenCLOptions().isAvailableOption(I)) {
++      Diag(DiagLoc, diag::err_opencl_requires_extension)
++          << Selector << DiagInfo << I << SrcRange;
++      Disabled = true;
++    } else if (getOpenCLOptions().isKnownFeature(I) && I != CurrOpenCLFeature &&
++               !getOpenCLOptions().isAvailableOption(I)) {
++      Diag(DiagLoc, diag::err_opencl_requires_feature)
++          << Selector << DiagInfo << I << SrcRange;
+       Disabled = true;
+     }
++
+   }
+   return Disabled;
+ }
+diff --git a/clang/lib/Sema/SemaCast.cpp b/clang/lib/Sema/SemaCast.cpp
+index 7a8cbca1e3f..3c015bed659 100644
+--- a/clang/lib/Sema/SemaCast.cpp
++++ b/clang/lib/Sema/SemaCast.cpp
+@@ -2766,7 +2766,7 @@ void CastOperation::CheckCStyleCast() {
+   }
+ 
+   if (Self.getLangOpts().OpenCL &&
+-      !Self.getOpenCLOptions().isEnabled("cl_khr_fp16")) {
++      !Self.getOpenCLOptions().isAvailableOption("cl_khr_fp16")) {
+     if (DestType->isHalfType()) {
+       Self.Diag(SrcExpr.get()->getBeginLoc(), diag::err_opencl_cast_to_half)
+           << DestType << SrcExpr.get()->getSourceRange();
+diff --git a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema/SemaChecking.cpp
+index 74742023d1b..3408832eb2e 100644
+--- a/clang/lib/Sema/SemaChecking.cpp
++++ b/clang/lib/Sema/SemaChecking.cpp
+@@ -598,15 +598,23 @@ static bool checkOpenCLBlockArgs(Sema &S, Expr *BlockArg) {
+ }
+ 
+ static bool checkOpenCLSubgroupExt(Sema &S, CallExpr *Call) {
+-  if (!S.getOpenCLOptions().isEnabled("cl_khr_subgroups")) {
+-    S.Diag(Call->getBeginLoc(), diag::err_opencl_requires_extension)
+-        << 1 << Call->getDirectCallee() << "cl_khr_subgroups";
+-    return true;
+-  }
+-  return false;
++  bool ExtensionEnabled =
++      S.getOpenCLOptions().isAvailableOption("cl_khr_subgroups");
++  bool FeatureSupported =
++      S.getOpenCLOptions().isAvailableOption("__opencl_c_subgroups");
++  if (ExtensionEnabled || FeatureSupported)
++    return false;
++  S.Diag(Call->getBeginLoc(), diag::err_opencl_requires_extension)
++      << 1 << Call->getDirectCallee()
++      << (!ExtensionEnabled ? "cl_khr_subgroups" : "__opencl_c_subgroups");
++  return true;
+ }
+ 
+ static bool SemaOpenCLBuiltinNDRangeAndBlock(Sema &S, CallExpr *TheCall) {
++
++  if (!S.checkOpenCLFeatureSupportForBuiltin(TheCall))
++    return true;
++
+   if (checkArgCount(S, TheCall, 2))
+     return true;
+ 
+@@ -634,6 +642,10 @@ static bool SemaOpenCLBuiltinNDRangeAndBlock(Sema &S, CallExpr *TheCall) {
+ /// get_kernel_work_group_size
+ /// and get_kernel_preferred_work_group_size_multiple builtin functions.
+ static bool SemaOpenCLBuiltinKernelWorkGroupSize(Sema &S, CallExpr *TheCall) {
++
++  if (!S.checkOpenCLFeatureSupportForBuiltin(TheCall))
++    return true;
++
+   if (checkArgCount(S, TheCall, 1))
+     return true;
+ 
+@@ -712,6 +724,9 @@ static bool checkOpenCLEnqueueVariadicArgs(Sema &S, CallExpr *TheCall,
+ static bool SemaOpenCLBuiltinEnqueueKernel(Sema &S, CallExpr *TheCall) {
+   unsigned NumArgs = TheCall->getNumArgs();
+ 
++  if (!S.checkOpenCLFeatureSupportForBuiltin(TheCall))
++    return true;
++
+   if (NumArgs < 4) {
+     S.Diag(TheCall->getBeginLoc(),
+            diag::err_typecheck_call_too_few_args_at_least)
+@@ -904,11 +919,69 @@ static bool checkOpenCLPipePacketType(Sema &S, CallExpr *Call, unsigned Idx) {
+   return false;
+ }
+ 
++bool Sema::checkOpenCLFeatureSupportForBuiltin(CallExpr *Call) {
++  unsigned DiagID = 0;
++  bool IsValid = true;
++  switch (Call->getDirectCallee()->getBuiltinID()) {
++    // OpenCL v3.0 s6.13.16 - Pipe Functions require support for OpenCL C 2.0
++    // or the __opencl_c_pipes feature macro
++  case Builtin::BIread_pipe:
++  case Builtin::BIwrite_pipe:
++  case Builtin::BIreserve_read_pipe:
++  case Builtin::BIreserve_write_pipe:
++  case Builtin::BIwork_group_reserve_read_pipe:
++  case Builtin::BIwork_group_reserve_write_pipe:
++  case Builtin::BIsub_group_reserve_read_pipe:
++  case Builtin::BIsub_group_reserve_write_pipe:
++  case Builtin::BIcommit_read_pipe:
++  case Builtin::BIcommit_write_pipe:
++  case Builtin::BIwork_group_commit_read_pipe:
++  case Builtin::BIwork_group_commit_write_pipe:
++  case Builtin::BIsub_group_commit_read_pipe:
++  case Builtin::BIsub_group_commit_write_pipe:
++  case Builtin::BIget_pipe_num_packets:
++  case Builtin::BIget_pipe_max_packets:
++    DiagID = diag::err_opencl_builtin_pipe_requires_feature;
++    IsValid = OpenCLFeatures.isAvailableOption("__opencl_c_pipes");
++    break;
++  case Builtin::BIget_kernel_max_sub_group_size_for_ndrange:
++  case Builtin::BIget_kernel_sub_group_count_for_ndrange:
++    DiagID = diag::err_opencl_builtin_subgroup_query_requires_feature;
++    IsValid = OpenCLFeatures.isAvailableOption("__opencl_c_device_enqueue");
++    break;
++  case Builtin::BIget_kernel_work_group_size:
++  case Builtin::BIget_kernel_preferred_work_group_size_multiple:
++    DiagID = diag::err_opencl_builtin_subgroup_query_requires_feature;
++    IsValid = OpenCLFeatures.isAvailableOption("__opencl_c_device_enqueue");
++    break;
++  case Builtin::BIenqueue_kernel:
++    DiagID = diag::err_opencl_builtin_enqueue_requires_feature;
++    IsValid = OpenCLFeatures.isAvailableOption("__opencl_c_device_enqueue");
++    break;
++  case Builtin::BIto_global:
++  case Builtin::BIto_local:
++  case Builtin::BIto_private:
++    DiagID = diag::err_opencl_builtin_address_space_requires_feature;
++    IsValid = OpenCLFeatures.isAvailableOption("__opencl_c_generic_address_space");
++    break;
++
++  default:
++    break;
++  }
++
++  if (!IsValid)
++    Diag(Call->getBeginLoc(), DiagID) << Call->getDirectCallee();
++
++  return IsValid;
++}
++
+ // Performs semantic analysis for the read/write_pipe call.
+ // \param S Reference to the semantic analyzer.
+ // \param Call A pointer to the builtin call.
+ // \return True if a semantic error has been found, false otherwise.
+ static bool SemaBuiltinRWPipe(Sema &S, CallExpr *Call) {
++  if (!S.checkOpenCLFeatureSupportForBuiltin(Call))
++    return true;
+   // OpenCL v2.0 s6.13.16.2 - The built-in read/write
+   // functions have two forms.
+   switch (Call->getNumArgs()) {
+@@ -964,6 +1037,9 @@ static bool SemaBuiltinRWPipe(Sema &S, CallExpr *Call) {
+ // \param Call The call to the builtin function to be analyzed.
+ // \return True if a semantic error was found, false otherwise.
+ static bool SemaBuiltinReserveRWPipe(Sema &S, CallExpr *Call) {
++  if (!S.checkOpenCLFeatureSupportForBuiltin(Call))
++    return true;
++
+   if (checkArgCount(S, Call, 2))
+     return true;
+ 
+@@ -993,6 +1069,9 @@ static bool SemaBuiltinReserveRWPipe(Sema &S, CallExpr *Call) {
+ // \param Call The call to the builtin function to be analyzed.
+ // \return True if a semantic error was found, false otherwise.
+ static bool SemaBuiltinCommitRWPipe(Sema &S, CallExpr *Call) {
++  if (!S.checkOpenCLFeatureSupportForBuiltin(Call))
++    return true;
++
+   if (checkArgCount(S, Call, 2))
+     return true;
+ 
+@@ -1016,6 +1095,9 @@ static bool SemaBuiltinCommitRWPipe(Sema &S, CallExpr *Call) {
+ // \param Call The call to the builtin function to be analyzed.
+ // \return True if a semantic error was found, false otherwise.
+ static bool SemaBuiltinPipePackets(Sema &S, CallExpr *Call) {
++  if (!S.checkOpenCLFeatureSupportForBuiltin(Call))
++    return true;
++
+   if (checkArgCount(S, Call, 1))
+     return true;
+ 
+@@ -1036,6 +1118,9 @@ static bool SemaBuiltinPipePackets(Sema &S, CallExpr *Call) {
+ // \return True if a semantic error has been found, false otherwise.
+ static bool SemaOpenCLBuiltinToAddr(Sema &S, unsigned BuiltinID,
+                                     CallExpr *Call) {
++  if (!S.checkOpenCLFeatureSupportForBuiltin(Call))
++    return true;
++
+   if (Call->getNumArgs() != 1) {
+     S.Diag(Call->getBeginLoc(), diag::err_opencl_builtin_to_addr_arg_num)
+         << Call->getDirectCallee() << Call->getSourceRange();
+@@ -4631,6 +4716,39 @@ static bool isValidOrderingForOp(int64_t Ordering, AtomicExpr::AtomicOp Op) {
+   }
+ }
+ 
++bool Sema::isSupportedOpenCLOMemoryrdering(int64_t Ordering) {
++  assert(llvm::isValidAtomicOrderingCABI(Ordering));
++  auto OrderingCABI = (llvm::AtomicOrderingCABI)Ordering;
++  switch (OrderingCABI) {
++  case llvm::AtomicOrderingCABI::acquire:
++  case llvm::AtomicOrderingCABI::release:
++  case llvm::AtomicOrderingCABI::acq_rel:
++    return OpenCLFeatures.isAvailableOption("__opencl_c_atomic_order_acq_rel");
++  case llvm::AtomicOrderingCABI::seq_cst:
++    return OpenCLFeatures.isAvailableOption("__opencl_c_atomic_order_seq_cst");
++
++  default:
++    return true;
++  }
++}
++
++bool Sema::isSupportedOpenCLMemoryScope(SyncScope Scope) {
++  switch (Scope) {
++  case SyncScope::OpenCLDevice:
++    return OpenCLFeatures.isAvailableOption(
++        "__opencl_c_atomic_scope_device");
++  case SyncScope::OpenCLAllSVMDevices:
++    return OpenCLFeatures.isAvailableOption(
++        "__opencl_c_atomic_scope_all_devices");
++  case SyncScope::OpenCLSubGroup:
++      return OpenCLFeatures.isAvailableOption(
++          "__opencl_c_subgroups");
++
++  default:
++    return true;
++  }
++}
++
+ ExprResult Sema::SemaAtomicOpsOverloaded(ExprResult TheCallResult,
+                                          AtomicExpr::AtomicOp Op) {
+   CallExpr *TheCall = cast<CallExpr>(TheCallResult.get());
+@@ -5066,21 +5184,36 @@ ExprResult Sema::BuildAtomicExpr(SourceRange CallRange, SourceRange ExprRange,
+ 
+   if (SubExprs.size() >= 2 && Form != Init) {
+     llvm::APSInt Result(32);
+-    if (SubExprs[1]->isIntegerConstantExpr(Result, Context) &&
+-        !isValidOrderingForOp(Result.getSExtValue(), Op))
+-      Diag(SubExprs[1]->getBeginLoc(),
+-           diag::warn_atomic_op_has_invalid_memory_order)
+-          << SubExprs[1]->getSourceRange();
++    if (SubExprs[1]->isIntegerConstantExpr(Result, Context)) {
++      if (!isValidOrderingForOp(Result.getSExtValue(), Op))
++        Diag(SubExprs[1]->getBeginLoc(),
++             diag::warn_atomic_op_has_invalid_memory_order)
++            << SubExprs[1]->getSourceRange();
++      else if (IsOpenCL &&
++               !isSupportedOpenCLOMemoryrdering(Result.getSExtValue())) {
++        Diag(SubExprs[1]->getBeginLoc(),
++             diag::err_opencl_unsupported_memory_order)
++            << SubExprs[1]->getSourceRange();
++        return ExprError();
++      }
++    }
+   }
+ 
+   if (auto ScopeModel = AtomicExpr::getScopeModel(Op)) {
+     auto *Scope = Args[Args.size() - 1];
+     llvm::APSInt Result(32);
+-    if (Scope->isIntegerConstantExpr(Result, Context) &&
+-        !ScopeModel->isValid(Result.getZExtValue())) {
+-      Diag(Scope->getBeginLoc(), diag::err_atomic_op_has_invalid_synch_scope)
+-          << Scope->getSourceRange();
++    if (Scope->isIntegerConstantExpr(Result, Context)) {
++      if (!ScopeModel->isValid(Result.getZExtValue())) {
++        Diag(Scope->getBeginLoc(), diag::err_atomic_op_has_invalid_synch_scope)
++            << Scope->getSourceRange();
++      } else if (IsOpenCL && !isSupportedOpenCLMemoryScope(
++                                 ScopeModel->map(Result.getZExtValue()))) {
++        Diag(Scope->getBeginLoc(), diag::err_opencl_unsupported_memory_scope)
++            << Scope->getSourceRange();
++        return ExprError();
++      }
+     }
++
+     SubExprs.push_back(Scope);
+   }
+ 
+diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+index 64146f4a912..48d5128f6c5 100644
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -5411,8 +5411,10 @@ Decl *Sema::ActOnDeclarator(Scope *S, Declarator &D) {
+       Dcl && Dcl->getDeclContext()->isFileContext())
+     Dcl->setTopLevelDeclInObjCContainer();
+ 
+-  if (getLangOpts().OpenCL)
++  if (getLangOpts().OpenCL) {
+     setCurrentOpenCLExtensionForDecl(Dcl);
++    setCurrentOpenCLFeatureForDecl(Dcl);
++  }
+ 
+   return Dcl;
+ }
+@@ -6578,7 +6580,7 @@ static bool diagnoseOpenCLTypes(Scope *S, Sema &Se, Declarator &D,
+     NR = NR->getPointeeType();
+   }
+ 
+-  if (!Se.getOpenCLOptions().isEnabled("cl_khr_fp16")) {
++  if (!Se.getOpenCLOptions().isAvailableOption("cl_khr_fp16")) {
+     // OpenCL v1.2 s6.1.1.1: reject declaring variables of the half and
+     // half array type (unless the cl_khr_fp16 extension is enabled).
+     if (Se.Context.getBaseElementType(R)->isHalfType()) {
+@@ -7648,7 +7650,8 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
+   // OpenCL v1.2 s6.8 - The static qualifier is valid only in program
+   // scope.
+   if (getLangOpts().OpenCLVersion == 120 &&
+-      !getOpenCLOptions().isEnabled("cl_clang_storage_class_specifiers") &&
++      !getOpenCLOptions().isAvailableOption(
++          "cl_clang_storage_class_specifiers") &&
+       NewVD->isStaticLocal()) {
+     Diag(NewVD->getLocation(), diag::err_static_function_scope);
+     NewVD->setInvalidDecl();
+@@ -7663,6 +7666,12 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
+     }
+ 
+     if (T->isBlockPointerType()) {
++      if (!OpenCLFeatures.isAvailableOption("__opencl_c_device_enqueue")) {
++        Diag(NewVD->getLocation(),
++             diag::err_opencl_blocks_support_requires_feature)
++            << 1;
++        return;
++      }
+       // OpenCL v2.0 s6.12.5 - Any block declaration must be const qualified and
+       // can't use 'extern' storage class.
+       if (!T.isConstQualified()) {
+@@ -7682,6 +7691,10 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
+     // OpenCL C v2.0 s6.5.1 - Variables defined at program scope and static
+     // variables inside a function can also be declared in the global
+     // address space.
++    // OpenCL C v3.0 s5.5 - For OpenCL C 2.0, or with the 
++    // __opencl_c_program_scope_global_variables feature macro, the
++    // address space for a variable at program scope or a static variable 
++    // also be __global
+     // C++ for OpenCL inherits rule from OpenCL C v2.0.
+     // FIXME: Adding local AS in C++ for OpenCL might make sense.
+     if (NewVD->isFileVarDecl() || NewVD->isStaticLocal() ||
+@@ -7689,10 +7702,11 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
+       if (!T->isSamplerT() &&
+           !(T.getAddressSpace() == LangAS::opencl_constant ||
+             (T.getAddressSpace() == LangAS::opencl_global &&
+-             (getLangOpts().OpenCLVersion == 200 ||
+-              getLangOpts().OpenCLCPlusPlus)))) {
++             (OpenCLFeatures.isAvailableOption(
++                 "__opencl_c_program_scope_global_variables"))))) {
+         int Scope = NewVD->isStaticLocal() | NewVD->hasExternalStorage() << 1;
+-        if (getLangOpts().OpenCLVersion == 200 || getLangOpts().OpenCLCPlusPlus)
++        if (OpenCLFeatures.isAvailableOption(
++                "__opencl_c_program_scope_global_variables"))
+           Diag(NewVD->getLocation(), diag::err_opencl_global_invalid_addr_space)
+               << Scope << "global or constant";
+         else
+@@ -8448,7 +8462,8 @@ static OpenCLParamType getOpenCLKernelParameterType(Sema &S, QualType PT) {
+   // OpenCL extension spec v1.2 s9.5:
+   // This extension adds support for half scalar and vector types as built-in
+   // types that can be used for arithmetic operations, conversions etc.
+-  if (!S.getOpenCLOptions().isEnabled("cl_khr_fp16") && PT->isHalfType())
++  if (!S.getOpenCLOptions().isAvailableOption("cl_khr_fp16") &&
++      PT->isHalfType())
+     return InvalidKernelParam;
+ 
+   if (PT->isRecordType())
+diff --git a/clang/lib/Sema/SemaExpr.cpp b/clang/lib/Sema/SemaExpr.cpp
+index 04a7038d675..7451aa6be8c 100644
+--- a/clang/lib/Sema/SemaExpr.cpp
++++ b/clang/lib/Sema/SemaExpr.cpp
+@@ -620,8 +620,8 @@ ExprResult Sema::DefaultLvalueConversion(Expr *E) {
+     return E;
+ 
+   // OpenCL usually rejects direct accesses to values of 'half' type.
+-  if (getLangOpts().OpenCL && !getOpenCLOptions().isEnabled("cl_khr_fp16") &&
+-      T->isHalfType()) {
++  if (getLangOpts().OpenCL &&
++      !getOpenCLOptions().isAvailableOption("cl_khr_fp16") && T->isHalfType()) {
+     Diag(E->getExprLoc(), diag::err_opencl_half_load_store)
+       << 0 << T;
+     return ExprError();
+@@ -788,7 +788,7 @@ ExprResult Sema::DefaultArgumentPromotion(Expr *E) {
+   if (BTy && (BTy->getKind() == BuiltinType::Half ||
+               BTy->getKind() == BuiltinType::Float)) {
+     if (getLangOpts().OpenCL &&
+-        !getOpenCLOptions().isEnabled("cl_khr_fp64")) {
++        !getOpenCLOptions().isAvailableOption("cl_khr_fp64")) {
+         if (BTy->getKind() == BuiltinType::Half) {
+             E = ImpCastExprToType(E, Context.FloatTy, CK_FloatingCast).get();
+         }
+@@ -3676,7 +3676,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok, Scope *UDLScope) {
+   } else if (Literal.isFloatingLiteral()) {
+     QualType Ty;
+     if (Literal.isHalf){
+-      if (getOpenCLOptions().isEnabled("cl_khr_fp16"))
++      if (getOpenCLOptions().isAvailableOption("cl_khr_fp16"))
+         Ty = Context.HalfTy;
+       else {
+         Diag(Tok.getLocation(), diag::err_half_const_requires_fp16);
+@@ -3702,7 +3702,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok, Scope *UDLScope) {
+           Res = ImpCastExprToType(Res, Context.FloatTy, CK_FloatingCast).get();
+         }
+       } else if (getLangOpts().OpenCL &&
+-                 !getOpenCLOptions().isEnabled("cl_khr_fp64")) {
++                 !getOpenCLOptions().isAvailableOption("cl_khr_fp64")) {
+         // Impose single-precision float type when cl_khr_fp64 is not enabled.
+         Diag(Tok.getLocation(), diag::warn_double_const_requires_fp64);
+         Res = ImpCastExprToType(Res, Context.FloatTy, CK_FloatingCast).get();
+@@ -12005,8 +12005,9 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
+   // OpenCL v1.2 s6.1.1.1 p2:
+   // The half data type can only be used to declare a pointer to a buffer that
+   // contains half values
+-  if (getLangOpts().OpenCL && !getOpenCLOptions().isEnabled("cl_khr_fp16") &&
+-    LHSType->isHalfType()) {
++  if (getLangOpts().OpenCL &&
++      !getOpenCLOptions().isAvailableOption("cl_khr_fp16") &&
++      LHSType->isHalfType()) {
+     Diag(Loc, diag::err_opencl_half_load_store) << 1
+         << LHSType.getUnqualifiedType();
+     return QualType();
+diff --git a/clang/lib/Sema/SemaInit.cpp b/clang/lib/Sema/SemaInit.cpp
+index 785637761e7..abf4d52dddc 100644
+--- a/clang/lib/Sema/SemaInit.cpp
++++ b/clang/lib/Sema/SemaInit.cpp
+@@ -5498,7 +5498,7 @@ static bool TryOCLZeroOpaqueTypeInitialization(Sema &S,
+   // We should allow zero initialization for all types defined in the
+   // cl_intel_device_side_avc_motion_estimation extension, except
+   // intel_sub_group_avc_mce_payload_t and intel_sub_group_avc_mce_result_t.
+-  if (S.getOpenCLOptions().isEnabled(
++  if (S.getOpenCLOptions().isAvailableOption(
+           "cl_intel_device_side_avc_motion_estimation") &&
+       DestType->isOCLIntelSubgroupAVCType()) {
+     if (DestType->isOCLIntelSubgroupAVCMcePayloadType() ||
+@@ -8545,7 +8545,7 @@ ExprResult InitializationSequence::Perform(Sema &S,
+         unsigned AddressingMode  = (0x0E & SamplerValue) >> 1;
+         unsigned FilterMode      = (0x30 & SamplerValue) >> 4;
+         if (FilterMode != 1 && FilterMode != 2 &&
+-            !S.getOpenCLOptions().isEnabled(
++            !S.getOpenCLOptions().isAvailableOption(
+                 "cl_intel_device_side_avc_motion_estimation"))
+           S.Diag(Kind.getLocation(),
+                  diag::warn_sampler_initializer_invalid_bits)
+diff --git a/clang/lib/Sema/SemaLookup.cpp b/clang/lib/Sema/SemaLookup.cpp
+index 8d96404a5c2..b31f866d434 100644
+--- a/clang/lib/Sema/SemaLookup.cpp
++++ b/clang/lib/Sema/SemaLookup.cpp
+@@ -749,6 +749,9 @@ static void AddOpenCLExtensions(Sema &S, const OpenCLBuiltinStruct &BIDecl,
+   StringRef E = FunctionExtensionTable[BIDecl.Extension];
+   if (E != "")
+     S.setOpenCLExtensionForDecl(FDecl, E);
++  StringRef F = FunctionFeatureTable[BIDecl.Feature];
++  if(F != "")
++    S.setOpenCLExtensionForDecl(FDecl, F);
+ }
+ 
+ /// When trying to resolve a function name, if isOpenCLBuiltin() returns a
+diff --git a/clang/lib/Sema/SemaType.cpp b/clang/lib/Sema/SemaType.cpp
+index 93ddd047e09..78988ebe868 100644
+--- a/clang/lib/Sema/SemaType.cpp
++++ b/clang/lib/Sema/SemaType.cpp
+@@ -2015,10 +2015,10 @@ static QualType deduceOpenCLPointeeAddrSpace(Sema &S, QualType PointeeType) {
+       !PointeeType->isSamplerT() &&
+       !PointeeType.hasAddressSpace())
+     PointeeType = S.getASTContext().getAddrSpaceQualType(
+-        PointeeType,
+-        S.getLangOpts().OpenCLCPlusPlus || S.getLangOpts().OpenCLVersion == 200
+-            ? LangAS::opencl_generic
+-            : LangAS::opencl_private);
++        PointeeType, S.getOpenCLOptions().isAvailableOption(
++                         "__opencl_c_generic_address_space")
++                         ? LangAS::opencl_generic
++                         : LangAS::opencl_private);
+   return PointeeType;
+ }
+ 
+@@ -4762,7 +4762,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
+       // FIXME: This really should be in BuildFunctionType.
+       if (T->isHalfType()) {
+         if (S.getLangOpts().OpenCL) {
+-          if (!S.getOpenCLOptions().isEnabled("cl_khr_fp16")) {
++          if (!S.getOpenCLOptions().isAvailableOption("cl_khr_fp16")) {
+             S.Diag(D.getIdentifierLoc(), diag::err_opencl_invalid_return)
+                 << T << 0 /*pointer hint*/;
+             D.setInvalidType(true);
+@@ -4980,7 +4980,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
+             // Disallow half FP parameters.
+             // FIXME: This really should be in BuildFunctionType.
+             if (S.getLangOpts().OpenCL) {
+-              if (!S.getOpenCLOptions().isEnabled("cl_khr_fp16")) {
++              if (!S.getOpenCLOptions().isAvailableOption("cl_khr_fp16")) {
+                 S.Diag(Param->getLocation(),
+                   diag::err_opencl_half_param) << ParamTy;
+                 D.setInvalidType();
+diff --git a/clang/lib/Serialization/ASTReader.cpp b/clang/lib/Serialization/ASTReader.cpp
+index 652b772f37c..337bf55d02e 100644
+--- a/clang/lib/Serialization/ASTReader.cpp
++++ b/clang/lib/Serialization/ASTReader.cpp
+@@ -3596,6 +3596,7 @@ ASTReader::ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
+       for (unsigned I = 0, E = Record.size(); I != E; ) {
+         auto Name = ReadString(Record, I);
+         auto &Opt = OpenCLExtensions.OptMap[Name];
++        Opt.OptType = static_cast<OpenCLOptions::OpenCLOptionType>(Record[I++]);
+         Opt.Supported = Record[I++] != 0;
+         Opt.Enabled = Record[I++] != 0;
+         Opt.Avail = Record[I++];
+diff --git a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
+index 7626827b441..9f86f579cf1 100644
+--- a/clang/lib/Serialization/ASTWriter.cpp
++++ b/clang/lib/Serialization/ASTWriter.cpp
+@@ -3917,6 +3917,7 @@ void ASTWriter::WriteOpenCLExtensions(Sema &SemaRef) {
+   for (const auto &I:Opts.OptMap) {
+     AddString(I.getKey(), Record);
+     auto V = I.getValue();
++    Record.push_back(V.OptType);
+     Record.push_back(V.Supported ? 1 : 0);
+     Record.push_back(V.Enabled ? 1 : 0);
+     Record.push_back(V.Avail);
+diff --git a/clang/test/CodeGenOpenCL/address-spaces.cl b/clang/test/CodeGenOpenCL/address-spaces.cl
+index 3c8fea2a80b..e1c3ef08b56 100644
+--- a/clang/test/CodeGenOpenCL/address-spaces.cl
++++ b/clang/test/CodeGenOpenCL/address-spaces.cl
+@@ -1,8 +1,12 @@
+ // RUN: %clang_cc1 %s -O0 -ffake-address-space-map -emit-llvm -o - | FileCheck %s --check-prefixes=CHECK,SPIR
++// RUN: %clang_cc1 %s -O0 -cl-std=CL3.0 -ffake-address-space-map -emit-llvm -o - | FileCheck %s --check-prefixes=CHECK,SPIR
+ // RUN: %clang_cc1 %s -O0 -DCL20 -cl-std=CL2.0 -ffake-address-space-map -emit-llvm -o - | FileCheck %s --check-prefixes=CL20,CL20SPIR
+ // RUN: %clang_cc1 %s -O0 -triple amdgcn-amd-amdhsa -emit-llvm -o - | FileCheck --check-prefixes=CHECK,AMDGCN %s
++// RUN: %clang_cc1 %s -O0 -cl-std=CL3.0 -triple amdgcn-amd-amdhsa -emit-llvm -o - | FileCheck --check-prefixes=CHECK,AMDGCN %s
+ // RUN: %clang_cc1 %s -O0 -triple amdgcn-amd-amdhsa -DCL20 -cl-std=CL2.0 -emit-llvm -o - | FileCheck %s --check-prefixes=CL20,CL20AMDGCN
++// RUN: %clang_cc1 %s -O0 -cl-std=CL3.0 -triple amdgcn-mesa-mesa3d -emit-llvm -o - | FileCheck --check-prefixes=CHECK,AMDGCN %s
+ // RUN: %clang_cc1 %s -O0 -triple amdgcn-mesa-mesa3d -emit-llvm -o - | FileCheck --check-prefixes=CHECK,AMDGCN %s
++// RUN: %clang_cc1 %s -O0 -cl-std=CL3.0 -triple amdgcn-mesa-mesa3d -emit-llvm -o - | FileCheck --check-prefixes=CHECK,AMDGCN %s
+ // RUN: %clang_cc1 %s -O0 -triple r600-- -emit-llvm -o - | FileCheck --check-prefixes=CHECK,AMDGCN %s
+ 
+ // SPIR: %struct.S = type { i32, i32, i32* }
+@@ -71,7 +75,7 @@ void f(int *arg) {
+ // CL20SPIR-DAG: %i = alloca i32,
+ // CL20AMDGCN-DAG: %i = alloca i32{{.*}}addrspace(5)
+ 
+-#ifdef CL20
++#ifdef CL20 
+   static int ii;
+ // CL20-DAG: @f.ii = internal addrspace(1) global i32 0
+ #endif
+diff --git a/clang/test/CodeGenOpenCL/feature-address-spaces.cl b/clang/test/CodeGenOpenCL/feature-address-spaces.cl
+new file mode 100644
+index 00000000000..f9eba4944b4
+--- /dev/null
++++ b/clang/test/CodeGenOpenCL/feature-address-spaces.cl
+@@ -0,0 +1,186 @@
++// RUN: %clang_cc1 %s -triple  spir-unknown-unknown -O0 -cl-std=CL3.0 -cl-ext=-cl_khr_fp64 -cl-feature=__opencl_c_generic_address_space -finclude-default-header -emit-llvm -o - | FileCheck %s --check-prefixes=AS-CHECK
++// RUN: %clang_cc1 %s -triple  spir-unknown-unknown -O0 -cl-std=CL3.0 -cl-ext=-cl_khr_fp64 -finclude-default-header -emit-llvm -o - | FileCheck %s 
++
++void check(bool);
++
++void test1(float f, unsigned u, __local half *h_local, __global half *h_global, __private half *h_private) {
++    // AS-CHECK: {{.+}} = addrspacecast half* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half_rte(f, u, h_private);
++    // AS-CHECK: {{.+}} = addrspacecast half* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half_rtz(f, u, h_private);
++    // AS-CHECK: {{.+}} = addrspacecast half* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half8_rtp(f, u, h_private);
++    // AS-CHECK: {{.+}} = addrspacecast half* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast 
++    vstore_half(f, u, h_private);
++    // AS-CHECK: {{.+}} = addrspacecast half* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half2(f, u, h_private);
++    // AS-CHECK: {{.+}} = addrspacecast half* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    sincos(f, h_private);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(3)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half_rte(f, u, h_local);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(3)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half_rtz(f, u, h_local);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(3)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half8_rtp(f, u, h_local);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(3)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast 
++    vstore_half(f, u, h_local);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(3)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half2(f, u, h_local);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(3)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    sincos(f, h_local);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(1)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half_rte(f, u, h_global);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(1)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half_rtz(f, u, h_global);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(1)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half8_rtp(f, u, h_global);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(1)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half(f, u, h_global);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(1)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore_half2(f, u, h_global);
++    // AS-CHECK: {{.+}} = addrspacecast half addrspace(1)* %{{.+}} to half addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    sincos(f, h_global);
++}
++
++void test2(float f, float2 f2, __local float *f_local, __global float *f_global, __private float *f_private, __local float2 *f2_local, __global float2 *f2_global, __private float2 *f2_private) {
++    // AS-CHECK: {{.+}} = addrspacecast float addrspace(3)* %{{.+}} to float addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    fract(f, f_local);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float> addrspace(3)* {{.+}}  to <2 x float> addrspace(4)* 
++    // CHECK-NOT: addrspacecast
++    fract(f2, f2_local);
++    // AS-CHECK: {{.+}} = addrspacecast float addrspace(3)* %{{.+}} to float addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    modf(f, f_local);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float> addrspace(3)* {{.+}}  to <2 x float> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    modf(f2, f2_local);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float> addrspace(3)* {{.+}}  to <2 x float> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    sincos(f2, f2_local);
++    // AS-CHECK: {{.+}} = addrspacecast float* %{{.+}} to float addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    fract(f, f_private);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float>* {{.+}}  to <2 x float> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    fract(f2, f2_private);
++    // AS-CHECK: {{.+}} = addrspacecast float* %{{.+}} to float addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    modf(f, f_private);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float>* {{.+}}  to <2 x float> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    modf(f2, f2_private);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float>* {{.+}}  to <2 x float> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    sincos(f2, f2_private);
++    fract(f, f_global);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float> addrspace(1)* {{.+}}  to <2 x float> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    fract(f2, f2_global);
++    // AS-CHECK: {{.+}} = addrspacecast float addrspace(1)* %{{.+}} to float addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    modf(f, f_global);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float> addrspace(1)* {{.+}}  to <2 x float> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    modf(f2, f2_global);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x float> addrspace(1)* {{.+}}  to <2 x float> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    sincos(f2, f2_global);
++
++}
++
++void test3(float f, float2 f2, __local int *i_local, __global int *i_global, __private int *i_private, __local int2 *i2_local, __global int2 *i2_global, __private int2 *i2_private) {
++    // AS-CHECK: {{.+}} = addrspacecast i32 addrspace(3)* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    frexp(f, i_local);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32> addrspace(3)* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    frexp(f2, i2_local);
++    // AS-CHECK: {{.+}} = addrspacecast i32 addrspace(3)* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    lgamma_r(f, i_local);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32> addrspace(3)* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    lgamma_r(f2, i2_local);
++    // AS-CHECK: {{.+}} = addrspacecast i32 addrspace(3)* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    remquo(f, f, i_local);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32> addrspace(3)* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    remquo(f2, f, i2_local);
++     // AS-CHECK: {{.+}} = addrspacecast i32* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    frexp(f, i_private);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32>* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    frexp(f2, i2_private);
++    // AS-CHECK: {{.+}} = addrspacecast i32* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    lgamma_r(f, i_private);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32>* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    lgamma_r(f2, i2_private);
++    // AS-CHECK: {{.+}} = addrspacecast i32* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    remquo(f, f, i_private);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32>* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    remquo(f2, f, i2_private);
++        // AS-CHECK: {{.+}} = addrspacecast i32 addrspace(1)* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    frexp(f, i_global);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32> addrspace(1)* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    frexp(f2, i2_global);
++    // AS-CHECK: {{.+}} = addrspacecast i32 addrspace(1)* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    lgamma_r(f, i_global);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32> addrspace(1)* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    lgamma_r(f2, i2_global);
++    // AS-CHECK: {{.+}} = addrspacecast i32 addrspace(1)* %{{.+}} to i32 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    remquo(f, f, i_global);
++    // AS-CHECK: {{.+}} = addrspacecast <2 x i32> addrspace(1)* {{.+}}  to <2 x i32> addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    remquo(f2, f, i2_global);
++}
++
++void test4(unsigned u,  __local char *c_local, __global char *c_global, __private char *c_private) {
++    // AS-CHECK: {{.+}} = addrspacecast i8 addrspace(3)* %{{.+}} to i8 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    char2 c2 = vload2(u, c_local);
++    // AS-CHECK: {{.+}} = addrspacecast i8 addrspace(3)* %{{.+}} to i8 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore2(c2, u, c_local);
++        // AS-CHECK: {{.+}} = addrspacecast i8* %{{.+}} to i8 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    c2 = vload2(u, c_private);
++    // AS-CHECK: {{.+}} = addrspacecast i8* %{{.+}} to i8 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore2(c2, u, c_private);
++        // AS-CHECK: {{.+}} = addrspacecast i8 addrspace(1)* %{{.+}} to i8 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    c2 = vload2(u, c_global);
++    // AS-CHECK: {{.+}} = addrspacecast i8 addrspace(1)* %{{.+}} to i8 addrspace(4)*
++    // CHECK-NOT: addrspacecast
++    vstore2(c2, u, c_global);
++}
+diff --git a/clang/test/CodeGenOpenCL/to_addr_builtin.cl b/clang/test/CodeGenOpenCL/to_addr_builtin.cl
+index 52dd72f18a3..02b292d75e4 100644
+--- a/clang/test/CodeGenOpenCL/to_addr_builtin.cl
++++ b/clang/test/CodeGenOpenCL/to_addr_builtin.cl
+@@ -1,4 +1,6 @@
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -emit-llvm -O0 -cl-std=clc++ -o - %s | FileCheck %s
++// RUN: %clang_cc1 -triple spir-unknown-unknown -emit-llvm -O0 -cl-std=cl2.0 -o - %s | FileCheck %s
++// RUN: %clang_cc1 -triple spir-unknown-unknown -emit-llvm -O0 -cl-std=cl3.0 -cl-feature=__opencl_c_generic_address_space -o - %s | FileCheck %s
+ 
+ // CHECK: %[[A:.*]] = type { float, float, float }
+ typedef struct {
+diff --git a/clang/test/Driver/unknown-std.cl b/clang/test/Driver/unknown-std.cl
+index 6f371bac13a..00209fb6255 100644
+--- a/clang/test/Driver/unknown-std.cl
++++ b/clang/test/Driver/unknown-std.cl
+@@ -10,6 +10,7 @@
+ // CHECK-NEXT: note: use 'cl1.1' for 'OpenCL 1.1' standard
+ // CHECK-NEXT: note: use 'cl1.2' for 'OpenCL 1.2' standard
+ // CHECK-NEXT: note: use 'cl2.0' for 'OpenCL 2.0' standard
++// CHECK-NEXT: note: use 'cl3.0' for 'OpenCL 3.0' standard
+ // CHECK-NEXT: note: use 'clc++' for 'C++ for OpenCL' standard
+ 
+ // Make sure that no other output is present.
+diff --git a/clang/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl b/clang/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
+index 5efea216346..523fdf95a60 100644
+--- a/clang/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
++++ b/clang/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
+@@ -1,6 +1,9 @@
+ // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DCONSTANT -cl-std=CL2.0
+ // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGLOBAL -cl-std=CL2.0
+ // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGENERIC -cl-std=CL2.0
++// RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DCONSTANT -cl-std=CL3.0 -cl-feature=__opencl_c_generic_address_space
++// RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGLOBAL -cl-std=CL3.0 -cl-feature=__opencl_c_generic_address_space
++// RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGENERIC -cl-std=CL3.0 -cl-feature=__opencl_c_generic_address_space
+ // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DCONSTANT -cl-std=clc++
+ // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGLOBAL -cl-std=clc++
+ // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGENERIC -cl-std=clc++
+diff --git a/clang/test/SemaOpenCL/address-spaces.cl b/clang/test/SemaOpenCL/address-spaces.cl
+index 07547ea1968..12fe58eb63a 100644
+--- a/clang/test/SemaOpenCL/address-spaces.cl
++++ b/clang/test/SemaOpenCL/address-spaces.cl
+@@ -1,5 +1,6 @@
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only
+ // RUN: %clang_cc1 %s -cl-std=CL2.0 -verify -pedantic -fsyntax-only
++// RUN: %clang_cc1 %s -cl-std=CL3.0 -verify -pedantic -fsyntax-only -cl-feature=__opencl_c_generic_address_space
+ // RUN: %clang_cc1 %s -cl-std=clc++ -verify -pedantic -fsyntax-only
+ 
+ __constant int ci = 1;
+diff --git a/clang/test/SemaOpenCL/fdeclare-opencl-builtins.cl b/clang/test/SemaOpenCL/fdeclare-opencl-builtins.cl
+index dd89f40761c..d0ed0c24e5a 100644
+--- a/clang/test/SemaOpenCL/fdeclare-opencl-builtins.cl
++++ b/clang/test/SemaOpenCL/fdeclare-opencl-builtins.cl
+@@ -1,9 +1,15 @@
+ // RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL -fdeclare-opencl-builtins -DNO_HEADER
+ // RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL -fdeclare-opencl-builtins -finclude-default-header
+-// RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL1.2 -fdeclare-opencl-builtins -DNO_HEADER
+-// RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL1.2 -fdeclare-opencl-builtins -finclude-default-header
++// RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL3.0 -fdeclare-opencl-builtins -DNO_HEADER -cl-feature=__opencl_c_generic_address_space,__opencl_c_subgroups
++// RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL3.0 -fdeclare-opencl-builtins -finclude-default-header \
++// RUN:   -cl-feature=__opencl_c_generic_address_space,__opencl_c_subgroups
++// RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL3.0 -fdeclare-opencl-builtins -DNO_HEADER -cl-feature=__opencl_c_generic_address_space,__opencl_c_subgroups
++// RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL3.0 -fdeclare-opencl-builtins -finclude-default-header \
++// RUN:   -cl-feature=__opencl_c_generic_address_space,__opencl_c_subgroups
+ // RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL2.0 -fdeclare-opencl-builtins -DNO_HEADER
+ // RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL2.0 -fdeclare-opencl-builtins -finclude-default-header
++// RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL1.2 -fdeclare-opencl-builtins -DNO_HEADER
++// RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CL1.2 -fdeclare-opencl-builtins -finclude-default-header
+ // RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CLC++ -fdeclare-opencl-builtins -DNO_HEADER
+ // RUN: %clang_cc1 %s -triple spir -verify -pedantic -Wconversion -Werror -fsyntax-only -cl-std=CLC++ -fdeclare-opencl-builtins -finclude-default-header
+ 
+@@ -104,7 +110,7 @@ kernel void basic_image_readonly(read_only image2d_t image_read_only_image2d) {
+   int imgWidth = get_image_width(image_read_only_image2d);
+ }
+ 
+-#if __OPENCL_C_VERSION__ >= CL_VERSION_2_0
++#if __OPENCL_C_VERSION__ == CL_VERSION_2_0
+ kernel void basic_image_readwrite(read_write image3d_t image_read_write_image3d) {
+   half4 h4;
+   int4 i4;
+@@ -113,7 +119,7 @@ kernel void basic_image_readwrite(read_write image3d_t image_read_write_image3d)
+ 
+   int imgDepth = get_image_depth(image_read_write_image3d);
+ }
+-#endif // __OPENCL_C_VERSION__ >= CL_VERSION_2_0
++#endif // __OPENCL_C_VERSION__ == CL_VERSION_2_0
+ 
+ kernel void basic_image_writeonly(write_only image1d_buffer_t image_write_only_image1d_buffer) {
+   half4 h4;
+@@ -138,7 +144,7 @@ kernel void basic_subgroup(global uint *out) {
+ }
+ 
+ kernel void basic_vector_data() {
+-#if __OPENCL_C_VERSION__ >= CL_VERSION_2_0
++#if __OPENCL_C_VERSION__ >= CL_VERSION_2_0 && defined(__opencl_c_generic_address_space)
+   generic void *generic_p;
+ #endif
+   constant void *constant_p;
+@@ -150,7 +156,7 @@ kernel void basic_vector_data() {
+   vload4(s, (const __constant ulong *) constant_p);
+   vload16(s, (const __constant short *) constant_p);
+ 
+-#if __OPENCL_C_VERSION__ >= CL_VERSION_2_0
++#if __OPENCL_C_VERSION__ >= CL_VERSION_2_0 && defined(__opencl_c_generic_address_space)
+   vload3(s, (const __generic ushort *) generic_p);
+   vload16(s, (const __generic uchar *) generic_p);
+ #endif
+diff --git a/clang/test/SemaOpenCL/feature-device-enqueue.cl b/clang/test/SemaOpenCL/feature-device-enqueue.cl
+new file mode 100644
+index 00000000000..cae604759b3
+--- /dev/null
++++ b/clang/test/SemaOpenCL/feature-device-enqueue.cl
+@@ -0,0 +1,29 @@
++// RUN: %clang_cc1 %s -cl-feature=__opencl_c_generic_address_space -cl-std=CL3.0 -triple "spir-unknown-unknown" -verify -pedantic -fsyntax-only
++
++__kernel void test1() { 
++  queue_t default_queue; // expected-error{{use of type 'queue_t' requires __opencl_c_device_enqueue feature to be supported}}
++  clk_event_t evt; // expected-error{{use of type 'clk_event_t' requires __opencl_c_device_enqueue feature to be supported}}
++}
++
++__kernel void test2() {
++  void (^const block_A)(int) = ^(int a) { // expected-error{{OpenCL blocks usage requires feature support}}
++    return;
++  };
++  void (^const block_B)(void) = ^{ // expected-error{{OpenCL blocks usage requires feature support}}
++    return;
++  };
++  void (^const block_C)(local void *) = ^(local void *a) { // expected-error{{OpenCL blocks usage requires feature support}}
++    return;
++  };
++  void (^const block_D)(local int *) = ^(local int *a) { // expected-error{{OpenCL blocks usage requires feature support}}
++    return;
++  };
++
++}
++
++typedef struct {int a;} ndrange_t;
++
++__kernel void test3() {
++   queue_t default_queue; // expected-error{{use of type 'queue_t' requires __opencl_c_device_enqueue feature to be supported}}
++}
++
+diff --git a/clang/test/SemaOpenCL/feature-images.cl b/clang/test/SemaOpenCL/feature-images.cl
+new file mode 100644
+index 00000000000..489fd2d386c
+--- /dev/null
++++ b/clang/test/SemaOpenCL/feature-images.cl
+@@ -0,0 +1,28 @@
++// RUN: %clang_cc1 -cl-std=cl2.0 -fsyntax-only -verify %s -triple spir-unknown-unknown
++// RUN: %clang_cc1 -cl-std=cl3.0 -fsyntax-only -verify %s -triple spir-unknown-unknown
++// RUN: %clang_cc1 -cl-std=cl3.0 -cl-feature=__opencl_c_3d_image_writes -fsyntax-only -verify %s -triple spir-unknown-unknown
++// RUN: %clang_cc1 -cl-std=cl3.0 -cl-feature=__opencl_c_read_write_images -fsyntax-only -verify %s -triple spir-unknown-unknown
++
++#if (defined(__OPENCL_C_VERSION__) && __OPENCL_C_VERSION__ < 300)
++// expected-no-diagnostics
++__kernel void write_3d_image(__write_only image3d_t i) {}
++__kernel void read_write_3d_image(__read_write image3d_t i) {}
++__kernel void read_write_2d_image(__read_write image2d_t i) {}
++__kernel void read_write_1d_image(__read_write image1d_t i) {}
++#else
++#ifndef __opencl_c_3d_image_writes
++__kernel void write_3d_image(__write_only image3d_t i) { // expected-error{{use of type '__write_only image3d_t' requires __opencl_c_3d_image_writes feature to be supported}}
++}
++#endif
++#ifndef __opencl_c_read_write_images
++__kernel void read_write_3d_image(__read_write image3d_t i) { // expected-error{{use of type '__read_write image3d_t' requires __opencl_c_read_write_images feature to be supported}}
++}
++
++__kernel void read_write_2d_image(__read_write image2d_t i) { // expected-error{{use of type '__read_write image2d_t' requires __opencl_c_read_write_images feature to be supported}}
++}
++
++__kernel void read_write_1d_image(__read_write image1d_t i) { // expected-error{{use of type '__read_write image1d_t' requires __opencl_c_read_write_images feature to be supported}}
++}
++#endif
++
++#endif
+diff --git a/clang/test/SemaOpenCL/feature-memory-scope.cl b/clang/test/SemaOpenCL/feature-memory-scope.cl
+new file mode 100644
+index 00000000000..6fbce297ca7
+--- /dev/null
++++ b/clang/test/SemaOpenCL/feature-memory-scope.cl
+@@ -0,0 +1,118 @@
++// RUN: %clang_cc1 %s -cl-std=CL3.0 -verify -fsyntax-only -triple=spir64 
++// RUN: %clang_cc1 %s -cl-std=CL3.0 -verify -fsyntax-only -triple=spir64 -cl-feature=__opencl_c_subgroups,__opencl_c_atomic_scope_device,__opencl_c_atomic_scope_all_devices,__opencl_c_atomic_order_acq_rel,__opencl_c_atomic_order_seq_cst -DSUPPORTED
++
++#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
++#pragma OPENCL EXTENSION cl_khr_int64_extended_atomics : enable
++
++typedef enum memory_order {
++  memory_order_relaxed = __ATOMIC_RELAXED,
++  memory_order_acquire = __ATOMIC_ACQUIRE,
++  memory_order_release = __ATOMIC_RELEASE,
++  memory_order_acq_rel = __ATOMIC_ACQ_REL,
++  memory_order_seq_cst = __ATOMIC_SEQ_CST
++} memory_order;
++
++typedef enum memory_scope {
++  memory_scope_work_item = __OPENCL_MEMORY_SCOPE_WORK_ITEM,
++  memory_scope_work_group = __OPENCL_MEMORY_SCOPE_WORK_GROUP,
++  memory_scope_device = __OPENCL_MEMORY_SCOPE_DEVICE,
++  memory_scope_all_svm_devices = __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES,
++#if defined(cl_intel_subgroups) || defined(cl_khr_subgroups)
++  memory_scope_sub_group = __OPENCL_MEMORY_SCOPE_SUB_GROUP
++#endif
++} memory_scope;
++
++#ifndef SUPPORTED
++void test1(atomic_int *Ap, int *p, int val) {
++  (void)__opencl_atomic_fetch_add(Ap, 1, memory_order_acquire, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_add(Ap, 1, memory_order_release, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_add(Ap, 1, memory_order_acq_rel, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_add(Ap, 1, memory_order_seq_cst, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++
++  (void)__opencl_atomic_fetch_sub(Ap, val, memory_order_acquire, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_sub(Ap, val, memory_order_release, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_sub(Ap, val, memory_order_acq_rel, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_sub(Ap, val, memory_order_seq_cst, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++
++  (void)__opencl_atomic_fetch_and(Ap, val, memory_order_acquire, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_and(Ap, val, memory_order_release, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_and(Ap, val, memory_order_acq_rel, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_and(Ap, val, memory_order_seq_cst, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++
++  (void)__opencl_atomic_fetch_or(Ap, val, memory_order_acquire, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_or(Ap, val, memory_order_release, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_or(Ap, val, memory_order_acq_rel, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_or(Ap, val, memory_order_seq_cst, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++
++  (void)__opencl_atomic_fetch_xor(Ap, val, memory_order_acquire, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_xor(Ap, val, memory_order_release, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_xor(Ap, val, memory_order_acq_rel, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_fetch_xor(Ap, val, memory_order_seq_cst, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++
++  (void)__opencl_atomic_exchange(Ap, val, memory_order_acquire, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_exchange(Ap, val, memory_order_release, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_exchange(Ap, val, memory_order_acq_rel, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_exchange(Ap, val, memory_order_seq_cst, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++
++  (void)__opencl_atomic_compare_exchange_strong(Ap, p, val, memory_order_acquire, memory_order_relaxed, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_compare_exchange_strong(Ap, p, val, memory_order_release, memory_order_relaxed, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_compare_exchange_strong(Ap, p, val, memory_order_acq_rel, memory_order_relaxed, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_compare_exchange_strong(Ap, p, val, memory_order_seq_cst, memory_order_relaxed, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++
++  (void)__opencl_atomic_compare_exchange_weak(Ap, p, val, memory_order_acquire, memory_order_relaxed, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_compare_exchange_weak(Ap, p, val, memory_order_release, memory_order_relaxed, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_compare_exchange_weak(Ap, p, val, memory_order_acq_rel, memory_order_relaxed, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  (void)__opencl_atomic_compare_exchange_weak(Ap, p, val, memory_order_seq_cst, memory_order_relaxed, memory_scope_work_group); // expected-error {{OpenCL memory order requires feature support}}
++  
++  (void)__opencl_atomic_load(Ap, memory_order_relaxed, memory_scope_all_svm_devices); // expected-error{{OpenCL memory scope requires feature support}}
++  (void)__opencl_atomic_load(Ap, memory_order_relaxed, memory_scope_device); // expected-error{{OpenCL memory scope requires feature support}}
++  (void)__opencl_atomic_load(Ap, memory_order_relaxed, memory_scope_sub_group); // // expected-error{{OpenCL memory scope requires feature support}} 
++}
++#else
++// expected-no-diagnostics
++void test2(atomic_int *Ap, int *p, int val) {
++  (void)__opencl_atomic_fetch_add(Ap, 1, memory_order_acquire, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_add(Ap, 1, memory_order_release, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_add(Ap, 1, memory_order_acq_rel, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_add(Ap, 1, memory_order_seq_cst, memory_scope_work_group);
++
++  (void)__opencl_atomic_fetch_sub(Ap, val, memory_order_acquire, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_sub(Ap, val, memory_order_release, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_sub(Ap, val, memory_order_acq_rel, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_sub(Ap, val, memory_order_seq_cst, memory_scope_work_group);
++
++  (void)__opencl_atomic_fetch_and(Ap, val, memory_order_acquire, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_and(Ap, val, memory_order_release, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_and(Ap, val, memory_order_acq_rel, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_and(Ap, val, memory_order_seq_cst, memory_scope_work_group);
++
++  (void)__opencl_atomic_fetch_or(Ap, val, memory_order_acquire, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_or(Ap, val, memory_order_release, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_or(Ap, val, memory_order_acq_rel, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_or(Ap, val, memory_order_seq_cst, memory_scope_work_group);
++
++  (void)__opencl_atomic_fetch_xor(Ap, val, memory_order_acquire, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_xor(Ap, val, memory_order_release, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_xor(Ap, val, memory_order_acq_rel, memory_scope_work_group);
++  (void)__opencl_atomic_fetch_xor(Ap, val, memory_order_seq_cst, memory_scope_work_group);
++
++  (void)__opencl_atomic_exchange(Ap, val, memory_order_acquire, memory_scope_work_group);
++  (void)__opencl_atomic_exchange(Ap, val, memory_order_release, memory_scope_work_group);
++  (void)__opencl_atomic_exchange(Ap, val, memory_order_acq_rel, memory_scope_work_group);
++  (void)__opencl_atomic_exchange(Ap, val, memory_order_seq_cst, memory_scope_work_group);
++
++  (void)__opencl_atomic_compare_exchange_strong(Ap, p, val, memory_order_acquire, memory_order_relaxed, memory_scope_work_group);
++  (void)__opencl_atomic_compare_exchange_strong(Ap, p, val, memory_order_release, memory_order_relaxed, memory_scope_work_group);
++  (void)__opencl_atomic_compare_exchange_strong(Ap, p, val, memory_order_acq_rel, memory_order_relaxed, memory_scope_work_group);
++  (void)__opencl_atomic_compare_exchange_strong(Ap, p, val, memory_order_seq_cst, memory_order_relaxed, memory_scope_work_group);
++
++  (void)__opencl_atomic_compare_exchange_weak(Ap, p, val, memory_order_acquire, memory_order_relaxed, memory_scope_work_group);
++  (void)__opencl_atomic_compare_exchange_weak(Ap, p, val, memory_order_release, memory_order_relaxed, memory_scope_work_group);
++  (void)__opencl_atomic_compare_exchange_weak(Ap, p, val, memory_order_acq_rel, memory_order_relaxed, memory_scope_work_group);
++  (void)__opencl_atomic_compare_exchange_weak(Ap, p, val, memory_order_seq_cst, memory_order_relaxed, memory_scope_work_group);
++ 
++ (void)__opencl_atomic_load(Ap, memory_order_relaxed, memory_scope_all_svm_devices);
++ (void)__opencl_atomic_load(Ap, memory_order_relaxed, memory_scope_device);
++ (void)__opencl_atomic_load(Ap, memory_order_relaxed, memory_scope_sub_group);
++}
++#endif
+diff --git a/clang/test/SemaOpenCL/feature-pipes.cl b/clang/test/SemaOpenCL/feature-pipes.cl
+new file mode 100644
+index 00000000000..b7d261645d1
+--- /dev/null
++++ b/clang/test/SemaOpenCL/feature-pipes.cl
+@@ -0,0 +1,71 @@
++// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0 -cl-ext=+cl_khr_subgroups
++
++#pragma OPENCL EXTENSION cl_khr_subgroups : enable
++
++void test1(read_only pipe int p, global int *ptr) {
++  read_pipe(p, ptr); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++  reserve_id_t rid; // expected-error{{use of type 'reserve_id_t' requires __opencl_c_pipes feature to be supported}}
++  rid = reserve_read_pipe(p, 2); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test2(read_only pipe int p, global int *ptr, int tmp) {
++ read_pipe(p, tmp, 2, ptr); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++ commit_read_pipe(p, tmp); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test3(write_only pipe int p, global int *ptr) {
++  write_pipe(p, ptr); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++  reserve_id_t rid; // expected-error{{use of type 'reserve_id_t' requires __opencl_c_pipes feature to be supported}}
++  rid = reserve_write_pipe(p, 2); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test4(write_only pipe int p, global int *ptr, int tmp) {
++  write_pipe(p, tmp, 2, ptr); // // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++  commit_write_pipe(p, tmp); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test5(read_only pipe int p, global int *ptr) {
++  reserve_id_t rid; // expected-error{{use of type 'reserve_id_t' requires __opencl_c_pipes feature to be supported}}
++  rid = work_group_reserve_read_pipe(p, 2); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test6(int p, int tmp) {
++ work_group_commit_read_pipe(p, tmp); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test7(write_only pipe int p, global int *ptr) {
++  reserve_id_t rid; // expected-error{{use of type 'reserve_id_t' requires __opencl_c_pipes feature to be supported}}
++  rid = work_group_reserve_write_pipe(p, 2); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test8(int p, int tmp) {
++ work_group_commit_write_pipe(p, tmp); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test9(read_only pipe int p, global int *ptr) {
++  reserve_id_t rid; // expected-error{{use of type 'reserve_id_t' requires __opencl_c_pipes feature to be supported}}
++  rid = sub_group_reserve_read_pipe(p, 2); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test10(int p, int tmp) {
++     sub_group_commit_read_pipe(p, tmp); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test11(write_only pipe int p, global int *ptr) {
++  reserve_id_t rid; // expected-error{{use of type 'reserve_id_t' requires __opencl_c_pipes feature to be supported}}
++  rid = sub_group_reserve_write_pipe(p, 2); //expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test12(int p, int tmp) {
++     sub_group_commit_write_pipe(p, tmp); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test13(read_only pipe int p, global int *ptr) {
++  *ptr = get_pipe_num_packets(p); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++  *ptr = get_pipe_max_packets(p); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
++
++void test14(write_only pipe int p, global int *ptr) {
++  *ptr = get_pipe_num_packets(p); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++  *ptr = get_pipe_max_packets(p); // expected-error{{pipe functions require __opencl_c_pipes feature to be supported}}
++}
+diff --git a/clang/test/SemaOpenCL/invalid-block.cl b/clang/test/SemaOpenCL/invalid-block.cl
+index ec74d16cc9b..6cb7db78d7b 100644
+--- a/clang/test/SemaOpenCL/invalid-block.cl
++++ b/clang/test/SemaOpenCL/invalid-block.cl
+@@ -1,5 +1,4 @@
+ // RUN: %clang_cc1 -verify -fblocks -cl-std=CL2.0 %s
+-
+ // OpenCL v2.0 s6.12.5
+ void f0(int (^const bl)());
+ // All blocks declarations must be const qualified and initialized.
+diff --git a/clang/test/SemaOpenCL/storageclass-cl20.cl b/clang/test/SemaOpenCL/storageclass-cl20.cl
+index 581701d2a6a..a4dee00cfe1 100644
+--- a/clang/test/SemaOpenCL/storageclass-cl20.cl
++++ b/clang/test/SemaOpenCL/storageclass-cl20.cl
+@@ -1,4 +1,5 @@
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL2.0
++// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0 -cl-feature=__opencl_c_program_scope_global_variables,__opencl_c_generic_address_space
+ 
+ int G2 = 0;
+ global int G3 = 0;
+diff --git a/clang/test/SemaOpenCL/storageclass.cl b/clang/test/SemaOpenCL/storageclass.cl
+index f35ab9c2e08..f878073b2df 100644
+--- a/clang/test/SemaOpenCL/storageclass.cl
++++ b/clang/test/SemaOpenCL/storageclass.cl
+@@ -1,5 +1,4 @@
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL1.2
+-
+ static constant int G1 = 0;
+ constant int G2 = 0;
+ int G3 = 0;        // expected-error{{program scope variable must reside in constant address space}}
+diff --git a/clang/test/SemaOpenCL/to_addr_builtin.cl b/clang/test/SemaOpenCL/to_addr_builtin.cl
+index ff2d7807356..cd9ee262671 100644
+--- a/clang/test/SemaOpenCL/to_addr_builtin.cl
++++ b/clang/test/SemaOpenCL/to_addr_builtin.cl
+@@ -1,6 +1,6 @@
+ // RUN: %clang_cc1 -verify -fsyntax-only %s
+ // RUN: %clang_cc1 -Wconversion -verify -fsyntax-only -cl-std=CL2.0 %s
+-
++// RUN: %clang_cc1 -Wconversion -verify -fsyntax-only -cl-std=CL3.0 -cl-feature=__opencl_c_generic_address_space %s
+ void test(void) {
+   global int *glob;
+   local int *loc;
+diff --git a/clang/utils/TableGen/ClangOpenCLBuiltinEmitter.cpp b/clang/utils/TableGen/ClangOpenCLBuiltinEmitter.cpp
+index 41d33b55068..6422b50a7ea 100644
+--- a/clang/utils/TableGen/ClangOpenCLBuiltinEmitter.cpp
++++ b/clang/utils/TableGen/ClangOpenCLBuiltinEmitter.cpp
+@@ -138,8 +138,8 @@ private:
+   // function names.
+   void GroupBySignature();
+ 
+-  // Emit the FunctionExtensionTable that lists all function extensions.
+-  void EmitExtensionTable();
++  // Emit the FunctionExtensionTable and FunctionFeatureTable that lists all function options.
++  void EmitOptionTable();
+ 
+   // Emit the TypeTable containing all types used by OpenCL builtins.
+   void EmitTypeTable();
+@@ -245,7 +245,7 @@ void BuiltinNameEmitter::Emit() {
+   GroupBySignature();
+ 
+   // Emit tables.
+-  EmitExtensionTable();
++  EmitOptionTable();
+   EmitTypeTable();
+   EmitSignatureTable();
+   EmitBuiltinTable();
+@@ -340,6 +340,8 @@ struct OpenCLBuiltinStruct {
+   const bool IsConv;
+   // OpenCL extension(s) required for this overload.
+   const unsigned short Extension;
++  
++  const unsigned short Feature;
+   // First OpenCL version in which this overload was introduced (e.g. CL20).
+   const unsigned short MinVersion;
+   // First OpenCL version in which this overload was removed (e.g. CL20).
+@@ -430,7 +432,7 @@ void BuiltinNameEmitter::GetOverloads() {
+   }
+ }
+ 
+-void BuiltinNameEmitter::EmitExtensionTable() {
++void BuiltinNameEmitter::EmitOptionTable() {
+   OS << "static const char *FunctionExtensionTable[] = {\n";
+   unsigned Index = 0;
+   std::vector<Record *> FuncExtensions =
+@@ -445,6 +447,19 @@ void BuiltinNameEmitter::EmitExtensionTable() {
+     FunctionExtensionIndex[FE->getName()] = Index++;
+   }
+   OS << "};\n\n";
++  OS << "static const char *FunctionFeatureTable[] = {\n";
++  std::vector<Record *> FuncFeatures =
++      Records.getAllDerivedDefinitions("FunctionFeature");
++  Index = 0;
++  for (const auto &FF : FuncFeatures) {
++    // Emit OpenCL extension table entry.
++    OS << "  // " << Index << ": " << FF->getName() << "\n"
++       << "  \"" << FF->getValueAsString("ExtName") << "\",\n";
++
++    // Record index of this extension.
++    FunctionExtensionIndex[FF->getName()] = Index++;
++  }
++  OS << "};\n\n";
+ }
+ 
+ void BuiltinNameEmitter::EmitTypeTable() {
+@@ -498,12 +513,14 @@ void BuiltinNameEmitter::EmitBuiltinTable() {
+ 
+     for (const auto &Overload : SLM.second.Signatures) {
+       StringRef ExtName = Overload.first->getValueAsDef("Extension")->getName();
++      StringRef FeatName = Overload.first->getValueAsDef("Feature")->getName();
+       OS << "  { " << Overload.second << ", "
+          << Overload.first->getValueAsListOfDefs("Signature").size() << ", "
+          << (Overload.first->getValueAsBit("IsPure")) << ", "
+          << (Overload.first->getValueAsBit("IsConst")) << ", "
+          << (Overload.first->getValueAsBit("IsConv")) << ", "
+          << FunctionExtensionIndex[ExtName] << ", "
++         << FunctionExtensionIndex[FeatName] << ", "
+          << Overload.first->getValueAsDef("MinVersion")->getValueAsInt("ID")
+          << ", "
+          << Overload.first->getValueAsDef("MaxVersion")->getValueAsInt("ID")
+-- 
+2.21.0
+
