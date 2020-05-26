@@ -51,6 +51,9 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
         return()
     endif()
 
+    # Sort patches to set an order
+    list(SORT patches)
+
     message(STATUS "${repo_dir}:")
     # Check if the target branch already exists
     execute_process(
