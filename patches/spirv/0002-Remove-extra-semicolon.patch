@@ -1,4 +1,4 @@
-From 194e699aef7850b189bdb5816444f44dc467d6a8 Mon Sep 17 00:00:00 2001
+From 818ed0df7dd7e3d2e0466579ff0e0ddd69897d49 Mon Sep 17 00:00:00 2001
 From: Alexey Sotkin <alexey.sotkin@intel.com>
 Date: Mon, 5 Aug 2019 18:18:01 +0300
 Subject: [PATCH] Remove extra semicolon
@@ -8,13 +8,13 @@ Subject: [PATCH] Remove extra semicolon
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/lib/SPIRV/libSPIRV/SPIRVEnum.h b/lib/SPIRV/libSPIRV/SPIRVEnum.h
-index 2d7c870..9260685 100644
+index ee60c12..aaf735f 100644
 --- a/lib/SPIRV/libSPIRV/SPIRVEnum.h
 +++ b/lib/SPIRV/libSPIRV/SPIRVEnum.h
-@@ -121,7 +121,7 @@ template <> inline void SPIRVMap<SPIRVExtensionKind, std::string>::init() {
-       "SPV_INTEL_device_side_avc_motion_estimation");
+@@ -123,7 +123,7 @@ template <> inline void SPIRVMap<SPIRVExtensionKind, std::string>::init() {
    add(SPV_INTEL_media_block_io, "SPV_INTEL_media_block_io");
    add(SPV_KHR_no_integer_wrap_decoration, "SPV_KHR_no_integer_wrap_decoration");
+   add(SPV_INTEL_inline_assembly, "SPV_INTEL_inline_assembly");
 -};
 +}
  
