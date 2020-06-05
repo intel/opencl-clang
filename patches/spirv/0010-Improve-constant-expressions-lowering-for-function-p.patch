@@ -1,0 +1,192 @@
+From d13e7857c08beee2143f35b4222e8f5a9f78570e Mon Sep 17 00:00:00 2001
+From: Aleksandr Bezzubikov <zuban32s@gmail.com>
+Date: Wed, 20 May 2020 01:16:22 +0300
+Subject: [PATCH] Improve constant expressions lowering for function pointers.
+
+Extend constexprs lowering support to lower constant vector of pure function pointers
+w/o any transformations inside.
+---
+ lib/SPIRV/SPIRVLowerConstExpr.cpp             | 27 ++++++++-----
+ lib/SPIRV/SPIRVWriter.cpp                     | 14 +++++--
+ test/constexpr_vector.ll                      | 13 ++++--
+ .../vector_elem.ll                            | 40 +++++++++++++++++++
+ 4 files changed, 76 insertions(+), 18 deletions(-)
+ create mode 100644 test/transcoding/SPV_INTEL_function_pointers/vector_elem.ll
+
+diff --git a/lib/SPIRV/SPIRVLowerConstExpr.cpp b/lib/SPIRV/SPIRVLowerConstExpr.cpp
+index 0c7d04d..74d73fd 100644
+--- a/lib/SPIRV/SPIRVLowerConstExpr.cpp
++++ b/lib/SPIRV/SPIRVLowerConstExpr.cpp
+@@ -115,7 +115,6 @@ bool SPIRVLowerConstExpr::runOnModule(Module &Module) {
+ 
+ void SPIRVLowerConstExpr::visit(Module *M) {
+   for (auto &I : M->functions()) {
+-    std::map<ConstantExpr *, Instruction *> CMap;
+     std::list<Instruction *> WorkList;
+     for (auto &BI : I) {
+       for (auto &II : BI) {
+@@ -126,7 +125,10 @@ void SPIRVLowerConstExpr::visit(Module *M) {
+     while (!WorkList.empty()) {
+       auto II = WorkList.front();
+ 
+-      auto LowerOp = [&II, &FBegin, &I](ConstantExpr *CE) {
++      auto LowerOp = [&II, &FBegin, &I](Value *V) -> Value * {
++        if (isa<Function>(V))
++          return V;
++        auto *CE = cast<ConstantExpr>(V);
+         SPIRVDBG(dbgs() << "[lowerConstantExpressions] " << *CE;)
+         auto ReplInst = CE->getAsInstruction();
+         auto InsPoint = II->getParent() == &*FBegin ? II : &FBegin->back();
+@@ -151,25 +153,30 @@ void SPIRVLowerConstExpr::visit(Module *M) {
+       for (unsigned OI = 0, OE = II->getNumOperands(); OI != OE; ++OI) {
+         auto Op = II->getOperand(OI);
+         auto *Vec = dyn_cast<ConstantVector>(Op);
+-        if (Vec && std::all_of(Vec->op_begin(), Vec->op_end(),
+-                               [](Value *V) { return isa<ConstantExpr>(V); })) {
++        if (Vec && std::all_of(Vec->op_begin(), Vec->op_end(), [](Value *V) {
++              return isa<ConstantExpr>(V) || isa<Function>(V);
++            })) {
+           // Expand a vector of constexprs and construct it back with series of
+           // insertelement instructions
+-          std::list<Instruction *> ReplList;
+-          std::transform(
+-              Vec->op_begin(), Vec->op_end(), std::back_inserter(ReplList),
+-              [LowerOp](Value *V) { return LowerOp(cast<ConstantExpr>(V)); });
++          std::list<Value *> OpList;
++          std::transform(Vec->op_begin(), Vec->op_end(),
++                         std::back_inserter(OpList),
++                         [LowerOp](Value *V) { return LowerOp(V); });
+           Value *Repl = nullptr;
+           unsigned Idx = 0;
+-          for (auto V : ReplList)
++          std::list<Instruction *> ReplList;
++          for (auto V : OpList) {
++            if (auto *Inst = dyn_cast<Instruction>(V))
++              ReplList.push_back(Inst);
+             Repl = InsertElementInst::Create(
+                 (Repl ? Repl : UndefValue::get(Vec->getType())), V,
+                 ConstantInt::get(Type::getInt32Ty(M->getContext()), Idx++), "",
+                 II);
++          }
+           II->replaceUsesOfWith(Op, Repl);
+           WorkList.splice(WorkList.begin(), ReplList);
+         } else if (auto CE = dyn_cast<ConstantExpr>(Op))
+-          WorkList.push_front(LowerOp(CE));
++          WorkList.push_front(cast<Instruction>(LowerOp(CE)));
+       }
+     }
+   }
+diff --git a/lib/SPIRV/SPIRVWriter.cpp b/lib/SPIRV/SPIRVWriter.cpp
+index 7fccf34..8a0ca47 100644
+--- a/lib/SPIRV/SPIRVWriter.cpp
++++ b/lib/SPIRV/SPIRVWriter.cpp
+@@ -997,13 +997,19 @@ SPIRVValue *LLVMToSPIRV::transValueWithoutDecoration(Value *V,
+ 
+   if (auto Ins = dyn_cast<InsertElementInst>(V)) {
+     auto Index = Ins->getOperand(2);
+-    if (auto Const = dyn_cast<ConstantInt>(Index))
++    if (auto Const = dyn_cast<ConstantInt>(Index)) {
++      SPIRVValue *InsVal = nullptr;
++      if (auto *F = dyn_cast<Function>(Ins->getOperand(1))) {
++        InsVal = BM->addFunctionPointerINTELInst(
++            transType(F->getType()),
++            static_cast<SPIRVFunction *>(transValue(F, BB)), BB);
++      } else
++        InsVal = transValue(Ins->getOperand(1), BB);
+       return mapValue(V, BM->addCompositeInsertInst(
+-                             transValue(Ins->getOperand(1), BB),
+-                             transValue(Ins->getOperand(0), BB),
++                             InsVal, transValue(Ins->getOperand(0), BB),
+                              std::vector<SPIRVWord>(1, Const->getZExtValue()),
+                              BB));
+-    else
++    } else
+       return mapValue(
+           V, BM->addVectorInsertDynamicInst(transValue(Ins->getOperand(0), BB),
+                                             transValue(Ins->getOperand(1), BB),
+diff --git a/test/constexpr_vector.ll b/test/constexpr_vector.ll
+index d441429..d74b334 100644
+--- a/test/constexpr_vector.ll
++++ b/test/constexpr_vector.ll
+@@ -1,8 +1,7 @@
+ ; RUN: llvm-as < %s | llvm-spirv -spirv-mem2reg=false -s | llvm-dis | FileCheck %s --check-prefix=CHECK-LLVM
+ 
+ ; CHECK-LLVM: define dllexport void @vadd() {
+-; CHECK-LLVM-NEXT: entry:
+-; CHECK-LLVM-NEXT:   %Funcs = alloca <16 x i8>, align 16
++; CHECK-LLVM:   %Funcs = alloca <16 x i8>, align 16
+ ; CHECK-LLVM-NEXT:   %0 = ptrtoint i32 (i32)* @_Z2f1u2CMvb32_j to i64
+ ; CHECK-LLVM-NEXT:   %1 = bitcast i64 %0 to <8 x i8>
+ ; CHECK-LLVM-NEXT:   %2 = extractelement <8 x i8> %1, i32 0
+@@ -40,8 +39,12 @@
+ ; CHECK-LLVM-NEXT:   %34 = insertelement <16 x i8> %33, i8 %18, i32 14
+ ; CHECK-LLVM-NEXT:   %35 = insertelement <16 x i8> %34, i8 %19, i32 15
+ ; CHECK-LLVM-NEXT:   store <16 x i8> %35, <16 x i8>* %Funcs, align 16
+-; CHECK-LLVM-NEXT:   ret void
+-; CHECK-LLVM-NEXT: }
++; CHECK-LLVM:        %Funcs1 = alloca <2 x i64>, align 16
++; CHECK-LLVM-NEXT:   %36 = ptrtoint i32 (i32)* @_Z2f1u2CMvb32_j to i64
++; CHECK-LLVM-NEXT:   %37 = ptrtoint i32 (i32)* @_Z2f2u2CMvb32_j to i64
++; CHECK-LLVM-NEXT:   %38 = insertelement <2 x i64> undef, i64 %36, i32 0
++; CHECK-LLVM-NEXT:   %39 = insertelement <2 x i64> %38, i64 %37, i32 1
++; CHECK-LLVM-NEXT:   store <2 x i64> %39, <2 x i64>* %Funcs1, align 16
+ 
+ ; RUN: llvm-as < %s | llvm-spirv -spirv-text -spirv-mem2reg=false | FileCheck %s --check-prefix=CHECK-SPIRV
+ 
+@@ -115,5 +118,7 @@ define dllexport void @vadd() {
+ entry:
+   %Funcs = alloca <16 x i8>, align 16
+   store <16 x i8> <i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64) to <8 x i8>), i32 0), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64) to <8 x i8>), i32 1), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64) to <8 x i8>), i32 2), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64) to <8 x i8>), i32 3), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64) to <8 x i8>), i32 4), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64) to <8 x i8>), i32 5), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64) to <8 x i8>), i32 6), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64) to <8 x i8>), i32 7), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64) to <8 x i8>), i32 0), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64) to <8 x i8>), i32 1), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64) to <8 x i8>), i32 2), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64) to <8 x i8>), i32 3), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64) to <8 x i8>), i32 4), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64) to <8 x i8>), i32 5), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64) to <8 x i8>), i32 6), i8 extractelement (<8 x i8> bitcast (i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64) to <8 x i8>), i32 7)>, <16 x i8>* %Funcs, align 16
++  %Funcs1 = alloca <2 x i64>, align 16
++  store <2 x i64> <i64 ptrtoint (i32 (i32)* @_Z2f1u2CMvb32_j to i64), i64 ptrtoint (i32 (i32)* @_Z2f2u2CMvb32_j to i64)>, <2 x i64>* %Funcs1, align 16
+   ret void
+ }
+diff --git a/test/transcoding/SPV_INTEL_function_pointers/vector_elem.ll b/test/transcoding/SPV_INTEL_function_pointers/vector_elem.ll
+new file mode 100644
+index 0000000..85fa224
+--- /dev/null
++++ b/test/transcoding/SPV_INTEL_function_pointers/vector_elem.ll
+@@ -0,0 +1,40 @@
++; RUN: llvm-as < %s | llvm-spirv -spirv-text | FileCheck %s --check-prefix=CHECK-SPIRV
++
++; CHECK-SPIRV-DAG: 6 Name [[F1:[0-9+]]] "_Z2f1u2CMvb32_j"
++; CHECK-SPIRV-DAG: 6 Name [[F2:[0-9+]]] "_Z2f2u2CMvb32_j"
++
++; CHECK-SPIRV: 4 TypeInt [[TypeInt32:[0-9]+]] 32 0
++; CHECK-SPIRV: 4 TypeFunction [[TypeFunc:[0-9]+]] [[TypeInt32]] [[TypeInt32]]
++; CHECK-SPIRV: 4 TypePointer [[TypePtr:[0-9]+]] {{[0-9]+}} [[TypeFunc]]
++; CHECK-SPIRV: 4 TypeVector [[TypeVec:[0-9]+]] [[TypePtr]] [[TypeInt32]]
++; CHECK-SPIRV: 3 Undef [[TypeVec]] [[TypeUndef:[0-9]+]]
++
++; CHECK-SPIRV: 4 FunctionPointerINTEL [[TypePtr]] [[F1Ptr:[0-9]+]] [[F1]]
++; CHECK-SPIRV: 6 CompositeInsert [[TypeVec]] [[NewVec0:[0-9]+]] [[F1Ptr]] [[TypeUndef]] 0
++; CHECK-SPIRV: 4 FunctionPointerINTEL [[TypePtr]] [[F2Ptr:[0-9]+]] [[F2]]
++; CHECK-SPIRV: 6 CompositeInsert [[TypeVec]] [[NewVec1:[0-9]+]] [[F2Ptr]] [[NewVec0]] 1
++
++
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir-unknown-unknown"
++
++; Function Attrs: noinline norecurse nounwind readnone
++define internal i32 @_Z2f1u2CMvb32_j(i32 %x) {
++entry:
++  ret i32 %x
++}
++; Function Attrs: noinline norecurse nounwind readnone
++define internal i32 @_Z2f2u2CMvb32_j(i32 %x) {
++entry:
++  ret i32 %x
++}
++
++; Function Attrs: noinline nounwind
++define dllexport void @vadd() {
++entry:
++  %Funcs = alloca <2 x i32 (i32)*>, align 16
++  %0 = insertelement <2 x i32 (i32)*> undef, i32 (i32)* @_Z2f1u2CMvb32_j, i32 0
++  %1 = insertelement <2 x i32 (i32)*> %0, i32 (i32)* @_Z2f2u2CMvb32_j, i32 1
++  store <2 x i32 (i32)*> %1, <2 x i32 (i32)*>* %Funcs, align 16
++  ret void
++}
+-- 
+2.17.1
+
