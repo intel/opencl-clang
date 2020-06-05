@@ -1,0 +1,80 @@
+From bc2c87df7bb66c7fc43384bbfa688d9bd467c21c Mon Sep 17 00:00:00 2001
+From: Aleksandr Bezzubikov <zuban32s@gmail.com>
+Date: Thu, 30 Apr 2020 22:19:20 +0300
+Subject: [PATCH 5/6] Support function pointers in cast instructions
+
+---
+ lib/SPIRV/SPIRVWriter.cpp | 12 +++++++++++-
+ test/constexpr_vector.ll  | 10 +++++++---
+ 2 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/lib/SPIRV/SPIRVWriter.cpp b/lib/SPIRV/SPIRVWriter.cpp
+index a6078b7..a7ebc73 100644
+--- a/lib/SPIRV/SPIRVWriter.cpp
++++ b/lib/SPIRV/SPIRVWriter.cpp
+@@ -664,6 +664,7 @@ SPIRVInstruction *LLVMToSPIRV::transCmpInst(CmpInst *Cmp, SPIRVBasicBlock *BB) {
+ SPIRV::SPIRVInstruction *LLVMToSPIRV::transUnaryInst(UnaryInstruction *U,
+                                                      SPIRVBasicBlock *BB) {
+   Op BOC = OpNop;
++  SPIRVValue *Op = nullptr;
+   if (auto Cast = dyn_cast<AddrSpaceCastInst>(U)) {
+     if (Cast->getDestTy()->getPointerAddressSpace() == SPIRAS_Generic) {
+       assert(Cast->getSrcTy()->getPointerAddressSpace() != SPIRAS_Constant &&
+@@ -678,9 +679,18 @@ SPIRV::SPIRVInstruction *LLVMToSPIRV::transUnaryInst(UnaryInstruction *U,
+   } else {
+     auto OpCode = U->getOpcode();
+     BOC = OpCodeMap::map(OpCode);
++
++    if (Function *F = dyn_cast<Function>(U->getOperand(0))) {
++      assert(BOC == OpConvertPtrToU &&
++             "Illegal unary operation on function pointer");
++      Op = BM->addFunctionPointerINTELInst(
++          transType(F->getType()),
++          static_cast<SPIRVFunction *>(transValue(F, BB)), BB);
++    }
+   }
+ 
+-  auto Op = transValue(U->getOperand(0), BB);
++  if (!Op)
++    Op = transValue(U->getOperand(0), BB);
+   return BM->addUnaryInst(transBoolOpCode(Op, BOC), transType(U->getType()), Op,
+                           BB);
+ }
+diff --git a/test/constexpr_vector.ll b/test/constexpr_vector.ll
+index 0d85be8..a31a44f 100644
+--- a/test/constexpr_vector.ll
++++ b/test/constexpr_vector.ll
+@@ -45,7 +45,9 @@
+ 
+ ; RUN: llvm-as < %s | llvm-spirv -spirv-text | FileCheck %s --check-prefix=CHECK-SPIRV
+ 
+-; CHECK-SPIRV: 4 Name [[Funcs:[0-9]+]] "Funcs"
++; CHECK-SPIRV-DAG: 4 Name [[Funcs:[0-9]+]] "Funcs"
++; CHECK-SPIRV-DAG: 6 Name [[F1:[0-9+]]] "_Z2f1u2CMvb32_j"
++; CHECK-SPIRV-DAG: 6 Name [[F2:[0-9+]]] "_Z2f2u2CMvb32_j"
+ 
+ ; CHECK-SPIRV-DAG: 4 TypeInt [[TypeInt8:[0-9]+]] 8 0
+ ; CHECK-SPIRV-DAG: 4 TypeInt [[TypeInt32:[0-9]+]] 32 0
+@@ -55,7 +57,8 @@
+ ; CHECK-SPIRV-DAG: 4 TypePointer [[StorePtr:[0-9]+]] 7 [[TypeVec16]]
+ ; CHECK-SPIRV-DAG: 3 Undef [[TypeVec16]] [[TypeUndef:[0-9]+]]
+ 
+-; CHECK-SPIRV: 4 ConvertPtrToU [[TypeInt64]] [[Ptr1:[0-9]+]] {{[0-9]+}}
++; CHECK-SPIRV: 4 FunctionPointerINTEL [[FuncPtrTy:[0-9]+]] [[F1Ptr:[0-9]+]] [[F1]]
++; CHECK-SPIRV-NEXT: 4 ConvertPtrToU [[TypeInt64]] [[Ptr1:[0-9]+]] [[F1Ptr]]
+ ; CHECK-SPIRV-NEXT: 4 Bitcast [[TypeVec8]] [[Vec1:[0-9]+]] [[Ptr1]]
+ ; CHECK-SPIRV-NEXT: 5 CompositeExtract [[TypeInt8]] [[v00:[0-9]+]] [[Vec1]] 0
+ ; CHECK-SPIRV-NEXT: 5 CompositeExtract [[TypeInt8]] [[v01:[0-9]+]] [[Vec1]] 1
+@@ -65,7 +68,8 @@
+ ; CHECK-SPIRV-NEXT: 5 CompositeExtract [[TypeInt8]] [[v05:[0-9]+]] [[Vec1]] 5
+ ; CHECK-SPIRV-NEXT: 5 CompositeExtract [[TypeInt8]] [[v06:[0-9]+]] [[Vec1]] 6
+ ; CHECK-SPIRV-NEXT: 5 CompositeExtract [[TypeInt8]] [[v07:[0-9]+]] [[Vec1]] 7
+-; CHECK-SPIRV-NEXT: 4 ConvertPtrToU [[TypeInt64]] [[Ptr2:[0-9]+]] {{[0-9]+}}
++; CHECK-SPIRV-NEXT: 4 FunctionPointerINTEL [[FuncPtrTy]] [[F2Ptr:[0-9]+]] [[F2]]
++; CHECK-SPIRV-NEXT: 4 ConvertPtrToU [[TypeInt64]] [[Ptr2:[0-9]+]] [[F2Ptr]]
+ ; CHECK-SPIRV-NEXT: 4 Bitcast [[TypeVec8]] [[Vec2:[0-9]+]] [[Ptr2]]
+ ; CHECK-SPIRV-NEXT: 5 CompositeExtract [[TypeInt8]] [[v10:[0-9]+]] [[Vec2]] 0
+ ; CHECK-SPIRV-NEXT: 5 CompositeExtract [[TypeInt8]] [[v11:[0-9]+]] [[Vec2]] 1
+-- 
+2.17.1
+
