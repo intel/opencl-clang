@@ -231,34 +231,73 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       fp64Enable = true;
     }
   }
-  effectiveArgs.push_back("-fmodules");
-  if (fp64Enable == 0) {
-    if (szTriple.find("spir64") != szTriple.npos) {
-      if (iCLStdSet <= 120) {
-        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
-      } else {
-        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
-      }
-    } else if (szTriple.find("spir") != szTriple.npos) {
-      if (iCLStdSet <= 120) {
-        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
-      } else {
-        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
+
+  static const std::vector<std::string> pch_ext {
+    "cl_khr_3d_image_writes",
+    "cl_khr_depth_images",
+    "cl_khr_fp16",
+    "cl_khr_fp64",
+    "cl_khr_gl_msaa_sharing",
+    "cl_khr_global_int32_base_atomics",
+    "cl_khr_global_int32_extended_atomics",
+    "cl_khr_int64_base_atomics",
+    "cl_khr_int64_extended_atomics",
+    "cl_khr_local_int32_base_atomics",
+    "cl_khr_local_int32_extended_atomics",
+    "cl_khr_mipmap_image",
+    "cl_khr_mipmap_image_writes",
+    "cl_khr_subgroups",
+    "cl_intel_device_side_avc_motion_estimation",
+    "cl_intel_planar_yuv",
+    "cl_intel_subgroups",
+    "cl_intel_subgroups_short"
+  };
+  bool useModules = true;
+  auto cl_ext_it = std::find_if(effectiveArgs.begin(), effectiveArgs.end(),
+                   [](const ArgsVector::value_type& a) {
+                     return a.find("-cl-ext=") == 0 && a != "-cl-ext=-all";
+                   });
+  if (cl_ext_it != effectiveArgs.end()) {
+    std::string cl_ext_str = *cl_ext_it;
+    for (std::string ext : pch_ext) {
+      size_t ext_pos = cl_ext_str.find(ext);
+      if (ext_pos == std::string::npos || cl_ext_str[ext_pos-1] == '-') {
+        // extension is enabled in PCH but disabled or not specifed in options => disable pch
+        useModules = false;
+        break;
       }
     }
   }
-  else if (fp64Enable == 1) {
-    if (szTriple.find("spir64") != szTriple.npos) {
-      if (iCLStdSet <= 120) {
-        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
-      } else {
-        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64-fp64.pcm");
+  if (useModules) {
+    effectiveArgs.push_back("-fmodules");
+    if (fp64Enable == 0) {
+      if (szTriple.find("spir64") != szTriple.npos) {
+        if (iCLStdSet <= 120) {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
+        } else {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
+        }
+      } else if (szTriple.find("spir") != szTriple.npos) {
+        if (iCLStdSet <= 120) {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
+        } else {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
+        }
       }
-    } else if (szTriple.find("spir") != szTriple.npos) {
-      if (iCLStdSet <= 120) {
-        effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir-fp64.pcm");
-      } else {
-        effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir-fp64.pcm");
+    }
+    else if (fp64Enable == 1) {
+      if (szTriple.find("spir64") != szTriple.npos) {
+        if (iCLStdSet <= 120) {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
+        } else {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64-fp64.pcm");
+        }
+      } else if (szTriple.find("spir") != szTriple.npos) {
+        if (iCLStdSet <= 120) {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir-fp64.pcm");
+        } else {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir-fp64.pcm");
+        }
       }
     }
   }
