@@ -236,7 +236,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     "cl_khr_3d_image_writes",
     "cl_khr_depth_images",
     "cl_khr_fp16",
-    "cl_khr_fp64",
     "cl_khr_gl_msaa_sharing",
     "cl_khr_global_int32_base_atomics",
     "cl_khr_global_int32_extended_atomics",
@@ -259,7 +258,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
                    });
   if (cl_ext_it != effectiveArgs.end()) {
     std::string cl_ext_str = *cl_ext_it;
-    for (std::string ext : pch_ext) {
+    for (const std::string& ext : pch_ext) {
       size_t ext_pos = cl_ext_str.find(ext);
       if (ext_pos == std::string::npos || cl_ext_str[ext_pos-1] == '-') {
         // extension is enabled in PCH but disabled or not specifed in options => disable pch
@@ -284,8 +283,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
         }
       }
-    }
-    else if (fp64Enable == 1) {
+    } else if (fp64Enable == 1) {
       if (szTriple.find("spir64") != szTriple.npos) {
         if (iCLStdSet <= 120) {
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
