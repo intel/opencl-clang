@@ -126,6 +126,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       iCLStdSet = 200;
       effectiveArgs.push_back((*it)->getAsString(args));
       break;
+    case OPT_COMPILE_cl_std_CL3_0:
+      iCLStdSet = 300;
+      effectiveArgs.push_back((*it)->getAsString(args));
+      break;
     case OPT_COMPILE_triple:
       szTriple = (*it)->getValue();
       break;
