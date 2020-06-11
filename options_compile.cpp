@@ -25,6 +25,8 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
 
+#include <algorithm>
+#include <map>
 #include <sstream>
 
 #define PREFIX(NAME, VALUE) const char *const NAME[] = VALUE;
@@ -228,41 +230,56 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     }
   }
 
-  static const std::vector<std::string> pch_ext {
-    "cl_khr_3d_image_writes",
-    "cl_khr_depth_images",
-    "cl_khr_fp16",
-    "cl_khr_gl_msaa_sharing",
-    "cl_khr_global_int32_base_atomics",
-    "cl_khr_global_int32_extended_atomics",
-    "cl_khr_int64_base_atomics",
-    "cl_khr_int64_extended_atomics",
-    "cl_khr_local_int32_base_atomics",
-    "cl_khr_local_int32_extended_atomics",
-    "cl_khr_mipmap_image",
-    "cl_khr_mipmap_image_writes",
-    "cl_khr_subgroups",
-    "cl_intel_device_side_avc_motion_estimation",
-    "cl_intel_planar_yuv",
-    "cl_intel_subgroups",
-    "cl_intel_subgroups_short"
+  std::map<std::string, bool> extMap {
+    {"cl_khr_3d_image_writes", true},
+    {"cl_khr_depth_images", true},
+    {"cl_khr_fp16", true},
+    {"cl_khr_gl_msaa_sharing", true},
+    {"cl_khr_global_int32_base_atomics", true},
+    {"cl_khr_global_int32_extended_atomics", true},
+    {"cl_khr_int64_base_atomics", true},
+    {"cl_khr_int64_extended_atomics", true},
+    {"cl_khr_local_int32_base_atomics", true},
+    {"cl_khr_local_int32_extended_atomics", true},
+    {"cl_khr_mipmap_image", true},
+    {"cl_khr_mipmap_image_writes", true},
+    {"cl_khr_subgroups", true},
+    {"cl_intel_device_side_avc_motion_estimation", true},
+    {"cl_intel_planar_yuv", true},
+    {"cl_intel_subgroups", true},
+    {"cl_intel_subgroups_short", true}
   };
-  bool useModules = true;
-  auto cl_ext_it = std::find_if(effectiveArgs.begin(), effectiveArgs.end(),
-                   [](const ArgsVector::value_type& a) {
-                     return a.find("-cl-ext=") == 0 && a != "-cl-ext=-all";
-                   });
-  if (cl_ext_it != effectiveArgs.end()) {
-    std::string cl_ext_str = *cl_ext_it;
-    for (const std::string& ext : pch_ext) {
-      size_t ext_pos = cl_ext_str.find(ext);
-      if (ext_pos == std::string::npos || cl_ext_str[ext_pos-1] == '-') {
-        // extension is enabled in PCH but disabled or not specifed in options => disable pch
-        useModules = false;
-        break;
+  auto parseClExt = [&](const std::string& clExtStr) {
+    llvm::StringRef clExtRef(clExtStr);
+    clExtRef.consume_front("-cl-ext=");
+    llvm::SmallVector<llvm::StringRef, 32> parsedExt;
+    clExtRef.split(parsedExt, ',');
+    for (llvm::StringRef ext : parsedExt) {
+      char sign = ext.front();
+      bool enabled = sign != '-';
+      llvm::StringRef extName = ext;
+      if (sign == '+' || sign == '-')
+        extName = extName.drop_front();
+      if (extName == "all") {
+        for (auto& p : extMap)
+          p.second = enabled;
+        continue;
       }
+      auto it = extMap.find(extName);
+      if (it != extMap.end())
+        it->second = enabled;
     }
-  }
+  };
+  std::for_each(effectiveArgs.begin(), effectiveArgs.end(),
+                [&](const ArgsVector::value_type& a) {
+                  if (a.find("-cl-ext=") == 0)
+                    parseClExt(a);
+                });
+
+  // extension is enabled in PCH but disabled or not specifed in options => disable pch
+  bool useModules = !std::any_of(extMap.begin(), extMap.end(),
+      [](const auto& p) {return p.second == false;});
+
   if (useModules) {
     effectiveArgs.push_back("-fmodules");
     if (fp64Enable == 0) {
