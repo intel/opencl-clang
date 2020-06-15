@@ -32,6 +32,7 @@ def cl_kernel_arg_info: Flag<["-"], "cl-kernel-arg-info">;
 def cl_std_CL1_1: Flag<["-"], "cl-std=CL1.1">;
 def cl_std_CL1_2: Flag<["-"], "cl-std=CL1.2">;
 def cl_std_CL2_0: Flag<["-"], "cl-std=CL2.0">;
+def cl_std_CL3_0: Flag<["-"], "cl-std=CL3.0">;
 def cl_uniform_work_group_size: Flag<["-"], "cl-uniform-work-group-size">;
 def cl_no_subgroup_ifp: Flag<["-"], "cl-no-subgroup-ifp">;
 def triple : Separate<["-"], "triple">,  HelpText<"Specify target triple (e.g. i686-apple-darwin9)">;
