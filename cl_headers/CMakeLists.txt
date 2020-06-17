@@ -129,7 +129,7 @@ add_library(${CL_HEADERS_LIB} OBJECT
     ${CL_HEADERS_SRC}
 )
 
-add_dependencies(${CL_HEADERS_LIB} opencl.headers.target)
+add_dependencies(${CL_HEADERS_LIB} opencl.pcm.target)
 install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/opencl-c.h
     ${CMAKE_CURRENT_BINARY_DIR}/opencl-c-base.h
