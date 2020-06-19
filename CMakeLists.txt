@@ -55,9 +55,7 @@ include(TableGen)
 
 find_package(Git REQUIRED)
 
-if (NOT WIN32)
-    add_subdirectory( linux_linker )
-endif()
+add_subdirectory( linux_linker )
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
     set(ADDR 32)
@@ -127,7 +125,6 @@ set(TARGET_INCLUDE_FILES
 set(TARGET_SOURCE_FILES
     common_clang.cpp
     options.cpp
-    pch_mgr.cpp
     options_compile.cpp
 )
 

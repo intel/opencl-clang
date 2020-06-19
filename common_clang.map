@@ -6,7 +6,6 @@ global:
    Compile;
    Link;
    GetKernelArgInfo;
-   PCM_OPENCL_C_H*;
  };
 local: *;
 };

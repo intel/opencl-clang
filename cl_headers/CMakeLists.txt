@@ -25,7 +25,6 @@ add_custom_target (
     opencl-c.h
 )
 
-
 function(pack_to_obj SRC DST TAG)
     add_custom_command (
         OUTPUT ${DST}
@@ -35,14 +34,10 @@ function(pack_to_obj SRC DST TAG)
     )
 endfunction(pack_to_obj)
 
-if(WIN32)
-    list(APPEND CL_HEADERS_SRC OpenCL.rc)
-else()
-    pack_to_obj(opencl-c.h           opencl-c.h.cpp           "PCM_OPENCL_C_H")
-    list(APPEND CL_HEADERS_SRC
-         opencl-c.h.cpp
-    )
-endif()
+pack_to_obj(opencl-c.h opencl-c.h.cpp "PCM_OPENCL_C_H")
+list(APPEND CL_HEADERS_SRC
+    opencl-c.h.cpp
+)
 
 add_library(${CL_HEADERS_LIB} OBJECT
     ${CL_HEADERS_SRC}

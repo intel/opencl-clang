@@ -16,13 +16,7 @@ Copyright (c) Intel Corporation (2009-2017).
 
 \*****************************************************************************/
 
-#include "llvm/Support/Mutex.h"
-
-#include <map>
-#include <list>
-#include <iostream>
 #include <string>
-#include <vector>
 
 struct Resource
 {
@@ -36,56 +30,10 @@ struct Resource
     m_name = "";
   }
 
-  Resource(const char* data, size_t size, const std::string& name):
+  Resource(const char* data, size_t size, const char* name):
     m_data(data), m_size(size), m_name(name) {}
 
   bool operator!() {
     return m_data == nullptr;
   }
-};
-
-
-// Singleton class for resource management
-// Its main purpose is to cache the buffers loaded from the resources
-// but it could be easely extended to support file based buffers as well
-class ResourceManager {
-public:
-  static ResourceManager &instance() { return g_instance; }
-
-  Resource get_resource(const char *name, const char *id,
-                        const char *type, bool requireNullTerminate);
-
-  const char *get_file(const char *path, bool binary, bool requireNullTerminate,
-                       size_t &out_size);
-
-private:
-  ResourceManager() {}
-
-  bool load_resource(const char *id, const char *pszType,
-                     bool requireNullTerminate);
-
-  void load_file(const char *path, bool binary, bool requireNullTerminate);
-
-  const char* realloc_buffer(const char *id, const char* buf, size_t size,
-                             bool requireNullTerminate);
-
-#ifdef _WIN32
-  bool GetResourceWin32(const char *id, const char *pszType,
-                        const char *&res, size_t &size);
-
-#else
-  bool GetResourceUnix(const char *id, const char *pszType,
-                       const char *lib, bool relocate,
-                       const char *&res, size_t &size);
-
-#endif
-
-private:
-  static ResourceManager g_instance;
-  llvm::sys::Mutex m_lock;
-  // map that caches the pointers to the loaded buffers and their sizes
-  // those buffers could be either the pointer to the loaded
-  // resource or to the cached buffers (stored in the m_allocations var below)
-  std::map<std::string, std::pair<const char *, size_t>> m_buffers;
-  std::map<std::string, std::vector<char>> m_allocations;
 };
