@@ -1,0 +1,40 @@
+module cl12spir {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl20spir {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl12spir64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl20spir64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl12spirfp64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl20spirfp64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl12spir64fp64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl20spir64fp64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
