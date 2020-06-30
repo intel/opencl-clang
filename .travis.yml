@@ -29,6 +29,7 @@ install:
   - cd ../projects
   - git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_80 llvm-spirv
   - git clone https://github.com/intel/opencl-clang.git -b ocl-open-80
+  - cd ../..
 
 compiler:
   - gcc
