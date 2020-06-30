@@ -21,25 +21,19 @@ env:
     - BUILD_TYPE=Release
     - BUILD_TYPE=Debug
 
-addons:
-  apt:
-    sources:
-      - sourceline: 'deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main'
-        key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
-      - ubuntu-toolchain-r-test
-    packages:
-      - llvm-8-tools
-      - llvm-8-dev
-      - libclang-8-dev
 
 install:
-  - git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_80 spirv-llvm-translator
+  - git clone https://github.com/llvm-mirror/llvm.git -b release_80
+  - cd ./llvm/tools
+  - git clone https://github.com/llvm-mirror/clang.git -b release_80
+  - cd ../projects
+  - git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_80 llvm-spirv
+  - git clone https://github.com/intel/opencl-clang.git -b ocl-open-80
 
 compiler:
   - gcc
-  - clang
 
 script:
   - mkdir build && cd build
-  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=./spirv-llvm-translator -DCMAKE_INSTALL_PREFIX=./install ..
-  - make install
+  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON --DCMAKE_INSTALL_PREFIX=./install ../llvm
+  - make -j`nproc`
