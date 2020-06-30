@@ -43,5 +43,5 @@ compiler:
 
 script:
   - mkdir build && cd build
-  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=../spirv-llvm-translator -DSPIRV_SOURCE_DIR=../spirv-llvm-translator/build/install ../
+  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=../spirv-llvm-translator/build/install ../
   - make -j`nproc`
