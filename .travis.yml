@@ -34,10 +34,11 @@ addons:
       - libclang-9-dev
 
 install:
-  - export TAG=v9.0.1-1
-  - export TARBALL=SPIRV-LLVM-Translator-${TAG}-linux-${BUILD_TYPE}.zip
-  - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/${TAG}/${TARBALL} -O /tmp/${TARBALL}
-  - unzip /tmp/${TARBALL} -d spirv-llvm-translator
+  - git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_90 spirv-llvm-translator
+  - mkdir spirv-llvm-translator/build && cd spirv-llvm-translator/build
+  - cmake .. -DCMAKE_INSTALL_PREFIX=./install -DBUILD_SHARED_LIBS=ON -DLLVM_BUILD_TOOLS=ON -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+  - make -j`nproc` && make install
+  - cd ../../
 
 compiler:
   - gcc
@@ -49,5 +50,5 @@ script:
    # As a temporary workaround we create a dummy file just to pacify cmake.
   - sudo touch /usr/lib/llvm-9/bin/lit-cpuid
   - mkdir build && cd build
-  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=./spirv-llvm-translator -DCMAKE_INSTALL_PREFIX=./install ..
-  - make install
+  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=${TRAVIS_BUILD_DIR}/spirv-llvm-translator/build/install -DCMAKE_INSTALL_PREFIX=./install ..
+  - make -j`nproc` && make install
