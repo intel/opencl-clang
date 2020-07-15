@@ -85,7 +85,7 @@ static volatile bool lazyCCInit =
     true; // the flag must be 'volatile' to prevent caching in a CPU register
 static llvm::sys::Mutex lazyCCInitMutex;
 
-static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > compileMutex;
+static llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 void CommonClangTerminate() { llvm::llvm_shutdown(); }
 
@@ -113,16 +113,26 @@ void CommonClangInitialize() {
 }
 
 static bool GetHeaders(std::vector<Resource> &Result) {
-  struct {const char *ID; const char *Name;} Headers[] = {
-    {OPENCL_C_H,             "opencl-c.h"},
-  };
+  struct {
+    const char *ID;
+    const char *Name;
+  } Headers[] = {{OPENCL_C_H, "opencl-c.h"},
+                 {OPENCL_C_12_SPIR_PCM, "opencl-c-12-spir.pcm"},
+                 {OPENCL_C_20_SPIR_PCM, "opencl-c-20-spir.pcm"},
+                 {OPENCL_C_12_SPIR64_PCM, "opencl-c-12-spir64.pcm"},
+                 {OPENCL_C_20_SPIR64_PCM, "opencl-c-20-spir64.pcm"},
+                 {OPENCL_C_12_SPIR_FP64_PCM, "opencl-c-12-spir-fp64.pcm"},
+                 {OPENCL_C_20_SPIR_FP64_PCM, "opencl-c-20-spir-fp64.pcm"},
+                 {OPENCL_C_12_SPIR64_FP64_PCM, "opencl-c-12-spir64-fp64.pcm"},
+                 {OPENCL_C_20_SPIR64_FP64_PCM, "opencl-c-20-spir64-fp64.pcm"},
+                 {OPENCL_C_MODULE_MAP, "module.modulemap"}};
 
   Result.clear();
   Result.reserve(sizeof(Headers) / sizeof(*Headers));
 
   ResourceManager &RM = ResourceManager::instance();
 
-  for (auto Header:Headers) {
+  for (auto Header : Headers) {
     Resource R = RM.get_resource(Header.Name, Header.ID, "PCM", true);
     if (!R) {
       assert(0 && "Resource not found");
@@ -135,17 +145,21 @@ static bool GetHeaders(std::vector<Resource> &Result) {
   return true;
 }
 
-static void PrintCompileOptions(const char *pszOptions, const char *pszOptionsEx,
-                                const char *pszOpenCLVer, const char * pszSource) {
+static void PrintCompileOptions(const char *pszOptions,
+                                const char *pszOptionsEx,
+                                const char *pszOpenCLVer,
+                                const char *pszSource) {
 #ifdef _DEBUG
   static int ID = 0;
 
-  if (!getenv("CCLANG_OPTIONS_DIR")) return;
+  if (!getenv("CCLANG_OPTIONS_DIR"))
+    return;
 
   std::string OptionsDir = getenv("CCLANG_OPTIONS_DIR");
 
   std::stringstream logPath;
-  logPath << OptionsDir << "/log_" << std::this_thread::get_id() << "_" << ID << ".txt";
+  logPath << OptionsDir << "/log_" << std::this_thread::get_id() << "_" << ID
+          << ".txt";
   std::cout << logPath.str() << std::endl;
 
   // Creating log file
@@ -165,22 +179,21 @@ static void PrintCompileOptions(const char *pszOptions, const char *pszOptionsEx
 #endif
 }
 
-class SmallVectorBuffer : public std::streambuf
-{
+class SmallVectorBuffer : public std::streambuf {
   // All memory management is delegated to llvm::SmallVectorImpl
   llvm::SmallVectorImpl<char> &OS;
 
   // Since we don't touch any pointer in streambuf(pbase, pptr, epptr) this is
   // the only method we need to override.
-  virtual std::streamsize xsputn(const char *s, std::streamsize  n) override {
+  virtual std::streamsize xsputn(const char *s, std::streamsize n) override {
     OS.append(s, s + n);
     return n;
   }
 
 public:
   SmallVectorBuffer() = delete;
-  SmallVectorBuffer(const SmallVectorBuffer&) = delete;
-  SmallVectorBuffer &operator=(const SmallVectorBuffer&) = delete;
+  SmallVectorBuffer(const SmallVectorBuffer &) = delete;
+  SmallVectorBuffer &operator=(const SmallVectorBuffer &) = delete;
   SmallVectorBuffer(llvm::SmallVectorImpl<char> &O) : OS(O) {}
 };
 
@@ -202,7 +215,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
     // LLVM doesn't guarantee thread safety,
     // therefore we serialize execution of LLVM code.
-    llvm::sys::SmartScopedLock<true> compileGuard {*compileMutex};
+    llvm::sys::SmartScopedLock<true> compileGuard{*compileMutex};
 
     // Parse options
     CompileOptionsParser optionsParser(pszOpenCLVer);
@@ -227,16 +240,16 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
         new clang::CompilerInstance());
 
     // Prepare output buffer
-    std::unique_ptr<llvm::raw_pwrite_stream>
-        ir_ostream(new llvm::raw_svector_ostream(pResult->getIRBufferRef()));
+    std::unique_ptr<llvm::raw_pwrite_stream> ir_ostream(
+        new llvm::raw_svector_ostream(pResult->getIRBufferRef()));
     // Set buffers
     // CompilerInstance takes ownership over output stream
     compiler->setOutputStream(std::move(ir_ostream));
 
     compiler->setDiagnostics(&*Diags);
 
-    auto OverlayFS = new llvm::vfs::OverlayFileSystem(
-        llvm::vfs::getRealFileSystem());
+    auto OverlayFS =
+        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem());
     auto MemFS = new llvm::vfs::InMemoryFileSystem();
     OverlayFS->pushOverlay(MemFS);
 
@@ -258,8 +271,8 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
     // Source file
     MemFS->addFile(
         optionsParser.getSourceName(), (time_t)0,
-        llvm::MemoryBuffer::getMemBuffer(
-            llvm::StringRef(pszProgramSource), optionsParser.getSourceName()));
+        llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(pszProgramSource),
+                                         optionsParser.getSourceName()));
 
     // Input header with OpenCL defines.
     std::vector<Resource> vHeaderWithDefs;
@@ -267,21 +280,19 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       return CL_COMPILE_PROGRAM_FAILURE;
     }
 
-    for (const auto &Header:vHeaderWithDefs) {
+    for (const auto &Header : vHeaderWithDefs) {
       auto Buf = llvm::MemoryBuffer::getMemBuffer(
-          llvm::StringRef(Header.m_data, Header.m_size),
-          Header.m_name);
+          llvm::StringRef(Header.m_data, Header.m_size), Header.m_name);
 
-      MemFS->addFile(Header.m_name,(time_t)0, std::move(Buf));
+      MemFS->addFile(Header.m_name, (time_t)0, std::move(Buf));
     }
 
     // Input Headers
     for (unsigned int i = 0; i < uiNumInputHeaders; ++i) {
-      auto Header = llvm::MemoryBuffer::getMemBuffer(
-          pInputHeaders[i], pInputHeadersNames[i]);
+      auto Header = llvm::MemoryBuffer::getMemBuffer(pInputHeaders[i],
+                                                     pInputHeadersNames[i]);
       MemFS->addFile(pInputHeadersNames[i], (time_t)0, std::move(Header));
     }
-
 
     // Execute the frontend actions.
     bool success = false;
@@ -303,12 +314,14 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
     if (success && optionsParser.hasEmitSPIRV()) {
       // Translate LLVM IR to SPIR-V.
-      llvm::StringRef LLVM_IR(static_cast<const char*>(pResult->GetIR()),
+      llvm::StringRef LLVM_IR(static_cast<const char *>(pResult->GetIR()),
                               pResult->GetIRSize());
-      std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(LLVM_IR, pResult->GetIRName(), false);
+      std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(
+          LLVM_IR, pResult->GetIRName(), false);
       llvm::LLVMContext Context;
-      auto E = llvm::getOwningLazyBitcodeModule(std::move(MB), Context,
-                                               /*ShouldLazyLoadMetadata=*/true);
+      auto E =
+          llvm::getOwningLazyBitcodeModule(std::move(MB), Context,
+                                           /*ShouldLazyLoadMetadata=*/true);
       llvm::logAllUnhandledErrors(E.takeError(), err_ostream, "error: ");
       std::unique_ptr<llvm::Module> M = std::move(*E);
 
