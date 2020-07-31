@@ -15,20 +15,21 @@ branches:
     - ocl-open-110
 
 env:
+  global:
+    - LLVM_VERSION=11
   matrix:
     - BUILD_TYPE=Release
     - BUILD_TYPE=Debug
 
-addons:
-  apt:
-    sources:
-      - sourceline: 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-11 main'
-        key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
-      - ubuntu-toolchain-r-test
-    packages:
-      llvm-11-dev
-      llvm-11-tools
-      libclang-11-dev
+before-install:
+  - curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
+  - echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main" | sudo tee -a ${TRAVIS_ROOT}/etc/apt/sources.list
+  - sudo apt-get update
+  - sudo apt-get -yq --no-install-suggests --no-install-recommends install
+      llvm-${LLVM_VERSION}-dev
+      llvm-${LLVM_VERSION}-tools
+      libclang-${LLVM_VERSION}-dev
+      libclang-cpp${LLVM_VERSION}-dev
 
 install:
   - git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git spirv-llvm-translator
