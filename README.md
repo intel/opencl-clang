@@ -68,7 +68,7 @@ make all -j`nproc`
 
 ##### Preferred LLVM version
 
-By default, openclc-clang's cmake script is searching for LLVM 11.0.0. You can
+By default, openclc-clang's cmake script is searching for LLVM 12.0.0. You can
 override target version of LLVM by using the `PREFERRED_LLVM_VERSION` cmake
 option:
 
