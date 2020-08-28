@@ -238,7 +238,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     {"cl_khr_3d_image_writes", true},
     {"cl_khr_depth_images", true},
     {"cl_khr_fp16", true},
+#ifdef _WIN32
+    // cl_khr_gl_msaa_sharing is only supported on Windows [NEO].
     {"cl_khr_gl_msaa_sharing", true},
+#endif
     {"cl_khr_global_int32_base_atomics", true},
     {"cl_khr_global_int32_extended_atomics", true},
     {"cl_khr_int64_base_atomics", true},
