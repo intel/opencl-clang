@@ -80,12 +80,18 @@ set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
 if(NOT USE_PREBUILT_LLVM)
     set(TARGET_BRANCH "ocl-open-80")
+    set(LLVM_BASE_REVISION release_80)
+
     set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
     set(CLANG_BASE_REVISION release_80)
 
     set(SPIRV_SOURCE_DIR ${LLVM_SOURCE_DIR}/projects/llvm-spirv)
     set(SPIRV_BASE_REVISION llvm_release_80)
 
+    apply_patches(${LLVM_SOURCE_DIR}
+                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
+                  ${LLVM_BASE_REVISION}
+                  ${TARGET_BRANCH})
     apply_patches(${CLANG_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
                   ${CLANG_BASE_REVISION}
