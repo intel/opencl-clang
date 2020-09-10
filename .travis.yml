@@ -16,7 +16,7 @@ branches:
 
 env:
   global:
-    - LLVM_VERSION=12
+    - LLVM_VERSION=11
   matrix:
     - BUILD_TYPE=Release
     - BUILD_TYPE=Debug
