@@ -120,8 +120,7 @@ if(NOT USE_PREBUILT_LLVM)
     endif()
 
 
-    # TODO: update after spirv translator branch for llvm 11 is created
-    set(SPIRV_BASE_REVISION master)
+    set(SPIRV_BASE_REVISION llvm_release_110)
     set(TARGET_BRANCH "ocl-open-110")
 
     apply_patches(${CLANG_SOURCE_DIR}
