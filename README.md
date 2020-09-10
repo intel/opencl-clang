@@ -29,7 +29,7 @@ This can be done using the following commands:
 ```
 cd <workspace>
 git clone https://github.com/llvm-mirror/llvm.git -b release_90
-cd tools
+cd <workspace>/llvm/tools
 git clone https://github.com/llvm-mirror/clang.git -b release_90
 cd <workspace>/llvm/projects
 git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git llvm-spirv -b llvm_release_90
