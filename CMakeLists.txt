@@ -20,7 +20,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_definitions(-DUSE_PREBUILT_LLVM)
 
     if(NOT PREFERRED_LLVM_VERSION)
-        set(PREFERRED_LLVM_VERSION "12.0.0")
+        set(PREFERRED_LLVM_VERSION "11.0.0")
     endif(NOT PREFERRED_LLVM_VERSION)
     message(STATUS "Looking for LLVM version ${PREFERRED_LLVM_VERSION}")
     find_package(LLVM ${PREFERRED_LLVM_VERSION} REQUIRED)
@@ -120,8 +120,7 @@ if(NOT USE_PREBUILT_LLVM)
     endif()
 
 
-    # TODO: update after spirv translator branch for llvm 11 is created
-    set(SPIRV_BASE_REVISION master)
+    set(SPIRV_BASE_REVISION llvm_release_110)
     set(TARGET_BRANCH "ocl-open-110")
 
     apply_patches(${CLANG_SOURCE_DIR}
