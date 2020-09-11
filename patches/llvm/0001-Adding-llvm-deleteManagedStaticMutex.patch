@@ -1,0 +1,46 @@
+From 945d0c390566987832d76e161d62a82828ac40d8 Mon Sep 17 00:00:00 2001
+From: Viktoria Maksimova <viktoria.maksimova@intel.com>
+Date: Wed, 9 Sep 2020 11:41:09 +0800
+Subject: [PATCH] Adding llvm::deleteManagedStaticMutex
+
+---
+ llvm/include/llvm/Support/ManagedStatic.h | 8 ++++++++
+ llvm/lib/Support/ManagedStatic.cpp        | 5 +++++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/llvm/include/llvm/Support/ManagedStatic.h b/llvm/include/llvm/Support/ManagedStatic.h
+index f2b41422f13..01049e72beb 100644
+--- a/llvm/include/llvm/Support/ManagedStatic.h
++++ b/llvm/include/llvm/Support/ManagedStatic.h
+@@ -113,6 +113,14 @@ public:
+ /// llvm_shutdown - Deallocate and destroy all ManagedStatic variables.
+ void llvm_shutdown();
+ 
++/// Purpose of this function is to free memory allocated for ManagedStaticMutex.
++/// One might want to do that to avoid memory leaks in case LLVM is loaded as a
++/// shared library (or dll) at runtime.
++/// This function is not thread safe and should be called only if there are no
++/// threads which are using the mutex now or will use the mutex in the future.
++/// This means deleteManagedStaticMutex can be called only after llvm_shutdown.
++void deleteManagedStaticMutex();
++
+ /// llvm_shutdown_obj - This is a simple helper class that calls
+ /// llvm_shutdown() when it is destroyed.
+ struct llvm_shutdown_obj {
+diff --git a/llvm/lib/Support/ManagedStatic.cpp b/llvm/lib/Support/ManagedStatic.cpp
+index 053493f72fb..c843fabbe81 100644
+--- a/llvm/lib/Support/ManagedStatic.cpp
++++ b/llvm/lib/Support/ManagedStatic.cpp
+@@ -81,3 +81,8 @@ void llvm::llvm_shutdown() {
+   while (StaticList)
+     StaticList->destroy();
+ }
++
++void llvm::deleteManagedStaticMutex() {
++  assert(StaticList == nullptr && "llvm_shutdown() must be called first!");
++  delete ManagedStaticMutex;
++}
+\ No newline at end of file
+-- 
+2.18.1
+
