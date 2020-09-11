@@ -87,7 +87,12 @@ static llvm::sys::Mutex lazyCCInitMutex;
 
 static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > compileMutex;
 
-void CommonClangTerminate() { llvm::llvm_shutdown(); }
+void CommonClangTerminate() {
+  llvm::llvm_shutdown();
+#ifndef USE_PREBUILT_LLVM
+  llvm::deleteManagedStaticMutex();
+#endif
+}
 
 // This function mustn't be invoked from a static object constructor,
 // from a DllMain function (Windows specific), or from a function
