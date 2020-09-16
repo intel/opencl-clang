@@ -89,7 +89,7 @@ static llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 void CommonClangTerminate() {
   llvm::llvm_shutdown();
-#ifndef USE_PREBUILT_LLVM
+#ifdef APPLIED_LLVM_PATCHES
   llvm::deleteManagedStaticMutex();
 #endif
 }

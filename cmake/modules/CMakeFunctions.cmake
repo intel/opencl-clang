@@ -44,7 +44,7 @@ endmacro(use_eh)
 # Then all patches from the `patches_dir` are committed to the `target_branch`.
 # Does nothing if the `target_branch` is already checked out in the `repo_dir`.
 #
-function(apply_patches repo_dir patches_dir base_revision target_branch)
+function(apply_patches repo_dir patches_dir base_revision target_branch ret)
     file(GLOB patches ${patches_dir}/*.patch)
     if(NOT patches)
         message(STATUS "No patches in ${patches_dir}")
@@ -58,21 +58,29 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
         WORKING_DIRECTORY ${repo_dir}
         RESULT_VARIABLE patches_needed
     )
-    if(patches_needed) # The target branch doesn't exist
+    if(patches_needed EQUAL 128) # not a git repo
+        set(ret_not_git_repo 1)
+    elseif(patches_needed) # The target branch doesn't exist
         list(SORT patches)
         execute_process( # Create the target branch
             COMMAND ${GIT_EXECUTABLE} checkout -b ${target_branch} ${base_revision}
             WORKING_DIRECTORY ${repo_dir}
+            RESULT_VARIABLE ret_check_out
         )
         execute_process( # Apply the pathces
             COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patches}
             WORKING_DIRECTORY ${repo_dir}
+            RESULT_VARIABLE ret_apply_patch
         )
     else() # The target branch already exists
         execute_process( # Check it out
             COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}
             WORKING_DIRECTORY ${repo_dir}
+            RESULT_VARIABLE ret_check_out
         )
+    endif()
+    if (NOT (ret_not_git_repo OR ret_check_out OR ret_apply_patch))
+        set(${ret} True PARENT_SCOPE)
     endif()
 endfunction()
 
