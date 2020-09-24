@@ -123,20 +123,17 @@ if(NOT USE_PREBUILT_LLVM)
 
     set(SPIRV_BASE_REVISION llvm_release_100)
     set(TARGET_BRANCH "ocl-open-100")
-
-    apply_patches(${LLVM_SOURCE_DIR}
-                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
+    get_filename_component(LLVM_MONOREPO_DIR ${LLVM_SOURCE_DIR} DIRECTORY)
+    set(LLVM_PATCHES_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
+                          ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang)
+    apply_patches(${LLVM_MONOREPO_DIR}
+                  "${LLVM_PATCHES_DIRS}"
                   ${LLVM_BASE_REVISION}
                   ${TARGET_BRANCH}
                   ret)
     if(${ret})
         add_definitions(-DAPPLIED_LLVM_PATCHES)
     endif()
-    apply_patches(${CLANG_SOURCE_DIR}
-                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
-                  ${CLANG_BASE_REVISION}
-                  ${TARGET_BRANCH}
-                  ret)
     apply_patches(${SPIRV_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
                   ${SPIRV_BASE_REVISION}

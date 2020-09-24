@@ -44,8 +44,12 @@ endmacro(use_eh)
 # Then all patches from the `patches_dir` are committed to the `target_branch`.
 # Does nothing if the `target_branch` is already checked out in the `repo_dir`.
 #
-function(apply_patches repo_dir patches_dir base_revision target_branch ret)
-    file(GLOB patches ${patches_dir}/*.patch)
+function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
+    set(patches "")
+    foreach(patches_dir ${patches_dirs})
+        file(GLOB patches_in_dir ${patches_dir}/*.patch)
+        list(APPEND patches ${patches_in_dir})
+    endforeach()
     if(NOT patches)
         message(STATUS "No patches in ${patches_dir}")
         return()
