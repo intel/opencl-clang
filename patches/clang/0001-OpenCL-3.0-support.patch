@@ -1,4 +1,4 @@
-From f07af425fd98841a63e000cd3449a29a4e233ca2 Mon Sep 17 00:00:00 2001
+From 13a6dfb3c7f2badbb19cab2d9c4542cab59d9c7c Mon Sep 17 00:00:00 2001
 From: Anton Zabaznov <anton.zabaznov@intel.com>
 Date: Tue, 22 Sep 2020 19:03:50 +0300
 Subject: [PATCH] OpenCL 3.0 support
@@ -21,7 +21,7 @@ Subject: [PATCH] OpenCL 3.0 support
  clang/lib/CodeGen/CodeGenFunction.cpp         |    6 +-
  clang/lib/Frontend/CompilerInvocation.cpp     |   22 +-
  clang/lib/Frontend/InitPreprocessor.cpp       |    7 +-
- clang/lib/Headers/opencl-c-base.h             |   15 +-
+ clang/lib/Headers/opencl-c-base.h             |   76 +-
  clang/lib/Headers/opencl-c.h                  | 3215 ++++++++++++++---
  clang/lib/Parse/ParseDecl.cpp                 |   12 +-
  clang/lib/Parse/ParsePragma.cpp               |   10 +-
@@ -73,7 +73,7 @@ Subject: [PATCH] OpenCL 3.0 support
  .../SemaOpenCL/invalid-pipe-builtin-cl2.0.cl  |    1 +
  clang/test/SemaOpenCL/storageclass-cl20.cl    |    1 +
  .../TableGen/ClangOpenCLBuiltinEmitter.cpp    |   35 +-
- 69 files changed, 3695 insertions(+), 738 deletions(-)
+ 69 files changed, 3756 insertions(+), 738 deletions(-)
  create mode 100644 clang/test/CodeGenOpenCL/generic-address-space-feature.cl
  create mode 100644 clang/test/Sema/feature-extensions-simult-support.cl
  create mode 100644 clang/test/Sema/features-ignore-pragma.cl
@@ -825,19 +825,87 @@ index 6eef1e2376f..276c47f2410 100644
  #include "clang/Basic/OpenCLExtensions.def"
  
 diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
-index 430e07d36f6..972fc7f4575 100644
+index 430e07d36f6..b10c6ece744 100644
 --- a/clang/lib/Headers/opencl-c-base.h
 +++ b/clang/lib/Headers/opencl-c-base.h
-@@ -115,7 +115,7 @@ typedef half half4 __attribute__((ext_vector_type(4)));
+@@ -9,6 +9,62 @@
+ #ifndef _OPENCL_BASE_H_
+ #define _OPENCL_BASE_H_
+ 
++// Add predefined macros to build headers with standalone executable
++#ifndef CL_VERSION_3_0
++  #define CL_VERSION_3_0 300
++#endif
++#ifndef __OPENCL_MEMORY_SCOPE_ALL_DEVICES
++  #define __OPENCL_MEMORY_SCOPE_ALL_DEVICES 5
++#endif
++
++// Define features for 2.0 for header backward compatibility
++#ifndef __opencl_c_int64
++  #define __opencl_c_int64 1
++#endif
++#if __OPENCL_C_VERSION__ != CL_VERSION_3_0
++  #ifndef __opencl_c_images
++    #define __opencl_c_images 1
++  #endif
++#endif
++#if defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ == CL_VERSION_2_0)
++#ifndef __opencl_c_pipes
++  #define __opencl_c_pipes 1
++#endif
++#ifndef __opencl_c_generic_address_space
++  #define __opencl_c_generic_address_space 1
++#endif
++#ifndef __opencl_c_work_group_collective_functions
++  #define __opencl_c_work_group_collective_functions 1
++#endif
++#ifndef __opencl_c_atomic_order_acq_rel
++  #define __opencl_c_atomic_order_acq_rel 1
++#endif
++#ifndef __opencl_c_atomic_order_seq_cst
++  #define __opencl_c_atomic_order_seq_cst 1
++#endif
++#ifndef __opencl_c_atomic_scope_device
++ #define __opencl_c_atomic_scope_device 1
++#endif
++#ifndef __opencl_c_atomic_scope_all_devices
++  #define __opencl_c_atomic_scope_all_devices 1
++#endif
++#ifndef __opencl_c_subgroups
++  #define __opencl_c_subgroups 1
++#endif
++#ifndef __opencl_c_3d_image_writes
++  #define __opencl_c_3d_image_writes 1
++#endif
++#ifndef __opencl_c_device_enqueue
++  #define __opencl_c_device_enqueue 1
++#endif
++#ifndef __opencl_c_read_write_images
++  #define __opencl_c_read_write_images 1
++#endif
++#ifndef __opencl_c_program_scope_global_variables
++  #define __opencl_c_program_scope_global_variables 1
++#endif
++#endif // defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ == CL_VERSION_2_0)
++
+ // built-in scalar data types:
+ 
+ /**
+@@ -115,7 +171,12 @@ typedef half half4 __attribute__((ext_vector_type(4)));
  typedef half half8 __attribute__((ext_vector_type(8)));
  typedef half half16 __attribute__((ext_vector_type(16)));
  #endif
 -#ifdef cl_khr_fp64
 +#if defined(cl_khr_fp64) || defined(__opencl_c_fp64)
++
++#ifndef __opencl_c_fp64
++  #define __opencl_c_fp64 1
++#endif
++
  #if __OPENCL_C_VERSION__ < CL_VERSION_1_2
  #pragma OPENCL EXTENSION cl_khr_fp64 : enable
  #endif
-@@ -281,9 +281,15 @@ typedef uint cl_mem_fence_flags;
+@@ -281,9 +342,15 @@ typedef uint cl_mem_fence_flags;
  typedef enum memory_scope {
    memory_scope_work_item = __OPENCL_MEMORY_SCOPE_WORK_ITEM,
    memory_scope_work_group = __OPENCL_MEMORY_SCOPE_WORK_GROUP,
@@ -854,7 +922,7 @@ index 430e07d36f6..972fc7f4575 100644
    memory_scope_sub_group = __OPENCL_MEMORY_SCOPE_SUB_GROUP
  #endif
  } memory_scope;
-@@ -301,13 +307,14 @@ typedef enum memory_scope {
+@@ -301,13 +368,14 @@ typedef enum memory_scope {
  #define ATOMIC_FLAG_INIT 0
  
  // enum values aligned with what clang uses in EmitAtomicExpr()
