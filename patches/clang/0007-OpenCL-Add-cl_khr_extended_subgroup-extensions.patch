@@ -1,7 +1,7 @@
-From fe6f30499053cf9bd2c5c4acc82e06947af1eff2 Mon Sep 17 00:00:00 2001
+From bac6a22b16e23f6845c2852035aa880f0fee35d7 Mon Sep 17 00:00:00 2001
 From: Anastasia Stulova <anastasia.stulova@arm.com>
-Date: Thu, 24 Sep 2020 12:08:28 +0300
-Subject: [PATCH] [PATCH] [OpenCL] Add cl_khr_extended_subgroup extensions.
+Date: Fri, 25 Sep 2020 21:11:01 +0300
+Subject: [PATCH] [OpenCL] Add cl_khr_extended_subgroup extensions.
 
 Added extensions and their function declarations into
 the standard header.
@@ -36,10 +36,10 @@ index 77c905ac6c..92959e2b28 100644
  // Clang Extensions.
  OPENCLEXT_INTERNAL(cl_clang_storage_class_specifiers, 100, ~0U)
 diff --git a/lib/Headers/opencl-c.h b/lib/Headers/opencl-c.h
-index 9dcd10d54f..812d7ccf85 100644
+index 7def52945a..db14ce75a7 100644
 --- a/lib/Headers/opencl-c.h
 +++ b/lib/Headers/opencl-c.h
-@@ -18004,6 +18004,674 @@ double  __ovld __conv sub_group_scan_inclusive_max(double x);
+@@ -18066,6 +18066,674 @@ double  __ovld __conv sub_group_scan_inclusive_max(double x);
  
  #endif //cl_khr_subgroups cl_intel_subgroups
  
