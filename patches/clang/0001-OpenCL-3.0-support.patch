@@ -1,4 +1,4 @@
-From 72faf1cc613306eebd1d8c041a0ffd892e350e7c Mon Sep 17 00:00:00 2001
+From 43b6e5a399c0964b597d849092df68980a2df556 Mon Sep 17 00:00:00 2001
 From: Anton Zabaznov <anton.zabaznov@intel.com>
 Date: Tue, 22 Sep 2020 19:03:50 +0300
 Subject: [PATCH] OpenCL 3.0 support
@@ -20,8 +20,8 @@ Subject: [PATCH] OpenCL 3.0 support
  clang/lib/Basic/Targets.cpp                   |    1 -
  clang/lib/CodeGen/CodeGenFunction.cpp         |    6 +-
  clang/lib/Frontend/CompilerInvocation.cpp     |   22 +-
- clang/lib/Frontend/InitPreprocessor.cpp       |    7 +-
- clang/lib/Headers/opencl-c-base.h             |   76 +-
+ clang/lib/Frontend/InitPreprocessor.cpp       |    6 +-
+ clang/lib/Headers/opencl-c-base.h             |   75 +-
  clang/lib/Headers/opencl-c.h                  | 3227 ++++++++++++++---
  clang/lib/Parse/ParseDecl.cpp                 |   12 +-
  clang/lib/Parse/ParsePragma.cpp               |   10 +-
@@ -57,7 +57,6 @@ Subject: [PATCH] OpenCL 3.0 support
  clang/test/Frontend/stdlang.c                 |    1 +
  clang/test/Headers/opencl-c-header.cl         |    7 +-
  clang/test/Index/pipe-size.cl                 |    7 +
- clang/test/Preprocessor/init.c                |    1 +
  clang/test/Preprocessor/predefined-macros.c   |   13 +
  .../Sema/feature-extensions-simult-support.cl |   75 +
  clang/test/Sema/features-ignore-pragma.cl     |   24 +
@@ -72,7 +71,7 @@ Subject: [PATCH] OpenCL 3.0 support
  .../SemaOpenCL/invalid-pipe-builtin-cl2.0.cl  |    1 +
  clang/test/SemaOpenCL/storageclass-cl20.cl    |    1 +
  .../TableGen/ClangOpenCLBuiltinEmitter.cpp    |   35 +-
- 68 files changed, 3662 insertions(+), 723 deletions(-)
+ 67 files changed, 3659 insertions(+), 723 deletions(-)
  create mode 100644 clang/test/CodeGenOpenCL/generic-address-space-feature.cl
  create mode 100644 clang/test/Sema/feature-extensions-simult-support.cl
  create mode 100644 clang/test/Sema/features-ignore-pragma.cl
@@ -791,7 +790,7 @@ index e98a407ac42..18fa06bf3c6 100644
    Opts.Coroutines = Opts.CPlusPlus2a || Args.hasArg(OPT_fcoroutines_ts);
  
 diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
-index c273cb96d9b..516286ef3ff 100644
+index c273cb96d9b..aefd208e6cd 100644
 --- a/clang/lib/Frontend/InitPreprocessor.cpp
 +++ b/clang/lib/Frontend/InitPreprocessor.cpp
 @@ -445,6 +445,9 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
@@ -812,15 +811,7 @@ index c273cb96d9b..516286ef3ff 100644
  
      if (TI.isLittleEndian())
        Builder.defineMacro("__ENDIAN_LITTLE__");
-@@ -635,6 +639,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
-   Builder.defineMacro("__OPENCL_MEMORY_SCOPE_DEVICE", "2");
-   Builder.defineMacro("__OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES", "3");
-   Builder.defineMacro("__OPENCL_MEMORY_SCOPE_SUB_GROUP", "4");
-+  Builder.defineMacro("__OPENCL_MEMORY_SCOPE_ALL_DEVICES", "5");
- 
-   // Support for #pragma redefine_extname (Sun compatibility)
-   Builder.defineMacro("__PRAGMA_REDEFINE_EXTNAME", "1");
-@@ -1101,7 +1106,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
+@@ -1101,7 +1105,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
    // OpenCL definitions.
    if (LangOpts.OpenCL) {
  #define OPENCLEXT(Ext)                                                         \
@@ -830,19 +821,16 @@ index c273cb96d9b..516286ef3ff 100644
  #include "clang/Basic/OpenCLExtensions.def"
  
 diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
-index 430e07d36f6..b10c6ece744 100644
+index 430e07d36f6..2cc688ccc3d 100644
 --- a/clang/lib/Headers/opencl-c-base.h
 +++ b/clang/lib/Headers/opencl-c-base.h
-@@ -9,6 +9,62 @@
+@@ -9,6 +9,59 @@
  #ifndef _OPENCL_BASE_H_
  #define _OPENCL_BASE_H_
  
 +// Add predefined macros to build headers with standalone executable
 +#ifndef CL_VERSION_3_0
 +  #define CL_VERSION_3_0 300
-+#endif
-+#ifndef __OPENCL_MEMORY_SCOPE_ALL_DEVICES
-+  #define __OPENCL_MEMORY_SCOPE_ALL_DEVICES 5
 +#endif
 +
 +// Define features for 2.0 for header backward compatibility
@@ -896,7 +884,7 @@ index 430e07d36f6..b10c6ece744 100644
  // built-in scalar data types:
  
  /**
-@@ -115,7 +171,12 @@ typedef half half4 __attribute__((ext_vector_type(4)));
+@@ -115,7 +168,12 @@ typedef half half4 __attribute__((ext_vector_type(4)));
  typedef half half8 __attribute__((ext_vector_type(8)));
  typedef half half16 __attribute__((ext_vector_type(16)));
  #endif
@@ -910,7 +898,7 @@ index 430e07d36f6..b10c6ece744 100644
  #if __OPENCL_C_VERSION__ < CL_VERSION_1_2
  #pragma OPENCL EXTENSION cl_khr_fp64 : enable
  #endif
-@@ -281,9 +342,15 @@ typedef uint cl_mem_fence_flags;
+@@ -281,9 +339,17 @@ typedef uint cl_mem_fence_flags;
  typedef enum memory_scope {
    memory_scope_work_item = __OPENCL_MEMORY_SCOPE_WORK_ITEM,
    memory_scope_work_group = __OPENCL_MEMORY_SCOPE_WORK_GROUP,
@@ -918,7 +906,9 @@ index 430e07d36f6..b10c6ece744 100644
    memory_scope_device = __OPENCL_MEMORY_SCOPE_DEVICE,
 +#endif
 +#ifdef __opencl_c_atomic_scope_all_devices
-+  memory_scope_all_devices = __OPENCL_MEMORY_SCOPE_ALL_DEVICES,
++  #if (__OPENCL_C_VERSION__ >= CL_VERSION_3_0)
++  memory_scope_all_devices = __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES,
++  #endif // (__OPENCL_C_VERSION__ >= CL_VERSION_3_0)
    memory_scope_all_svm_devices = __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES,
 -#if defined(cl_intel_subgroups) || defined(cl_khr_subgroups)
 +#endif
@@ -927,7 +917,7 @@ index 430e07d36f6..b10c6ece744 100644
    memory_scope_sub_group = __OPENCL_MEMORY_SCOPE_SUB_GROUP
  #endif
  } memory_scope;
-@@ -301,13 +368,14 @@ typedef enum memory_scope {
+@@ -301,13 +367,14 @@ typedef enum memory_scope {
  #define ATOMIC_FLAG_INIT 0
  
  // enum values aligned with what clang uses in EmitAtomicExpr()
@@ -7679,18 +7669,6 @@ index 94a1255f0a4..59b76051eda 100644
  __kernel void testPipe( pipe int test )
  {
      int s = sizeof(test);
-diff --git a/clang/test/Preprocessor/init.c b/clang/test/Preprocessor/init.c
-index 6966698549a..a941d2cf159 100644
---- a/clang/test/Preprocessor/init.c
-+++ b/clang/test/Preprocessor/init.c
-@@ -8871,6 +8871,7 @@
- // WEBASSEMBLY64-NEXT:#define __LP64__ 1
- // WEBASSEMBLY-NEXT:#define __NO_INLINE__ 1
- // WEBASSEMBLY-NEXT:#define __OBJC_BOOL_IS_BOOL 0
-+// WEBASSEMBLY-NEXT:#define __OPENCL_MEMORY_SCOPE_ALL_DEVICES 5
- // WEBASSEMBLY-NEXT:#define __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES 3
- // WEBASSEMBLY-NEXT:#define __OPENCL_MEMORY_SCOPE_DEVICE 2
- // WEBASSEMBLY-NEXT:#define __OPENCL_MEMORY_SCOPE_SUB_GROUP 4
 diff --git a/clang/test/Preprocessor/predefined-macros.c b/clang/test/Preprocessor/predefined-macros.c
 index def105f4c52..b088a37ba66 100644
 --- a/clang/test/Preprocessor/predefined-macros.c
