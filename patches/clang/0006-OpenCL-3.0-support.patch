@@ -1,7 +1,7 @@
-From bd852341c8f89af12bcf9c160bb4699193cac986 Mon Sep 17 00:00:00 2001
+From 687a01a7b7b27d0f7b36cf2105a6712172ef37ae Mon Sep 17 00:00:00 2001
 From: Anton Zabaznov <anton.zabaznov@intel.com>
 Date: Thu, 24 Sep 2020 00:12:24 +0300
-Subject: [PATCH 1/2] OpenCL 3.0 support
+Subject: [PATCH] OpenCL 3.0 support
 
 ---
  include/clang/Basic/Builtins.def              |   67 +-
@@ -20,8 +20,8 @@ Subject: [PATCH 1/2] OpenCL 3.0 support
  lib/Basic/Targets.cpp                         |    1 -
  lib/CodeGen/CodeGenFunction.cpp               |    6 +-
  lib/Frontend/CompilerInvocation.cpp           |    7 +-
- lib/Frontend/InitPreprocessor.cpp             |    8 +-
- lib/Headers/opencl-c.h                        | 3422 ++++++++++++++---
+ lib/Frontend/InitPreprocessor.cpp             |    7 +-
+ lib/Headers/opencl-c.h                        | 3421 ++++++++++++++---
  lib/Parse/ParseDecl.cpp                       |    9 +-
  lib/Parse/ParsePragma.cpp                     |   10 +-
  lib/Sema/Sema.cpp                             |   47 +-
@@ -53,7 +53,6 @@ Subject: [PATCH 1/2] OpenCL 3.0 support
  test/Frontend/stdlang.c                       |    1 +
  test/Headers/opencl-c-header.cl               |    9 +-
  test/Index/pipe-size.cl                       |    7 +
- test/Preprocessor/init.c                      |    1 +
  test/Preprocessor/predefined-macros.c         |   13 +
  .../Sema/feature-extensions-simult-support.cl |   75 +
  test/Sema/features-ignore-pragma.cl           |   24 +
@@ -66,7 +65,7 @@ Subject: [PATCH 1/2] OpenCL 3.0 support
  .../SemaOpenCL/forget-unsupported-builtins.cl |   23 +
  test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl |    1 +
  test/SemaOpenCL/storageclass-cl20.cl          |    1 +
- 62 files changed, 3614 insertions(+), 723 deletions(-)
+ 61 files changed, 3611 insertions(+), 723 deletions(-)
  create mode 100644 test/CodeGenOpenCL/generic-address-space-feature.cl
  create mode 100644 test/Sema/feature-extensions-simult-support.cl
  create mode 100644 test/Sema/features-ignore-pragma.cl
@@ -735,7 +734,7 @@ index 3e6528c259..a6c94e18c7 100644
    Opts.CoroutinesTS = Args.hasArg(OPT_fcoroutines_ts);
  
 diff --git a/lib/Frontend/InitPreprocessor.cpp b/lib/Frontend/InitPreprocessor.cpp
-index 4cde22ce9a..6b3f75cb1a 100644
+index 4cde22ce9a..d248b1c865 100644
 --- a/lib/Frontend/InitPreprocessor.cpp
 +++ b/lib/Frontend/InitPreprocessor.cpp
 @@ -435,6 +435,9 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
@@ -757,15 +756,7 @@ index 4cde22ce9a..6b3f75cb1a 100644
  
        if (TI.isLittleEndian())
          Builder.defineMacro("__ENDIAN_LITTLE__");
-@@ -599,6 +604,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
-   Builder.defineMacro("__OPENCL_MEMORY_SCOPE_DEVICE", "2");
-   Builder.defineMacro("__OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES", "3");
-   Builder.defineMacro("__OPENCL_MEMORY_SCOPE_SUB_GROUP", "4");
-+  Builder.defineMacro("__OPENCL_MEMORY_SCOPE_ALL_DEVICES", "5");
- 
-   // Support for #pragma redefine_extname (Sun compatibility)
-   Builder.defineMacro("__PRAGMA_REDEFINE_EXTNAME", "1");
-@@ -1060,7 +1066,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
+@@ -1060,7 +1065,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
    // OpenCL definitions.
    if (LangOpts.OpenCL) {
  #define OPENCLEXT(Ext)                                                         \
@@ -775,10 +766,10 @@ index 4cde22ce9a..6b3f75cb1a 100644
  #include "clang/Basic/OpenCLExtensions.def"
  
 diff --git a/lib/Headers/opencl-c.h b/lib/Headers/opencl-c.h
-index 514c710c11..7def52945a 100644
+index 514c710c11..0264cf3946 100644
 --- a/lib/Headers/opencl-c.h
 +++ b/lib/Headers/opencl-c.h
-@@ -10,6 +10,63 @@
+@@ -10,6 +10,60 @@
  #ifndef _OPENCL_H_
  #define _OPENCL_H_
  
@@ -786,9 +777,6 @@ index 514c710c11..7def52945a 100644
 +// Add predefined macros to build headers with standalone executable
 +#ifndef CL_VERSION_3_0
 +  #define CL_VERSION_3_0 300
-+#endif
-+#ifndef __OPENCL_MEMORY_SCOPE_ALL_DEVICES
-+  #define __OPENCL_MEMORY_SCOPE_ALL_DEVICES 5
 +#endif
 +
 +// Define features for 2.0 for header backward compatibility
@@ -842,7 +830,7 @@ index 514c710c11..7def52945a 100644
  #if __OPENCL_C_VERSION__ >= CL_VERSION_2_0
  #ifndef cl_khr_depth_images
  #define cl_khr_depth_images
-@@ -143,7 +200,12 @@ typedef half half4 __attribute__((ext_vector_type(4)));
+@@ -143,7 +197,12 @@ typedef half half4 __attribute__((ext_vector_type(4)));
  typedef half half8 __attribute__((ext_vector_type(8)));
  typedef half half16 __attribute__((ext_vector_type(16)));
  #endif
@@ -856,7 +844,7 @@ index 514c710c11..7def52945a 100644
  #if __OPENCL_C_VERSION__ < CL_VERSION_1_2
  #pragma OPENCL EXTENSION cl_khr_fp64 : enable
  #endif
-@@ -4883,7 +4945,7 @@ float16 __ovld __cnfn convert_float16(float16);
+@@ -4883,7 +4942,7 @@ float16 __ovld __cnfn convert_float16(float16);
  
  // Conversions with double data type parameters or return value.
  
@@ -865,7 +853,7 @@ index 514c710c11..7def52945a 100644
  char __ovld __cnfn convert_char(double);
  char __ovld __cnfn convert_char_rte(double);
  char __ovld __cnfn convert_char_rtn(double);
-@@ -5703,7 +5765,7 @@ double16 __ovld __cnfn convert_double16_rtz(uchar16);
+@@ -5703,7 +5762,7 @@ double16 __ovld __cnfn convert_double16_rtz(uchar16);
  double16 __ovld __cnfn convert_double16_rtz(uint16);
  double16 __ovld __cnfn convert_double16_rtz(ulong16);
  double16 __ovld __cnfn convert_double16_rtz(ushort16);
@@ -874,7 +862,7 @@ index 514c710c11..7def52945a 100644
  
  #ifdef cl_khr_fp16
  // Convert half types to non-double types.
-@@ -6521,7 +6583,7 @@ half16 __ovld __cnfn convert_half16_rtz(float16);
+@@ -6521,7 +6580,7 @@ half16 __ovld __cnfn convert_half16_rtz(float16);
  half16 __ovld __cnfn convert_half16_rtz(half16);
  
  // Convert half types to double types.
@@ -883,7 +871,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn convert_double(half);
  double __ovld __cnfn convert_double_rte(half);
  double __ovld __cnfn convert_double_rtp(half);
-@@ -6584,7 +6646,7 @@ half16 __ovld __cnfn convert_half16_rte(double16);
+@@ -6584,7 +6643,7 @@ half16 __ovld __cnfn convert_half16_rte(double16);
  half16 __ovld __cnfn convert_half16_rtp(double16);
  half16 __ovld __cnfn convert_half16_rtn(double16);
  half16 __ovld __cnfn convert_half16_rtz(double16);
@@ -892,7 +880,7 @@ index 514c710c11..7def52945a 100644
  
  #endif // cl_khr_fp16
  
-@@ -6655,14 +6717,14 @@ half16 __ovld __cnfn convert_half16_rtz(double16);
+@@ -6655,14 +6714,14 @@ half16 __ovld __cnfn convert_half16_rtz(double16);
  #define as_float8(x) __builtin_astype((x),  float8)
  #define as_float16(x) __builtin_astype((x), float16)
  
@@ -909,7 +897,7 @@ index 514c710c11..7def52945a 100644
  
  #ifdef cl_khr_fp16
  #define as_half(x) __builtin_astype((x),   half)
-@@ -6785,14 +6847,14 @@ float3 __ovld __cnfn acos(float3);
+@@ -6785,14 +6844,14 @@ float3 __ovld __cnfn acos(float3);
  float4 __ovld __cnfn acos(float4);
  float8 __ovld __cnfn acos(float8);
  float16 __ovld __cnfn acos(float16);
@@ -926,7 +914,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn acos(half);
  half2 __ovld __cnfn acos(half2);
-@@ -6811,14 +6873,14 @@ float3 __ovld __cnfn acosh(float3);
+@@ -6811,14 +6870,14 @@ float3 __ovld __cnfn acosh(float3);
  float4 __ovld __cnfn acosh(float4);
  float8 __ovld __cnfn acosh(float8);
  float16 __ovld __cnfn acosh(float16);
@@ -943,7 +931,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn acosh(half);
  half2 __ovld __cnfn acosh(half2);
-@@ -6837,14 +6899,14 @@ float3 __ovld __cnfn acospi(float3 x);
+@@ -6837,14 +6896,14 @@ float3 __ovld __cnfn acospi(float3 x);
  float4 __ovld __cnfn acospi(float4 x);
  float8 __ovld __cnfn acospi(float8 x);
  float16 __ovld __cnfn acospi(float16 x);
@@ -960,7 +948,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn acospi(half x);
  half2 __ovld __cnfn acospi(half2 x);
-@@ -6863,14 +6925,14 @@ float3 __ovld __cnfn asin(float3);
+@@ -6863,14 +6922,14 @@ float3 __ovld __cnfn asin(float3);
  float4 __ovld __cnfn asin(float4);
  float8 __ovld __cnfn asin(float8);
  float16 __ovld __cnfn asin(float16);
@@ -977,7 +965,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn asin(half);
  half2 __ovld __cnfn asin(half2);
-@@ -6889,14 +6951,14 @@ float3 __ovld __cnfn asinh(float3);
+@@ -6889,14 +6948,14 @@ float3 __ovld __cnfn asinh(float3);
  float4 __ovld __cnfn asinh(float4);
  float8 __ovld __cnfn asinh(float8);
  float16 __ovld __cnfn asinh(float16);
@@ -994,7 +982,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn asinh(half);
  half2 __ovld __cnfn asinh(half2);
-@@ -6915,14 +6977,14 @@ float3 __ovld __cnfn asinpi(float3 x);
+@@ -6915,14 +6974,14 @@ float3 __ovld __cnfn asinpi(float3 x);
  float4 __ovld __cnfn asinpi(float4 x);
  float8 __ovld __cnfn asinpi(float8 x);
  float16 __ovld __cnfn asinpi(float16 x);
@@ -1011,7 +999,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn asinpi(half x);
  half2 __ovld __cnfn asinpi(half2 x);
-@@ -6941,14 +7003,14 @@ float3 __ovld __cnfn atan(float3 y_over_x);
+@@ -6941,14 +7000,14 @@ float3 __ovld __cnfn atan(float3 y_over_x);
  float4 __ovld __cnfn atan(float4 y_over_x);
  float8 __ovld __cnfn atan(float8 y_over_x);
  float16 __ovld __cnfn atan(float16 y_over_x);
@@ -1028,7 +1016,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn atan(half y_over_x);
  half2 __ovld __cnfn atan(half2 y_over_x);
-@@ -6967,14 +7029,14 @@ float3 __ovld __cnfn atan2(float3 y, float3 x);
+@@ -6967,14 +7026,14 @@ float3 __ovld __cnfn atan2(float3 y, float3 x);
  float4 __ovld __cnfn atan2(float4 y, float4 x);
  float8 __ovld __cnfn atan2(float8 y, float8 x);
  float16 __ovld __cnfn atan2(float16 y, float16 x);
@@ -1045,7 +1033,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn atan2(half y, half x);
  half2 __ovld __cnfn atan2(half2 y, half2 x);
-@@ -6993,14 +7055,14 @@ float3 __ovld __cnfn atanh(float3);
+@@ -6993,14 +7052,14 @@ float3 __ovld __cnfn atanh(float3);
  float4 __ovld __cnfn atanh(float4);
  float8 __ovld __cnfn atanh(float8);
  float16 __ovld __cnfn atanh(float16);
@@ -1062,7 +1050,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn atanh(half);
  half2 __ovld __cnfn atanh(half2);
-@@ -7019,14 +7081,14 @@ float3 __ovld __cnfn atanpi(float3 x);
+@@ -7019,14 +7078,14 @@ float3 __ovld __cnfn atanpi(float3 x);
  float4 __ovld __cnfn atanpi(float4 x);
  float8 __ovld __cnfn atanpi(float8 x);
  float16 __ovld __cnfn atanpi(float16 x);
@@ -1079,7 +1067,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn atanpi(half x);
  half2 __ovld __cnfn atanpi(half2 x);
-@@ -7045,14 +7107,14 @@ float3 __ovld __cnfn atan2pi(float3 y, float3 x);
+@@ -7045,14 +7104,14 @@ float3 __ovld __cnfn atan2pi(float3 y, float3 x);
  float4 __ovld __cnfn atan2pi(float4 y, float4 x);
  float8 __ovld __cnfn atan2pi(float8 y, float8 x);
  float16 __ovld __cnfn atan2pi(float16 y, float16 x);
@@ -1096,7 +1084,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn atan2pi(half y, half x);
  half2 __ovld __cnfn atan2pi(half2 y, half2 x);
-@@ -7071,14 +7133,14 @@ float3 __ovld __cnfn cbrt(float3);
+@@ -7071,14 +7130,14 @@ float3 __ovld __cnfn cbrt(float3);
  float4 __ovld __cnfn cbrt(float4);
  float8 __ovld __cnfn cbrt(float8);
  float16 __ovld __cnfn cbrt(float16);
@@ -1113,7 +1101,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn cbrt(half);
  half2 __ovld __cnfn cbrt(half2);
-@@ -7098,14 +7160,14 @@ float3 __ovld __cnfn ceil(float3);
+@@ -7098,14 +7157,14 @@ float3 __ovld __cnfn ceil(float3);
  float4 __ovld __cnfn ceil(float4);
  float8 __ovld __cnfn ceil(float8);
  float16 __ovld __cnfn ceil(float16);
@@ -1130,7 +1118,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn ceil(half);
  half2 __ovld __cnfn ceil(half2);
-@@ -7124,14 +7186,14 @@ float3 __ovld __cnfn copysign(float3 x, float3 y);
+@@ -7124,14 +7183,14 @@ float3 __ovld __cnfn copysign(float3 x, float3 y);
  float4 __ovld __cnfn copysign(float4 x, float4 y);
  float8 __ovld __cnfn copysign(float8 x, float8 y);
  float16 __ovld __cnfn copysign(float16 x, float16 y);
@@ -1147,7 +1135,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn copysign(half x, half y);
  half2 __ovld __cnfn copysign(half2 x, half2 y);
-@@ -7150,14 +7212,14 @@ float3 __ovld __cnfn cos(float3);
+@@ -7150,14 +7209,14 @@ float3 __ovld __cnfn cos(float3);
  float4 __ovld __cnfn cos(float4);
  float8 __ovld __cnfn cos(float8);
  float16 __ovld __cnfn cos(float16);
@@ -1164,7 +1152,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn cos(half);
  half2 __ovld __cnfn cos(half2);
-@@ -7176,14 +7238,14 @@ float3 __ovld __cnfn cosh(float3);
+@@ -7176,14 +7235,14 @@ float3 __ovld __cnfn cosh(float3);
  float4 __ovld __cnfn cosh(float4);
  float8 __ovld __cnfn cosh(float8);
  float16 __ovld __cnfn cosh(float16);
@@ -1181,7 +1169,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn cosh(half);
  half2 __ovld __cnfn cosh(half2);
-@@ -7202,14 +7264,14 @@ float3 __ovld __cnfn cospi(float3 x);
+@@ -7202,14 +7261,14 @@ float3 __ovld __cnfn cospi(float3 x);
  float4 __ovld __cnfn cospi(float4 x);
  float8 __ovld __cnfn cospi(float8 x);
  float16 __ovld __cnfn cospi(float16 x);
@@ -1198,7 +1186,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn cospi(half x);
  half2 __ovld __cnfn cospi(half2 x);
-@@ -7228,14 +7290,14 @@ float3 __ovld __cnfn erfc(float3);
+@@ -7228,14 +7287,14 @@ float3 __ovld __cnfn erfc(float3);
  float4 __ovld __cnfn erfc(float4);
  float8 __ovld __cnfn erfc(float8);
  float16 __ovld __cnfn erfc(float16);
@@ -1215,7 +1203,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn erfc(half);
  half2 __ovld __cnfn erfc(half2);
-@@ -7255,14 +7317,14 @@ float3 __ovld __cnfn erf(float3);
+@@ -7255,14 +7314,14 @@ float3 __ovld __cnfn erf(float3);
  float4 __ovld __cnfn erf(float4);
  float8 __ovld __cnfn erf(float8);
  float16 __ovld __cnfn erf(float16);
@@ -1232,7 +1220,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn erf(half);
  half2 __ovld __cnfn erf(half2);
-@@ -7281,14 +7343,14 @@ float3 __ovld __cnfn exp(float3 x);
+@@ -7281,14 +7340,14 @@ float3 __ovld __cnfn exp(float3 x);
  float4 __ovld __cnfn exp(float4 x);
  float8 __ovld __cnfn exp(float8 x);
  float16 __ovld __cnfn exp(float16 x);
@@ -1249,7 +1237,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn exp(half x);
  half2 __ovld __cnfn exp(half2 x);
-@@ -7307,14 +7369,14 @@ float3 __ovld __cnfn exp2(float3);
+@@ -7307,14 +7366,14 @@ float3 __ovld __cnfn exp2(float3);
  float4 __ovld __cnfn exp2(float4);
  float8 __ovld __cnfn exp2(float8);
  float16 __ovld __cnfn exp2(float16);
@@ -1266,7 +1254,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn exp2(half);
  half2 __ovld __cnfn exp2(half2);
-@@ -7333,14 +7395,14 @@ float3 __ovld __cnfn exp10(float3);
+@@ -7333,14 +7392,14 @@ float3 __ovld __cnfn exp10(float3);
  float4 __ovld __cnfn exp10(float4);
  float8 __ovld __cnfn exp10(float8);
  float16 __ovld __cnfn exp10(float16);
@@ -1283,7 +1271,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn exp10(half);
  half2 __ovld __cnfn exp10(half2);
-@@ -7359,14 +7421,14 @@ float3 __ovld __cnfn expm1(float3 x);
+@@ -7359,14 +7418,14 @@ float3 __ovld __cnfn expm1(float3 x);
  float4 __ovld __cnfn expm1(float4 x);
  float8 __ovld __cnfn expm1(float8 x);
  float16 __ovld __cnfn expm1(float16 x);
@@ -1300,7 +1288,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn expm1(half x);
  half2 __ovld __cnfn expm1(half2 x);
-@@ -7385,14 +7447,14 @@ float3 __ovld __cnfn fabs(float3);
+@@ -7385,14 +7444,14 @@ float3 __ovld __cnfn fabs(float3);
  float4 __ovld __cnfn fabs(float4);
  float8 __ovld __cnfn fabs(float8);
  float16 __ovld __cnfn fabs(float16);
@@ -1317,7 +1305,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn fabs(half);
  half2 __ovld __cnfn fabs(half2);
-@@ -7411,14 +7473,14 @@ float3 __ovld __cnfn fdim(float3 x, float3 y);
+@@ -7411,14 +7470,14 @@ float3 __ovld __cnfn fdim(float3 x, float3 y);
  float4 __ovld __cnfn fdim(float4 x, float4 y);
  float8 __ovld __cnfn fdim(float8 x, float8 y);
  float16 __ovld __cnfn fdim(float16 x, float16 y);
@@ -1334,7 +1322,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn fdim(half x, half y);
  half2 __ovld __cnfn fdim(half2 x, half2 y);
-@@ -7438,14 +7500,14 @@ float3 __ovld __cnfn floor(float3);
+@@ -7438,14 +7497,14 @@ float3 __ovld __cnfn floor(float3);
  float4 __ovld __cnfn floor(float4);
  float8 __ovld __cnfn floor(float8);
  float16 __ovld __cnfn floor(float16);
@@ -1351,7 +1339,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn floor(half);
  half2 __ovld __cnfn floor(half2);
-@@ -7468,14 +7530,14 @@ float3 __ovld __cnfn fma(float3 a, float3 b, float3 c);
+@@ -7468,14 +7527,14 @@ float3 __ovld __cnfn fma(float3 a, float3 b, float3 c);
  float4 __ovld __cnfn fma(float4 a, float4 b, float4 c);
  float8 __ovld __cnfn fma(float8 a, float8 b, float8 c);
  float16 __ovld __cnfn fma(float16 a, float16 b, float16 c);
@@ -1368,7 +1356,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn fma(half a, half b, half c);
  half2 __ovld __cnfn fma(half2 a, half2 b, half2 c);
-@@ -7502,7 +7564,7 @@ float3 __ovld __cnfn fmax(float3 x, float y);
+@@ -7502,7 +7561,7 @@ float3 __ovld __cnfn fmax(float3 x, float y);
  float4 __ovld __cnfn fmax(float4 x, float y);
  float8 __ovld __cnfn fmax(float8 x, float y);
  float16 __ovld __cnfn fmax(float16 x, float y);
@@ -1377,7 +1365,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn fmax(double x, double y);
  double2 __ovld __cnfn fmax(double2 x, double2 y);
  double3 __ovld __cnfn fmax(double3 x, double3 y);
-@@ -7514,7 +7576,7 @@ double3 __ovld __cnfn fmax(double3 x, double y);
+@@ -7514,7 +7573,7 @@ double3 __ovld __cnfn fmax(double3 x, double y);
  double4 __ovld __cnfn fmax(double4 x, double y);
  double8 __ovld __cnfn fmax(double8 x, double y);
  double16 __ovld __cnfn fmax(double16 x, double y);
@@ -1386,7 +1374,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn fmax(half x, half y);
  half2 __ovld __cnfn fmax(half2 x, half2 y);
-@@ -7546,7 +7608,7 @@ float3 __ovld __cnfn fmin(float3 x, float y);
+@@ -7546,7 +7605,7 @@ float3 __ovld __cnfn fmin(float3 x, float y);
  float4 __ovld __cnfn fmin(float4 x, float y);
  float8 __ovld __cnfn fmin(float8 x, float y);
  float16 __ovld __cnfn fmin(float16 x, float y);
@@ -1395,7 +1383,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn fmin(double x, double y);
  double2 __ovld __cnfn fmin(double2 x, double2 y);
  double3 __ovld __cnfn fmin(double3 x, double3 y);
-@@ -7558,7 +7620,7 @@ double3 __ovld __cnfn fmin(double3 x, double y);
+@@ -7558,7 +7617,7 @@ double3 __ovld __cnfn fmin(double3 x, double y);
  double4 __ovld __cnfn fmin(double4 x, double y);
  double8 __ovld __cnfn fmin(double8 x, double y);
  double16 __ovld __cnfn fmin(double16 x, double y);
@@ -1404,7 +1392,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn fmin(half x, half y);
  half2 __ovld __cnfn fmin(half2 x, half2 y);
-@@ -7582,14 +7644,14 @@ float3 __ovld __cnfn fmod(float3 x, float3 y);
+@@ -7582,14 +7641,14 @@ float3 __ovld __cnfn fmod(float3 x, float3 y);
  float4 __ovld __cnfn fmod(float4 x, float4 y);
  float8 __ovld __cnfn fmod(float8 x, float8 y);
  float16 __ovld __cnfn fmod(float16 x, float16 y);
@@ -1421,7 +1409,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn fmod(half x, half y);
  half2 __ovld __cnfn fmod(half2 x, half2 y);
-@@ -7603,21 +7665,21 @@ half16 __ovld __cnfn fmod(half16 x, half16 y);
+@@ -7603,21 +7662,21 @@ half16 __ovld __cnfn fmod(half16 x, half16 y);
   * Returns fmin(x - floor (x), 0x1.fffffep-1f ).
   * floor(x) is returned in iptr.
   */
@@ -1446,7 +1434,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld fract(half x, half *iptr);
  half2 __ovld fract(half2 x, half2 *iptr);
-@@ -7626,7 +7688,9 @@ half4 __ovld fract(half4 x, half4 *iptr);
+@@ -7626,7 +7685,9 @@ half4 __ovld fract(half4 x, half4 *iptr);
  half8 __ovld fract(half8 x, half8 *iptr);
  half16 __ovld fract(half16 x, half16 *iptr);
  #endif //cl_khr_fp16
@@ -1457,7 +1445,7 @@ index 514c710c11..7def52945a 100644
  float __ovld fract(float x, __global float *iptr);
  float2 __ovld fract(float2 x, __global float2 *iptr);
  float3 __ovld fract(float3 x, __global float3 *iptr);
-@@ -7645,7 +7709,7 @@ float3 __ovld fract(float3 x, __private float3 *iptr);
+@@ -7645,7 +7706,7 @@ float3 __ovld fract(float3 x, __private float3 *iptr);
  float4 __ovld fract(float4 x, __private float4 *iptr);
  float8 __ovld fract(float8 x, __private float8 *iptr);
  float16 __ovld fract(float16 x, __private float16 *iptr);
@@ -1466,7 +1454,7 @@ index 514c710c11..7def52945a 100644
  double __ovld fract(double x, __global double *iptr);
  double2 __ovld fract(double2 x, __global double2 *iptr);
  double3 __ovld fract(double3 x, __global double3 *iptr);
-@@ -7664,7 +7728,7 @@ double3 __ovld fract(double3 x, __private double3 *iptr);
+@@ -7664,7 +7725,7 @@ double3 __ovld fract(double3 x, __private double3 *iptr);
  double4 __ovld fract(double4 x, __private double4 *iptr);
  double8 __ovld fract(double8 x, __private double8 *iptr);
  double16 __ovld fract(double16 x, __private double16 *iptr);
@@ -1475,7 +1463,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld fract(half x, __global half *iptr);
  half2 __ovld fract(half2 x, __global half2 *iptr);
-@@ -7685,29 +7749,29 @@ half4 __ovld fract(half4 x, __private half4 *iptr);
+@@ -7685,29 +7746,29 @@ half4 __ovld fract(half4 x, __private half4 *iptr);
  half8 __ovld fract(half8 x, __private half8 *iptr);
  half16 __ovld fract(half16 x, __private half16 *iptr);
  #endif //cl_khr_fp16
@@ -1510,7 +1498,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld frexp(half x, int *exp);
  half2 __ovld frexp(half2 x, int2 *exp);
-@@ -7716,7 +7780,9 @@ half4 __ovld frexp(half4 x, int4 *exp);
+@@ -7716,7 +7777,9 @@ half4 __ovld frexp(half4 x, int4 *exp);
  half8 __ovld frexp(half8 x, int8 *exp);
  half16 __ovld frexp(half16 x, int16 *exp);
  #endif //cl_khr_fp16
@@ -1521,7 +1509,7 @@ index 514c710c11..7def52945a 100644
  float __ovld frexp(float x, __global int *exp);
  float2 __ovld frexp(float2 x, __global int2 *exp);
  float3 __ovld frexp(float3 x, __global int3 *exp);
-@@ -7735,7 +7801,7 @@ float3 __ovld frexp(float3 x, __private int3 *exp);
+@@ -7735,7 +7798,7 @@ float3 __ovld frexp(float3 x, __private int3 *exp);
  float4 __ovld frexp(float4 x, __private int4 *exp);
  float8 __ovld frexp(float8 x, __private int8 *exp);
  float16 __ovld frexp(float16 x, __private int16 *exp);
@@ -1530,7 +1518,7 @@ index 514c710c11..7def52945a 100644
  double __ovld frexp(double x, __global int *exp);
  double2 __ovld frexp(double2 x, __global int2 *exp);
  double3 __ovld frexp(double3 x, __global int3 *exp);
-@@ -7754,7 +7820,7 @@ double3 __ovld frexp(double3 x, __private int3 *exp);
+@@ -7754,7 +7817,7 @@ double3 __ovld frexp(double3 x, __private int3 *exp);
  double4 __ovld frexp(double4 x, __private int4 *exp);
  double8 __ovld frexp(double8 x, __private int8 *exp);
  double16 __ovld frexp(double16 x, __private int16 *exp);
@@ -1539,7 +1527,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld frexp(half x, __global int *exp);
  half2 __ovld frexp(half2 x, __global int2 *exp);
-@@ -7775,7 +7841,8 @@ half4 __ovld frexp(half4 x, __private int4 *exp);
+@@ -7775,7 +7838,8 @@ half4 __ovld frexp(half4 x, __private int4 *exp);
  half8 __ovld frexp(half8 x, __private int8 *exp);
  half16 __ovld frexp(half16 x, __private int16 *exp);
  #endif //cl_khr_fp16
@@ -1549,7 +1537,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * Compute the value of the square root of x^2 + y^2
-@@ -7787,14 +7854,14 @@ float3 __ovld __cnfn hypot(float3 x, float3 y);
+@@ -7787,14 +7851,14 @@ float3 __ovld __cnfn hypot(float3 x, float3 y);
  float4 __ovld __cnfn hypot(float4 x, float4 y);
  float8 __ovld __cnfn hypot(float8 x, float8 y);
  float16 __ovld __cnfn hypot(float16 x, float16 y);
@@ -1566,7 +1554,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn hypot(half x, half y);
  half2 __ovld __cnfn hypot(half2 x, half2 y);
-@@ -7813,14 +7880,14 @@ int3 __ovld __cnfn ilogb(float3 x);
+@@ -7813,14 +7877,14 @@ int3 __ovld __cnfn ilogb(float3 x);
  int4 __ovld __cnfn ilogb(float4 x);
  int8 __ovld __cnfn ilogb(float8 x);
  int16 __ovld __cnfn ilogb(float16 x);
@@ -1583,7 +1571,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn ilogb(half x);
  int2 __ovld __cnfn ilogb(half2 x);
-@@ -7844,7 +7911,7 @@ float3 __ovld __cnfn ldexp(float3 x, int n);
+@@ -7844,7 +7908,7 @@ float3 __ovld __cnfn ldexp(float3 x, int n);
  float4 __ovld __cnfn ldexp(float4 x, int n);
  float8 __ovld __cnfn ldexp(float8 x, int n);
  float16 __ovld __cnfn ldexp(float16 x, int n);
@@ -1592,7 +1580,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn ldexp(double x, int n);
  double2 __ovld __cnfn ldexp(double2 x, int2 n);
  double3 __ovld __cnfn ldexp(double3 x, int3 n);
-@@ -7856,7 +7923,7 @@ double3 __ovld __cnfn ldexp(double3 x, int n);
+@@ -7856,7 +7920,7 @@ double3 __ovld __cnfn ldexp(double3 x, int n);
  double4 __ovld __cnfn ldexp(double4 x, int n);
  double8 __ovld __cnfn ldexp(double8 x, int n);
  double16 __ovld __cnfn ldexp(double16 x, int n);
@@ -1601,7 +1589,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn ldexp(half x, int n);
  half2 __ovld __cnfn ldexp(half2 x, int2 n);
-@@ -7883,14 +7950,14 @@ float3 __ovld __cnfn lgamma(float3 x);
+@@ -7883,14 +7947,14 @@ float3 __ovld __cnfn lgamma(float3 x);
  float4 __ovld __cnfn lgamma(float4 x);
  float8 __ovld __cnfn lgamma(float8 x);
  float16 __ovld __cnfn lgamma(float16 x);
@@ -1618,7 +1606,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn lgamma(half x);
  half2 __ovld __cnfn lgamma(half2 x);
-@@ -7900,21 +7967,21 @@ half8 __ovld __cnfn lgamma(half8 x);
+@@ -7900,21 +7964,21 @@ half8 __ovld __cnfn lgamma(half8 x);
  half16 __ovld __cnfn lgamma(half16 x);
  #endif //cl_khr_fp16
  
@@ -1643,7 +1631,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld lgamma_r(half x, int *signp);
  half2 __ovld lgamma_r(half2 x, int2 *signp);
-@@ -7923,7 +7990,9 @@ half4 __ovld lgamma_r(half4 x, int4 *signp);
+@@ -7923,7 +7987,9 @@ half4 __ovld lgamma_r(half4 x, int4 *signp);
  half8 __ovld lgamma_r(half8 x, int8 *signp);
  half16 __ovld lgamma_r(half16 x, int16 *signp);
  #endif //cl_khr_fp16
@@ -1654,7 +1642,7 @@ index 514c710c11..7def52945a 100644
  float __ovld lgamma_r(float x, __global int *signp);
  float2 __ovld lgamma_r(float2 x, __global int2 *signp);
  float3 __ovld lgamma_r(float3 x, __global int3 *signp);
-@@ -7942,7 +8011,7 @@ float3 __ovld lgamma_r(float3 x, __private int3 *signp);
+@@ -7942,7 +8008,7 @@ float3 __ovld lgamma_r(float3 x, __private int3 *signp);
  float4 __ovld lgamma_r(float4 x, __private int4 *signp);
  float8 __ovld lgamma_r(float8 x, __private int8 *signp);
  float16 __ovld lgamma_r(float16 x, __private int16 *signp);
@@ -1663,7 +1651,7 @@ index 514c710c11..7def52945a 100644
  double __ovld lgamma_r(double x, __global int *signp);
  double2 __ovld lgamma_r(double2 x, __global int2 *signp);
  double3 __ovld lgamma_r(double3 x, __global int3 *signp);
-@@ -7961,7 +8030,7 @@ double3 __ovld lgamma_r(double3 x, __private int3 *signp);
+@@ -7961,7 +8027,7 @@ double3 __ovld lgamma_r(double3 x, __private int3 *signp);
  double4 __ovld lgamma_r(double4 x, __private int4 *signp);
  double8 __ovld lgamma_r(double8 x, __private int8 *signp);
  double16 __ovld lgamma_r(double16 x, __private int16 *signp);
@@ -1672,7 +1660,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld lgamma_r(half x, __global int *signp);
  half2 __ovld lgamma_r(half2 x, __global int2 *signp);
-@@ -7982,8 +8051,8 @@ half4 __ovld lgamma_r(half4 x, __private int4 *signp);
+@@ -7982,8 +8048,8 @@ half4 __ovld lgamma_r(half4 x, __private int4 *signp);
  half8 __ovld lgamma_r(half8 x, __private int8 *signp);
  half16 __ovld lgamma_r(half16 x, __private int16 *signp);
  #endif //cl_khr_fp16
@@ -1683,7 +1671,7 @@ index 514c710c11..7def52945a 100644
  /**
   * Compute natural logarithm.
   */
-@@ -7993,14 +8062,14 @@ float3 __ovld __cnfn log(float3);
+@@ -7993,14 +8059,14 @@ float3 __ovld __cnfn log(float3);
  float4 __ovld __cnfn log(float4);
  float8 __ovld __cnfn log(float8);
  float16 __ovld __cnfn log(float16);
@@ -1700,7 +1688,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn log(half);
  half2 __ovld __cnfn log(half2);
-@@ -8011,7 +8080,7 @@ half16 __ovld __cnfn log(half16);
+@@ -8011,7 +8077,7 @@ half16 __ovld __cnfn log(half16);
  #endif //cl_khr_fp16
  
  /**
@@ -1709,7 +1697,7 @@ index 514c710c11..7def52945a 100644
   */
  float __ovld __cnfn log2(float);
  float2 __ovld __cnfn log2(float2);
-@@ -8019,14 +8088,14 @@ float3 __ovld __cnfn log2(float3);
+@@ -8019,14 +8085,14 @@ float3 __ovld __cnfn log2(float3);
  float4 __ovld __cnfn log2(float4);
  float8 __ovld __cnfn log2(float8);
  float16 __ovld __cnfn log2(float16);
@@ -1726,7 +1714,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn log2(half);
  half2 __ovld __cnfn log2(half2);
-@@ -8045,14 +8114,14 @@ float3 __ovld __cnfn log10(float3);
+@@ -8045,14 +8111,14 @@ float3 __ovld __cnfn log10(float3);
  float4 __ovld __cnfn log10(float4);
  float8 __ovld __cnfn log10(float8);
  float16 __ovld __cnfn log10(float16);
@@ -1743,7 +1731,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn log10(half);
  half2 __ovld __cnfn log10(half2);
-@@ -8071,14 +8140,14 @@ float3 __ovld __cnfn log1p(float3 x);
+@@ -8071,14 +8137,14 @@ float3 __ovld __cnfn log1p(float3 x);
  float4 __ovld __cnfn log1p(float4 x);
  float8 __ovld __cnfn log1p(float8 x);
  float16 __ovld __cnfn log1p(float16 x);
@@ -1760,7 +1748,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn log1p(half x);
  half2 __ovld __cnfn log1p(half2 x);
-@@ -8098,14 +8167,14 @@ float3 __ovld __cnfn logb(float3 x);
+@@ -8098,14 +8164,14 @@ float3 __ovld __cnfn logb(float3 x);
  float4 __ovld __cnfn logb(float4 x);
  float8 __ovld __cnfn logb(float8 x);
  float16 __ovld __cnfn logb(float16 x);
@@ -1777,7 +1765,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn logb(half x);
  half2 __ovld __cnfn logb(half2 x);
-@@ -8128,14 +8197,14 @@ float3 __ovld __cnfn mad(float3 a, float3 b, float3 c);
+@@ -8128,14 +8194,14 @@ float3 __ovld __cnfn mad(float3 a, float3 b, float3 c);
  float4 __ovld __cnfn mad(float4 a, float4 b, float4 c);
  float8 __ovld __cnfn mad(float8 a, float8 b, float8 c);
  float16 __ovld __cnfn mad(float16 a, float16 b, float16 c);
@@ -1794,7 +1782,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn mad(half a, half b, half c);
  half2 __ovld __cnfn mad(half2 a, half2 b, half2 c);
-@@ -8155,14 +8224,14 @@ float3 __ovld __cnfn maxmag(float3 x, float3 y);
+@@ -8155,14 +8221,14 @@ float3 __ovld __cnfn maxmag(float3 x, float3 y);
  float4 __ovld __cnfn maxmag(float4 x, float4 y);
  float8 __ovld __cnfn maxmag(float8 x, float8 y);
  float16 __ovld __cnfn maxmag(float16 x, float16 y);
@@ -1811,7 +1799,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn maxmag(half x, half y);
  half2 __ovld __cnfn maxmag(half2 x, half2 y);
-@@ -8182,14 +8251,14 @@ float3 __ovld __cnfn minmag(float3 x, float3 y);
+@@ -8182,14 +8248,14 @@ float3 __ovld __cnfn minmag(float3 x, float3 y);
  float4 __ovld __cnfn minmag(float4 x, float4 y);
  float8 __ovld __cnfn minmag(float8 x, float8 y);
  float16 __ovld __cnfn minmag(float16 x, float16 y);
@@ -1828,7 +1816,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn minmag(half x, half y);
  half2 __ovld __cnfn minmag(half2 x, half2 y);
-@@ -8206,21 +8275,21 @@ half16 __ovld __cnfn minmag(half16 x, half16 y);
+@@ -8206,21 +8272,21 @@ half16 __ovld __cnfn minmag(half16 x, half16 y);
   * the argument. It stores the integral part in the object
   * pointed to by iptr.
   */
@@ -1853,7 +1841,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld modf(half x, half *iptr);
  half2 __ovld modf(half2 x, half2 *iptr);
-@@ -8229,7 +8298,9 @@ half4 __ovld modf(half4 x, half4 *iptr);
+@@ -8229,7 +8295,9 @@ half4 __ovld modf(half4 x, half4 *iptr);
  half8 __ovld modf(half8 x, half8 *iptr);
  half16 __ovld modf(half16 x, half16 *iptr);
  #endif //cl_khr_fp16
@@ -1864,7 +1852,7 @@ index 514c710c11..7def52945a 100644
  float __ovld modf(float x, __global float *iptr);
  float2 __ovld modf(float2 x, __global float2 *iptr);
  float3 __ovld modf(float3 x, __global float3 *iptr);
-@@ -8248,7 +8319,7 @@ float3 __ovld modf(float3 x, __private float3 *iptr);
+@@ -8248,7 +8316,7 @@ float3 __ovld modf(float3 x, __private float3 *iptr);
  float4 __ovld modf(float4 x, __private float4 *iptr);
  float8 __ovld modf(float8 x, __private float8 *iptr);
  float16 __ovld modf(float16 x, __private float16 *iptr);
@@ -1873,7 +1861,7 @@ index 514c710c11..7def52945a 100644
  double __ovld modf(double x, __global double *iptr);
  double2 __ovld modf(double2 x, __global double2 *iptr);
  double3 __ovld modf(double3 x, __global double3 *iptr);
-@@ -8267,7 +8338,7 @@ double3 __ovld modf(double3 x, __private double3 *iptr);
+@@ -8267,7 +8335,7 @@ double3 __ovld modf(double3 x, __private double3 *iptr);
  double4 __ovld modf(double4 x, __private double4 *iptr);
  double8 __ovld modf(double8 x, __private double8 *iptr);
  double16 __ovld modf(double16 x, __private double16 *iptr);
@@ -1882,7 +1870,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld modf(half x, __global half *iptr);
  half2 __ovld modf(half2 x, __global half2 *iptr);
-@@ -8288,7 +8359,8 @@ half4 __ovld modf(half4 x, __private half4 *iptr);
+@@ -8288,7 +8356,8 @@ half4 __ovld modf(half4 x, __private half4 *iptr);
  half8 __ovld modf(half8 x, __private half8 *iptr);
  half16 __ovld modf(half16 x, __private half16 *iptr);
  #endif //cl_khr_fp16
@@ -1892,7 +1880,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * Returns a quiet NaN. The nancode may be placed
-@@ -8300,14 +8372,14 @@ float3 __ovld __cnfn nan(uint3 nancode);
+@@ -8300,14 +8369,14 @@ float3 __ovld __cnfn nan(uint3 nancode);
  float4 __ovld __cnfn nan(uint4 nancode);
  float8 __ovld __cnfn nan(uint8 nancode);
  float16 __ovld __cnfn nan(uint16 nancode);
@@ -1909,7 +1897,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn nan(ushort nancode);
  half2 __ovld __cnfn nan(ushort2 nancode);
-@@ -8330,14 +8402,14 @@ float3 __ovld __cnfn nextafter(float3 x, float3 y);
+@@ -8330,14 +8399,14 @@ float3 __ovld __cnfn nextafter(float3 x, float3 y);
  float4 __ovld __cnfn nextafter(float4 x, float4 y);
  float8 __ovld __cnfn nextafter(float8 x, float8 y);
  float16 __ovld __cnfn nextafter(float16 x, float16 y);
@@ -1926,7 +1914,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn nextafter(half x, half y);
  half2 __ovld __cnfn nextafter(half2 x, half2 y);
-@@ -8356,14 +8428,14 @@ float3 __ovld __cnfn pow(float3 x, float3 y);
+@@ -8356,14 +8425,14 @@ float3 __ovld __cnfn pow(float3 x, float3 y);
  float4 __ovld __cnfn pow(float4 x, float4 y);
  float8 __ovld __cnfn pow(float8 x, float8 y);
  float16 __ovld __cnfn pow(float16 x, float16 y);
@@ -1943,7 +1931,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn pow(half x, half y);
  half2 __ovld __cnfn pow(half2 x, half2 y);
-@@ -8382,14 +8454,14 @@ float3 __ovld __cnfn pown(float3 x, int3 y);
+@@ -8382,14 +8451,14 @@ float3 __ovld __cnfn pown(float3 x, int3 y);
  float4 __ovld __cnfn pown(float4 x, int4 y);
  float8 __ovld __cnfn pown(float8 x, int8 y);
  float16 __ovld __cnfn pown(float16 x, int16 y);
@@ -1960,7 +1948,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn pown(half x, int y);
  half2 __ovld __cnfn pown(half2 x, int2 y);
-@@ -8408,14 +8480,14 @@ float3 __ovld __cnfn powr(float3 x, float3 y);
+@@ -8408,14 +8477,14 @@ float3 __ovld __cnfn powr(float3 x, float3 y);
  float4 __ovld __cnfn powr(float4 x, float4 y);
  float8 __ovld __cnfn powr(float8 x, float8 y);
  float16 __ovld __cnfn powr(float16 x, float16 y);
@@ -1977,7 +1965,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn powr(half x, half y);
  half2 __ovld __cnfn powr(half2 x, half2 y);
-@@ -8437,14 +8509,14 @@ float3 __ovld __cnfn remainder(float3 x, float3 y);
+@@ -8437,14 +8506,14 @@ float3 __ovld __cnfn remainder(float3 x, float3 y);
  float4 __ovld __cnfn remainder(float4 x, float4 y);
  float8 __ovld __cnfn remainder(float8 x, float8 y);
  float16 __ovld __cnfn remainder(float16 x, float16 y);
@@ -1994,7 +1982,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn remainder(half x, half y);
  half2 __ovld __cnfn remainder(half2 x, half2 y);
-@@ -8466,21 +8538,21 @@ half16 __ovld __cnfn remainder(half16 x, half16 y);
+@@ -8466,21 +8535,21 @@ half16 __ovld __cnfn remainder(half16 x, half16 y);
   * sign as x/y. It stores this signed value in the object
   * pointed to by quo.
   */
@@ -2019,7 +2007,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld remquo(half x, half y, int *quo);
  half2 __ovld remquo(half2 x, half2 y, int2 *quo);
-@@ -8488,9 +8560,10 @@ half3 __ovld remquo(half3 x, half3 y, int3 *quo);
+@@ -8488,9 +8557,10 @@ half3 __ovld remquo(half3 x, half3 y, int3 *quo);
  half4 __ovld remquo(half4 x, half4 y, int4 *quo);
  half8 __ovld remquo(half8 x, half8 y, int8 *quo);
  half16 __ovld remquo(half16 x, half16 y, int16 *quo);
@@ -2032,7 +2020,7 @@ index 514c710c11..7def52945a 100644
  float __ovld remquo(float x, float y, __global int *quo);
  float2 __ovld remquo(float2 x, float2 y, __global int2 *quo);
  float3 __ovld remquo(float3 x, float3 y, __global int3 *quo);
-@@ -8509,7 +8582,7 @@ float3 __ovld remquo(float3 x, float3 y, __private int3 *quo);
+@@ -8509,7 +8579,7 @@ float3 __ovld remquo(float3 x, float3 y, __private int3 *quo);
  float4 __ovld remquo(float4 x, float4 y, __private int4 *quo);
  float8 __ovld remquo(float8 x, float8 y, __private int8 *quo);
  float16 __ovld remquo(float16 x, float16 y, __private int16 *quo);
@@ -2041,7 +2029,7 @@ index 514c710c11..7def52945a 100644
  double __ovld remquo(double x, double y, __global int *quo);
  double2 __ovld remquo(double2 x, double2 y, __global int2 *quo);
  double3 __ovld remquo(double3 x, double3 y, __global int3 *quo);
-@@ -8528,7 +8601,7 @@ double3 __ovld remquo(double3 x, double3 y, __private int3 *quo);
+@@ -8528,7 +8598,7 @@ double3 __ovld remquo(double3 x, double3 y, __private int3 *quo);
  double4 __ovld remquo(double4 x, double4 y, __private int4 *quo);
  double8 __ovld remquo(double8 x, double8 y, __private int8 *quo);
  double16 __ovld remquo(double16 x, double16 y, __private int16 *quo);
@@ -2050,7 +2038,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld remquo(half x, half y, __global int *quo);
  half2 __ovld remquo(half2 x, half2 y, __global int2 *quo);
-@@ -8549,7 +8622,8 @@ half4 __ovld remquo(half4 x, half4 y, __private int4 *quo);
+@@ -8549,7 +8619,8 @@ half4 __ovld remquo(half4 x, half4 y, __private int4 *quo);
  half8 __ovld remquo(half8 x, half8 y, __private int8 *quo);
  half16 __ovld remquo(half16 x, half16 y, __private int16 *quo);
  #endif //cl_khr_fp16
@@ -2060,7 +2048,7 @@ index 514c710c11..7def52945a 100644
  /**
   * Round to integral value (using round to nearest
   * even rounding mode) in floating-point format.
-@@ -8562,14 +8636,14 @@ float3 __ovld __cnfn rint(float3);
+@@ -8562,14 +8633,14 @@ float3 __ovld __cnfn rint(float3);
  float4 __ovld __cnfn rint(float4);
  float8 __ovld __cnfn rint(float8);
  float16 __ovld __cnfn rint(float16);
@@ -2077,7 +2065,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn rint(half);
  half2 __ovld __cnfn rint(half2);
-@@ -8588,14 +8662,14 @@ float3 __ovld __cnfn rootn(float3 x, int3 y);
+@@ -8588,14 +8659,14 @@ float3 __ovld __cnfn rootn(float3 x, int3 y);
  float4 __ovld __cnfn rootn(float4 x, int4 y);
  float8 __ovld __cnfn rootn(float8 x, int8 y);
  float16 __ovld __cnfn rootn(float16 x, int16 y);
@@ -2094,7 +2082,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn rootn(half x, int y);
  half2 __ovld __cnfn rootn(half2 x, int2 y);
-@@ -8616,14 +8690,14 @@ float3 __ovld __cnfn round(float3 x);
+@@ -8616,14 +8687,14 @@ float3 __ovld __cnfn round(float3 x);
  float4 __ovld __cnfn round(float4 x);
  float8 __ovld __cnfn round(float8 x);
  float16 __ovld __cnfn round(float16 x);
@@ -2111,7 +2099,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn round(half x);
  half2 __ovld __cnfn round(half2 x);
-@@ -8642,14 +8716,14 @@ float3 __ovld __cnfn rsqrt(float3);
+@@ -8642,14 +8713,14 @@ float3 __ovld __cnfn rsqrt(float3);
  float4 __ovld __cnfn rsqrt(float4);
  float8 __ovld __cnfn rsqrt(float8);
  float16 __ovld __cnfn rsqrt(float16);
@@ -2128,7 +2116,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn rsqrt(half);
  half2 __ovld __cnfn rsqrt(half2);
-@@ -8668,14 +8742,14 @@ float3 __ovld __cnfn sin(float3);
+@@ -8668,14 +8739,14 @@ float3 __ovld __cnfn sin(float3);
  float4 __ovld __cnfn sin(float4);
  float8 __ovld __cnfn sin(float8);
  float16 __ovld __cnfn sin(float16);
@@ -2145,7 +2133,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn sin(half);
  half2 __ovld __cnfn sin(half2);
-@@ -8690,21 +8764,21 @@ half16 __ovld __cnfn sin(half16);
+@@ -8690,21 +8761,21 @@ half16 __ovld __cnfn sin(half16);
   * is the return value and computed cosine is returned
   * in cosval.
   */
@@ -2170,7 +2158,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld sincos(half x, half *cosval);
  half2 __ovld sincos(half2 x, half2 *cosval);
-@@ -8713,7 +8787,9 @@ half4 __ovld sincos(half4 x, half4 *cosval);
+@@ -8713,7 +8784,9 @@ half4 __ovld sincos(half4 x, half4 *cosval);
  half8 __ovld sincos(half8 x, half8 *cosval);
  half16 __ovld sincos(half16 x, half16 *cosval);
  #endif //cl_khr_fp16
@@ -2181,7 +2169,7 @@ index 514c710c11..7def52945a 100644
  float __ovld sincos(float x, __global float *cosval);
  float2 __ovld sincos(float2 x, __global float2 *cosval);
  float3 __ovld sincos(float3 x, __global float3 *cosval);
-@@ -8732,7 +8808,7 @@ float3 __ovld sincos(float3 x, __private float3 *cosval);
+@@ -8732,7 +8805,7 @@ float3 __ovld sincos(float3 x, __private float3 *cosval);
  float4 __ovld sincos(float4 x, __private float4 *cosval);
  float8 __ovld sincos(float8 x, __private float8 *cosval);
  float16 __ovld sincos(float16 x, __private float16 *cosval);
@@ -2190,7 +2178,7 @@ index 514c710c11..7def52945a 100644
  double __ovld sincos(double x, __global double *cosval);
  double2 __ovld sincos(double2 x, __global double2 *cosval);
  double3 __ovld sincos(double3 x, __global double3 *cosval);
-@@ -8751,7 +8827,7 @@ double3 __ovld sincos(double3 x, __private double3 *cosval);
+@@ -8751,7 +8824,7 @@ double3 __ovld sincos(double3 x, __private double3 *cosval);
  double4 __ovld sincos(double4 x, __private double4 *cosval);
  double8 __ovld sincos(double8 x, __private double8 *cosval);
  double16 __ovld sincos(double16 x, __private double16 *cosval);
@@ -2199,7 +2187,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld sincos(half x, __global half *cosval);
  half2 __ovld sincos(half2 x, __global half2 *cosval);
-@@ -8772,8 +8848,8 @@ half4 __ovld sincos(half4 x, __private half4 *cosval);
+@@ -8772,8 +8845,8 @@ half4 __ovld sincos(half4 x, __private half4 *cosval);
  half8 __ovld sincos(half8 x, __private half8 *cosval);
  half16 __ovld sincos(half16 x, __private half16 *cosval);
  #endif //cl_khr_fp16
@@ -2210,7 +2198,7 @@ index 514c710c11..7def52945a 100644
  /**
   * Compute hyperbolic sine.
   */
-@@ -8783,14 +8859,14 @@ float3 __ovld __cnfn sinh(float3);
+@@ -8783,14 +8856,14 @@ float3 __ovld __cnfn sinh(float3);
  float4 __ovld __cnfn sinh(float4);
  float8 __ovld __cnfn sinh(float8);
  float16 __ovld __cnfn sinh(float16);
@@ -2227,7 +2215,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn sinh(half);
  half2 __ovld __cnfn sinh(half2);
-@@ -8809,14 +8885,14 @@ float3 __ovld __cnfn sinpi(float3 x);
+@@ -8809,14 +8882,14 @@ float3 __ovld __cnfn sinpi(float3 x);
  float4 __ovld __cnfn sinpi(float4 x);
  float8 __ovld __cnfn sinpi(float8 x);
  float16 __ovld __cnfn sinpi(float16 x);
@@ -2244,7 +2232,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn sinpi(half x);
  half2 __ovld __cnfn sinpi(half2 x);
-@@ -8835,14 +8911,14 @@ float3 __ovld __cnfn sqrt(float3);
+@@ -8835,14 +8908,14 @@ float3 __ovld __cnfn sqrt(float3);
  float4 __ovld __cnfn sqrt(float4);
  float8 __ovld __cnfn sqrt(float8);
  float16 __ovld __cnfn sqrt(float16);
@@ -2261,7 +2249,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn sqrt(half);
  half2 __ovld __cnfn sqrt(half2);
-@@ -8861,14 +8937,14 @@ float3 __ovld __cnfn tan(float3);
+@@ -8861,14 +8934,14 @@ float3 __ovld __cnfn tan(float3);
  float4 __ovld __cnfn tan(float4);
  float8 __ovld __cnfn tan(float8);
  float16 __ovld __cnfn tan(float16);
@@ -2278,7 +2266,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn tan(half);
  half2 __ovld __cnfn tan(half2);
-@@ -8887,14 +8963,14 @@ float3 __ovld __cnfn tanh(float3);
+@@ -8887,14 +8960,14 @@ float3 __ovld __cnfn tanh(float3);
  float4 __ovld __cnfn tanh(float4);
  float8 __ovld __cnfn tanh(float8);
  float16 __ovld __cnfn tanh(float16);
@@ -2295,7 +2283,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn tanh(half);
  half2 __ovld __cnfn tanh(half2);
-@@ -8913,14 +8989,14 @@ float3 __ovld __cnfn tanpi(float3 x);
+@@ -8913,14 +8986,14 @@ float3 __ovld __cnfn tanpi(float3 x);
  float4 __ovld __cnfn tanpi(float4 x);
  float8 __ovld __cnfn tanpi(float8 x);
  float16 __ovld __cnfn tanpi(float16 x);
@@ -2312,7 +2300,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn tanpi(half x);
  half2 __ovld __cnfn tanpi(half2 x);
-@@ -8939,14 +9015,14 @@ float3 __ovld __cnfn tgamma(float3);
+@@ -8939,14 +9012,14 @@ float3 __ovld __cnfn tgamma(float3);
  float4 __ovld __cnfn tgamma(float4);
  float8 __ovld __cnfn tgamma(float8);
  float16 __ovld __cnfn tgamma(float16);
@@ -2329,7 +2317,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn tgamma(half);
  half2 __ovld __cnfn tgamma(half2);
-@@ -8966,14 +9042,14 @@ float3 __ovld __cnfn trunc(float3);
+@@ -8966,14 +9039,14 @@ float3 __ovld __cnfn trunc(float3);
  float4 __ovld __cnfn trunc(float4);
  float8 __ovld __cnfn trunc(float8);
  float16 __ovld __cnfn trunc(float16);
@@ -2346,7 +2334,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn trunc(half);
  half2 __ovld __cnfn trunc(half2);
-@@ -10383,7 +10459,7 @@ float3 __ovld __cnfn clamp(float3 x, float minval, float maxval);
+@@ -10383,7 +10456,7 @@ float3 __ovld __cnfn clamp(float3 x, float minval, float maxval);
  float4 __ovld __cnfn clamp(float4 x, float minval, float maxval);
  float8 __ovld __cnfn clamp(float8 x, float minval, float maxval);
  float16 __ovld __cnfn clamp(float16 x, float minval, float maxval);
@@ -2355,7 +2343,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn clamp(double x, double minval, double maxval);
  double2 __ovld __cnfn clamp(double2 x, double2 minval, double2 maxval);
  double3 __ovld __cnfn clamp(double3 x, double3 minval, double3 maxval);
-@@ -10395,7 +10471,7 @@ double3 __ovld __cnfn clamp(double3 x, double minval, double maxval);
+@@ -10395,7 +10468,7 @@ double3 __ovld __cnfn clamp(double3 x, double minval, double maxval);
  double4 __ovld __cnfn clamp(double4 x, double minval, double maxval);
  double8 __ovld __cnfn clamp(double8 x, double minval, double maxval);
  double16 __ovld __cnfn clamp(double16 x, double minval, double maxval);
@@ -2364,7 +2352,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn clamp(half x, half minval, half maxval);
  half2 __ovld __cnfn clamp(half2 x, half2 minval, half2 maxval);
-@@ -10420,14 +10496,14 @@ float3 __ovld __cnfn degrees(float3 radians);
+@@ -10420,14 +10493,14 @@ float3 __ovld __cnfn degrees(float3 radians);
  float4 __ovld __cnfn degrees(float4 radians);
  float8 __ovld __cnfn degrees(float8 radians);
  float16 __ovld __cnfn degrees(float16 radians);
@@ -2381,7 +2369,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn degrees(half radians);
  half2 __ovld __cnfn degrees(half2 radians);
-@@ -10452,7 +10528,7 @@ float3 __ovld __cnfn max(float3 x, float y);
+@@ -10452,7 +10525,7 @@ float3 __ovld __cnfn max(float3 x, float y);
  float4 __ovld __cnfn max(float4 x, float y);
  float8 __ovld __cnfn max(float8 x, float y);
  float16 __ovld __cnfn max(float16 x, float y);
@@ -2390,7 +2378,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn max(double x, double y);
  double2 __ovld __cnfn max(double2 x, double2 y);
  double3 __ovld __cnfn max(double3 x, double3 y);
-@@ -10464,7 +10540,7 @@ double3 __ovld __cnfn max(double3 x, double y);
+@@ -10464,7 +10537,7 @@ double3 __ovld __cnfn max(double3 x, double y);
  double4 __ovld __cnfn max(double4 x, double y);
  double8 __ovld __cnfn max(double8 x, double y);
  double16 __ovld __cnfn max(double16 x, double y);
@@ -2399,7 +2387,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn max(half x, half y);
  half2 __ovld __cnfn max(half2 x, half2 y);
-@@ -10494,7 +10570,7 @@ float3 __ovld __cnfn min(float3 x, float y);
+@@ -10494,7 +10567,7 @@ float3 __ovld __cnfn min(float3 x, float y);
  float4 __ovld __cnfn min(float4 x, float y);
  float8 __ovld __cnfn min(float8 x, float y);
  float16 __ovld __cnfn min(float16 x, float y);
@@ -2408,7 +2396,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn min(double x, double y);
  double2 __ovld __cnfn min(double2 x, double2 y);
  double3 __ovld __cnfn min(double3 x, double3 y);
-@@ -10506,7 +10582,7 @@ double3 __ovld __cnfn min(double3 x, double y);
+@@ -10506,7 +10579,7 @@ double3 __ovld __cnfn min(double3 x, double y);
  double4 __ovld __cnfn min(double4 x, double y);
  double8 __ovld __cnfn min(double8 x, double y);
  double16 __ovld __cnfn min(double16 x, double y);
@@ -2417,7 +2405,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn min(half x, half y);
  half2 __ovld __cnfn min(half2 x, half2 y);
-@@ -10539,7 +10615,7 @@ float3 __ovld __cnfn mix(float3 x, float3 y, float a);
+@@ -10539,7 +10612,7 @@ float3 __ovld __cnfn mix(float3 x, float3 y, float a);
  float4 __ovld __cnfn mix(float4 x, float4 y, float a);
  float8 __ovld __cnfn mix(float8 x, float8 y, float a);
  float16 __ovld __cnfn mix(float16 x, float16 y, float a);
@@ -2426,7 +2414,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn mix(double x, double y, double a);
  double2 __ovld __cnfn mix(double2 x, double2 y, double2 a);
  double3 __ovld __cnfn mix(double3 x, double3 y, double3 a);
-@@ -10551,7 +10627,7 @@ double3 __ovld __cnfn mix(double3 x, double3 y, double a);
+@@ -10551,7 +10624,7 @@ double3 __ovld __cnfn mix(double3 x, double3 y, double a);
  double4 __ovld __cnfn mix(double4 x, double4 y, double a);
  double8 __ovld __cnfn mix(double8 x, double8 y, double a);
  double16 __ovld __cnfn mix(double16 x, double16 y, double a);
@@ -2435,7 +2423,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn mix(half x, half y, half a);
  half2 __ovld __cnfn mix(half2 x, half2 y, half2 a);
-@@ -10576,14 +10652,14 @@ float3 __ovld __cnfn radians(float3 degrees);
+@@ -10576,14 +10649,14 @@ float3 __ovld __cnfn radians(float3 degrees);
  float4 __ovld __cnfn radians(float4 degrees);
  float8 __ovld __cnfn radians(float8 degrees);
  float16 __ovld __cnfn radians(float16 degrees);
@@ -2452,7 +2440,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn radians(half degrees);
  half2 __ovld __cnfn radians(half2 degrees);
-@@ -10607,7 +10683,7 @@ float3 __ovld __cnfn step(float edge, float3 x);
+@@ -10607,7 +10680,7 @@ float3 __ovld __cnfn step(float edge, float3 x);
  float4 __ovld __cnfn step(float edge, float4 x);
  float8 __ovld __cnfn step(float edge, float8 x);
  float16 __ovld __cnfn step(float edge, float16 x);
@@ -2461,7 +2449,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn step(double edge, double x);
  double2 __ovld __cnfn step(double2 edge, double2 x);
  double3 __ovld __cnfn step(double3 edge, double3 x);
-@@ -10619,7 +10695,7 @@ double3 __ovld __cnfn step(double edge, double3 x);
+@@ -10619,7 +10692,7 @@ double3 __ovld __cnfn step(double edge, double3 x);
  double4 __ovld __cnfn step(double edge, double4 x);
  double8 __ovld __cnfn step(double edge, double8 x);
  double16 __ovld __cnfn step(double edge, double16 x);
@@ -2470,7 +2458,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn step(half edge, half x);
  half2 __ovld __cnfn step(half2 edge, half2 x);
-@@ -10659,7 +10735,7 @@ float3 __ovld __cnfn smoothstep(float edge0, float edge1, float3 x);
+@@ -10659,7 +10732,7 @@ float3 __ovld __cnfn smoothstep(float edge0, float edge1, float3 x);
  float4 __ovld __cnfn smoothstep(float edge0, float edge1, float4 x);
  float8 __ovld __cnfn smoothstep(float edge0, float edge1, float8 x);
  float16 __ovld __cnfn smoothstep(float edge0, float edge1, float16 x);
@@ -2479,7 +2467,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn smoothstep(double edge0, double edge1, double x);
  double2 __ovld __cnfn smoothstep(double2 edge0, double2 edge1, double2 x);
  double3 __ovld __cnfn smoothstep(double3 edge0, double3 edge1, double3 x);
-@@ -10671,7 +10747,7 @@ double3 __ovld __cnfn smoothstep(double edge0, double edge1, double3 x);
+@@ -10671,7 +10744,7 @@ double3 __ovld __cnfn smoothstep(double edge0, double edge1, double3 x);
  double4 __ovld __cnfn smoothstep(double edge0, double edge1, double4 x);
  double8 __ovld __cnfn smoothstep(double edge0, double edge1, double8 x);
  double16 __ovld __cnfn smoothstep(double edge0, double edge1, double16 x);
@@ -2488,7 +2476,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn smoothstep(half edge0, half edge1, half x);
  half2 __ovld __cnfn smoothstep(half2 edge0, half2 edge1, half2 x);
-@@ -10697,14 +10773,14 @@ float3 __ovld __cnfn sign(float3 x);
+@@ -10697,14 +10770,14 @@ float3 __ovld __cnfn sign(float3 x);
  float4 __ovld __cnfn sign(float4 x);
  float8 __ovld __cnfn sign(float8 x);
  float16 __ovld __cnfn sign(float16 x);
@@ -2505,7 +2493,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn sign(half x);
  half2 __ovld __cnfn sign(half2 x);
-@@ -10722,10 +10798,10 @@ half16 __ovld __cnfn sign(half16 x);
+@@ -10722,10 +10795,10 @@ half16 __ovld __cnfn sign(half16 x);
   */
  float4 __ovld __cnfn cross(float4 p0, float4 p1);
  float3 __ovld __cnfn cross(float3 p0, float3 p1);
@@ -2518,7 +2506,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half4 __ovld __cnfn cross(half4 p0, half4 p1);
  half3 __ovld __cnfn cross(half3 p0, half3 p1);
-@@ -10738,12 +10814,12 @@ float __ovld __cnfn dot(float p0, float p1);
+@@ -10738,12 +10811,12 @@ float __ovld __cnfn dot(float p0, float p1);
  float __ovld __cnfn dot(float2 p0, float2 p1);
  float __ovld __cnfn dot(float3 p0, float3 p1);
  float __ovld __cnfn dot(float4 p0, float4 p1);
@@ -2533,7 +2521,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn dot(half p0, half p1);
  half __ovld __cnfn dot(half2 p0, half2 p1);
-@@ -10759,12 +10835,12 @@ float __ovld __cnfn distance(float p0, float p1);
+@@ -10759,12 +10832,12 @@ float __ovld __cnfn distance(float p0, float p1);
  float __ovld __cnfn distance(float2 p0, float2 p1);
  float __ovld __cnfn distance(float3 p0, float3 p1);
  float __ovld __cnfn distance(float4 p0, float4 p1);
@@ -2548,7 +2536,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn distance(half p0, half p1);
  half __ovld __cnfn distance(half2 p0, half2 p1);
-@@ -10780,12 +10856,12 @@ float __ovld __cnfn length(float p);
+@@ -10780,12 +10853,12 @@ float __ovld __cnfn length(float p);
  float __ovld __cnfn length(float2 p);
  float __ovld __cnfn length(float3 p);
  float __ovld __cnfn length(float4 p);
@@ -2563,7 +2551,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn length(half p);
  half __ovld __cnfn length(half2 p);
-@@ -10801,12 +10877,12 @@ float __ovld __cnfn normalize(float p);
+@@ -10801,12 +10874,12 @@ float __ovld __cnfn normalize(float p);
  float2 __ovld __cnfn normalize(float2 p);
  float3 __ovld __cnfn normalize(float3 p);
  float4 __ovld __cnfn normalize(float4 p);
@@ -2578,7 +2566,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn normalize(half p);
  half2 __ovld __cnfn normalize(half2 p);
-@@ -10887,14 +10963,14 @@ int3 __ovld __cnfn isequal(float3 x, float3 y);
+@@ -10887,14 +10960,14 @@ int3 __ovld __cnfn isequal(float3 x, float3 y);
  int4 __ovld __cnfn isequal(float4 x, float4 y);
  int8 __ovld __cnfn isequal(float8 x, float8 y);
  int16 __ovld __cnfn isequal(float16 x, float16 y);
@@ -2595,7 +2583,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isequal(half x, half y);
  short2 __ovld __cnfn isequal(half2 x, half2 y);
-@@ -10913,14 +10989,14 @@ int3 __ovld __cnfn isnotequal(float3 x, float3 y);
+@@ -10913,14 +10986,14 @@ int3 __ovld __cnfn isnotequal(float3 x, float3 y);
  int4 __ovld __cnfn isnotequal(float4 x, float4 y);
  int8 __ovld __cnfn isnotequal(float8 x, float8 y);
  int16 __ovld __cnfn isnotequal(float16 x, float16 y);
@@ -2612,7 +2600,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isnotequal(half x, half y);
  short2 __ovld __cnfn isnotequal(half2 x, half2 y);
-@@ -10939,14 +11015,14 @@ int3 __ovld __cnfn isgreater(float3 x, float3 y);
+@@ -10939,14 +11012,14 @@ int3 __ovld __cnfn isgreater(float3 x, float3 y);
  int4 __ovld __cnfn isgreater(float4 x, float4 y);
  int8 __ovld __cnfn isgreater(float8 x, float8 y);
  int16 __ovld __cnfn isgreater(float16 x, float16 y);
@@ -2629,7 +2617,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isgreater(half x, half y);
  short2 __ovld __cnfn isgreater(half2 x, half2 y);
-@@ -10965,14 +11041,14 @@ int3 __ovld __cnfn isgreaterequal(float3 x, float3 y);
+@@ -10965,14 +11038,14 @@ int3 __ovld __cnfn isgreaterequal(float3 x, float3 y);
  int4 __ovld __cnfn isgreaterequal(float4 x, float4 y);
  int8 __ovld __cnfn isgreaterequal(float8 x, float8 y);
  int16 __ovld __cnfn isgreaterequal(float16 x, float16 y);
@@ -2646,7 +2634,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isgreaterequal(half x, half y);
  short2 __ovld __cnfn isgreaterequal(half2 x, half2 y);
-@@ -10991,14 +11067,14 @@ int3 __ovld __cnfn isless(float3 x, float3 y);
+@@ -10991,14 +11064,14 @@ int3 __ovld __cnfn isless(float3 x, float3 y);
  int4 __ovld __cnfn isless(float4 x, float4 y);
  int8 __ovld __cnfn isless(float8 x, float8 y);
  int16 __ovld __cnfn isless(float16 x, float16 y);
@@ -2663,7 +2651,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isless(half x, half y);
  short2 __ovld __cnfn isless(half2 x, half2 y);
-@@ -11017,14 +11093,14 @@ int3 __ovld __cnfn islessequal(float3 x, float3 y);
+@@ -11017,14 +11090,14 @@ int3 __ovld __cnfn islessequal(float3 x, float3 y);
  int4 __ovld __cnfn islessequal(float4 x, float4 y);
  int8 __ovld __cnfn islessequal(float8 x, float8 y);
  int16 __ovld __cnfn islessequal(float16 x, float16 y);
@@ -2680,7 +2668,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn islessequal(half x, half y);
  short2 __ovld __cnfn islessequal(half2 x, half2 y);
-@@ -11044,14 +11120,14 @@ int3 __ovld __cnfn islessgreater(float3 x, float3 y);
+@@ -11044,14 +11117,14 @@ int3 __ovld __cnfn islessgreater(float3 x, float3 y);
  int4 __ovld __cnfn islessgreater(float4 x, float4 y);
  int8 __ovld __cnfn islessgreater(float8 x, float8 y);
  int16 __ovld __cnfn islessgreater(float16 x, float16 y);
@@ -2697,7 +2685,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn islessgreater(half x, half y);
  short2 __ovld __cnfn islessgreater(half2 x, half2 y);
-@@ -11070,14 +11146,14 @@ int3 __ovld __cnfn isfinite(float3);
+@@ -11070,14 +11143,14 @@ int3 __ovld __cnfn isfinite(float3);
  int4 __ovld __cnfn isfinite(float4);
  int8 __ovld __cnfn isfinite(float8);
  int16 __ovld __cnfn isfinite(float16);
@@ -2714,7 +2702,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isfinite(half);
  short2 __ovld __cnfn isfinite(half2);
-@@ -11096,14 +11172,14 @@ int3 __ovld __cnfn isinf(float3);
+@@ -11096,14 +11169,14 @@ int3 __ovld __cnfn isinf(float3);
  int4 __ovld __cnfn isinf(float4);
  int8 __ovld __cnfn isinf(float8);
  int16 __ovld __cnfn isinf(float16);
@@ -2731,7 +2719,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isinf(half);
  short2 __ovld __cnfn isinf(half2);
-@@ -11122,14 +11198,14 @@ int3 __ovld __cnfn isnan(float3);
+@@ -11122,14 +11195,14 @@ int3 __ovld __cnfn isnan(float3);
  int4 __ovld __cnfn isnan(float4);
  int8 __ovld __cnfn isnan(float8);
  int16 __ovld __cnfn isnan(float16);
@@ -2748,7 +2736,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isnan(half);
  short2 __ovld __cnfn isnan(half2);
-@@ -11148,14 +11224,14 @@ int3 __ovld __cnfn isnormal(float3);
+@@ -11148,14 +11221,14 @@ int3 __ovld __cnfn isnormal(float3);
  int4 __ovld __cnfn isnormal(float4);
  int8 __ovld __cnfn isnormal(float8);
  int16 __ovld __cnfn isnormal(float16);
@@ -2765,7 +2753,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isnormal(half);
  short2 __ovld __cnfn isnormal(half2);
-@@ -11176,14 +11252,14 @@ int3 __ovld __cnfn isordered(float3 x, float3 y);
+@@ -11176,14 +11249,14 @@ int3 __ovld __cnfn isordered(float3 x, float3 y);
  int4 __ovld __cnfn isordered(float4 x, float4 y);
  int8 __ovld __cnfn isordered(float8 x, float8 y);
  int16 __ovld __cnfn isordered(float16 x, float16 y);
@@ -2782,7 +2770,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isordered(half x, half y);
  short2 __ovld __cnfn isordered(half2 x, half2 y);
-@@ -11204,14 +11280,14 @@ int3 __ovld __cnfn isunordered(float3 x, float3 y);
+@@ -11204,14 +11277,14 @@ int3 __ovld __cnfn isunordered(float3 x, float3 y);
  int4 __ovld __cnfn isunordered(float4 x, float4 y);
  int8 __ovld __cnfn isunordered(float8 x, float8 y);
  int16 __ovld __cnfn isunordered(float16 x, float16 y);
@@ -2799,7 +2787,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn isunordered(half x, half y);
  short2 __ovld __cnfn isunordered(half2 x, half2 y);
-@@ -11234,14 +11310,14 @@ int3 __ovld __cnfn signbit(float3);
+@@ -11234,14 +11307,14 @@ int3 __ovld __cnfn signbit(float3);
  int4 __ovld __cnfn signbit(float4);
  int8 __ovld __cnfn signbit(float8);
  int16 __ovld __cnfn signbit(float16);
@@ -2816,7 +2804,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  int __ovld __cnfn signbit(half);
  short2 __ovld __cnfn signbit(half2);
-@@ -11368,14 +11444,14 @@ float3 __ovld __cnfn bitselect(float3 a, float3 b, float3 c);
+@@ -11368,14 +11441,14 @@ float3 __ovld __cnfn bitselect(float3 a, float3 b, float3 c);
  float4 __ovld __cnfn bitselect(float4 a, float4 b, float4 c);
  float8 __ovld __cnfn bitselect(float8 a, float8 b, float8 c);
  float16 __ovld __cnfn bitselect(float16 a, float16 b, float16 c);
@@ -2833,7 +2821,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn bitselect(half a, half b, half c);
  half2 __ovld __cnfn bitselect(half2 a, half2 b, half2 c);
-@@ -11508,7 +11584,7 @@ ulong8 __ovld __cnfn select(ulong8 a, ulong8 b, ulong8 c);
+@@ -11508,7 +11581,7 @@ ulong8 __ovld __cnfn select(ulong8 a, ulong8 b, ulong8 c);
  long16 __ovld __cnfn select(long16 a, long16 b, ulong16 c);
  ulong16 __ovld __cnfn select(ulong16 a, ulong16 b, ulong16 c);
  
@@ -2842,7 +2830,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __cnfn select(double a, double b, long c);
  double2 __ovld __cnfn select(double2 a, double2 b, long2 c);
  double3 __ovld __cnfn select(double3 a, double3 b, long3 c);
-@@ -11521,7 +11597,7 @@ double3 __ovld __cnfn select(double3 a, double3 b, ulong3 c);
+@@ -11521,7 +11594,7 @@ double3 __ovld __cnfn select(double3 a, double3 b, ulong3 c);
  double4 __ovld __cnfn select(double4 a, double4 b, ulong4 c);
  double8 __ovld __cnfn select(double8 a, double8 b, ulong8 c);
  double16 __ovld __cnfn select(double16 a, double16 b, ulong16 c);
@@ -2851,7 +2839,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  half __ovld __cnfn select(half a, half b, short c);
  half2 __ovld __cnfn select(half2 a, half2 b, short2 c);
-@@ -11600,13 +11676,13 @@ uint16 __ovld vload16(size_t offset, const __constant uint *p);
+@@ -11600,13 +11673,13 @@ uint16 __ovld vload16(size_t offset, const __constant uint *p);
  long16 __ovld vload16(size_t offset, const __constant long *p);
  ulong16 __ovld vload16(size_t offset, const __constant ulong *p);
  float16 __ovld vload16(size_t offset, const __constant float *p);
@@ -2867,7 +2855,7 @@ index 514c710c11..7def52945a 100644
  
  #ifdef cl_khr_fp16
  half __ovld vload(size_t offset, const __constant half *p);
-@@ -11617,7 +11693,7 @@ half8 __ovld vload8(size_t offset, const __constant half *p);
+@@ -11617,7 +11690,7 @@ half8 __ovld vload8(size_t offset, const __constant half *p);
  half16 __ovld vload16(size_t offset, const __constant half *p);
  #endif //cl_khr_fp16
  
@@ -2876,7 +2864,7 @@ index 514c710c11..7def52945a 100644
  char2 __ovld vload2(size_t offset, const char *p);
  uchar2 __ovld vload2(size_t offset, const uchar *p);
  short2 __ovld vload2(size_t offset, const short *p);
-@@ -11664,13 +11740,13 @@ long16 __ovld vload16(size_t offset, const long *p);
+@@ -11664,13 +11737,13 @@ long16 __ovld vload16(size_t offset, const long *p);
  ulong16 __ovld vload16(size_t offset, const ulong *p);
  float16 __ovld vload16(size_t offset, const float *p);
  
@@ -2892,7 +2880,7 @@ index 514c710c11..7def52945a 100644
  
  #ifdef cl_khr_fp16
  half __ovld vload(size_t offset, const half *p);
-@@ -11680,7 +11756,7 @@ half4 __ovld vload4(size_t offset, const half *p);
+@@ -11680,7 +11753,7 @@ half4 __ovld vload4(size_t offset, const half *p);
  half8 __ovld vload8(size_t offset, const half *p);
  half16 __ovld vload16(size_t offset, const half *p);
  #endif //cl_khr_fp16
@@ -2901,7 +2889,7 @@ index 514c710c11..7def52945a 100644
  char2 __ovld vload2(size_t offset, const __global char *p);
  uchar2 __ovld vload2(size_t offset, const __global uchar *p);
  short2 __ovld vload2(size_t offset, const __global short *p);
-@@ -11817,7 +11893,7 @@ long16 __ovld vload16(size_t offset, const __private long *p);
+@@ -11817,7 +11890,7 @@ long16 __ovld vload16(size_t offset, const __private long *p);
  ulong16 __ovld vload16(size_t offset, const __private ulong *p);
  float16 __ovld vload16(size_t offset, const __private float *p);
  
@@ -2910,7 +2898,7 @@ index 514c710c11..7def52945a 100644
  double2 __ovld vload2(size_t offset, const __global double *p);
  double3 __ovld vload3(size_t offset, const __global double *p);
  double4 __ovld vload4(size_t offset, const __global double *p);
-@@ -11833,7 +11909,7 @@ double3 __ovld vload3(size_t offset, const __private double *p);
+@@ -11833,7 +11906,7 @@ double3 __ovld vload3(size_t offset, const __private double *p);
  double4 __ovld vload4(size_t offset, const __private double *p);
  double8 __ovld vload8(size_t offset, const __private double *p);
  double16 __ovld vload16(size_t offset, const __private double *p);
@@ -2919,7 +2907,7 @@ index 514c710c11..7def52945a 100644
  
  #ifdef cl_khr_fp16
  half __ovld vload(size_t offset, const __global half *p);
-@@ -11855,9 +11931,8 @@ half4 __ovld vload4(size_t offset, const __private half *p);
+@@ -11855,9 +11928,8 @@ half4 __ovld vload4(size_t offset, const __private half *p);
  half8 __ovld vload8(size_t offset, const __private half *p);
  half16 __ovld vload16(size_t offset, const __private half *p);
  #endif //cl_khr_fp16
@@ -2930,7 +2918,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore2(char2 data, size_t offset, char *p);
  void __ovld vstore2(uchar2 data, size_t offset, uchar *p);
  void __ovld vstore2(short2 data, size_t offset, short *p);
-@@ -11903,13 +11978,13 @@ void __ovld vstore16(uint16 data, size_t offset, uint *p);
+@@ -11903,13 +11975,13 @@ void __ovld vstore16(uint16 data, size_t offset, uint *p);
  void __ovld vstore16(long16 data, size_t offset, long *p);
  void __ovld vstore16(ulong16 data, size_t offset, ulong *p);
  void __ovld vstore16(float16 data, size_t offset, float *p);
@@ -2946,7 +2934,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  void __ovld vstore(half data, size_t offset, half *p);
  void __ovld vstore2(half2 data, size_t offset, half *p);
-@@ -11918,7 +11993,7 @@ void __ovld vstore4(half4 data, size_t offset, half *p);
+@@ -11918,7 +11990,7 @@ void __ovld vstore4(half4 data, size_t offset, half *p);
  void __ovld vstore8(half8 data, size_t offset, half *p);
  void __ovld vstore16(half16 data, size_t offset, half *p);
  #endif //cl_khr_fp16
@@ -2955,7 +2943,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore2(char2 data, size_t offset, __global char *p);
  void __ovld vstore2(uchar2 data, size_t offset, __global uchar *p);
  void __ovld vstore2(short2 data, size_t offset, __global short *p);
-@@ -12054,7 +12129,7 @@ void __ovld vstore16(uint16 data, size_t offset, __private uint *p);
+@@ -12054,7 +12126,7 @@ void __ovld vstore16(uint16 data, size_t offset, __private uint *p);
  void __ovld vstore16(long16 data, size_t offset, __private long *p);
  void __ovld vstore16(ulong16 data, size_t offset, __private ulong *p);
  void __ovld vstore16(float16 data, size_t offset, __private float *p);
@@ -2964,7 +2952,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore2(double2 data, size_t offset, __global double *p);
  void __ovld vstore3(double3 data, size_t offset, __global double *p);
  void __ovld vstore4(double4 data, size_t offset, __global double *p);
-@@ -12070,7 +12145,7 @@ void __ovld vstore3(double3 data, size_t offset, __private double *p);
+@@ -12070,7 +12142,7 @@ void __ovld vstore3(double3 data, size_t offset, __private double *p);
  void __ovld vstore4(double4 data, size_t offset, __private double *p);
  void __ovld vstore8(double8 data, size_t offset, __private double *p);
  void __ovld vstore16(double16 data, size_t offset, __private double *p);
@@ -2973,7 +2961,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  void __ovld vstore(half data, size_t offset, __global half *p);
  void __ovld vstore2(half2 data, size_t offset, __global half *p);
-@@ -12091,8 +12166,6 @@ void __ovld vstore4(half4 data, size_t offset, __private half *p);
+@@ -12091,8 +12163,6 @@ void __ovld vstore4(half4 data, size_t offset, __private half *p);
  void __ovld vstore8(half8 data, size_t offset, __private half *p);
  void __ovld vstore16(half16 data, size_t offset, __private half *p);
  #endif //cl_khr_fp16
@@ -2982,7 +2970,7 @@ index 514c710c11..7def52945a 100644
  /**
   * Read sizeof (half) bytes of data from address
   * (p + offset). The data read is interpreted as a
-@@ -12102,14 +12175,12 @@ void __ovld vstore16(half16 data, size_t offset, __private half *p);
+@@ -12102,14 +12172,12 @@ void __ovld vstore16(half16 data, size_t offset, __private half *p);
   * must be 16-bit aligned.
   */
  float __ovld vload_half(size_t offset, const __constant half *p);
@@ -2999,7 +2987,7 @@ index 514c710c11..7def52945a 100644
  /**
   * Read sizeof (halfn) bytes of data from address
   * (p + (offset * n)). The data read is interpreted
-@@ -12123,13 +12194,14 @@ float3 __ovld vload_half3(size_t offset, const __constant half *p);
+@@ -12123,13 +12191,14 @@ float3 __ovld vload_half3(size_t offset, const __constant half *p);
  float4 __ovld vload_half4(size_t offset, const __constant half *p);
  float8 __ovld vload_half8(size_t offset, const __constant half *p);
  float16 __ovld vload_half16(size_t offset, const __constant half *p);
@@ -3016,7 +3004,7 @@ index 514c710c11..7def52945a 100644
  float2 __ovld vload_half2(size_t offset, const __global half *p);
  float3 __ovld vload_half3(size_t offset, const __global half *p);
  float4 __ovld vload_half4(size_t offset, const __global half *p);
-@@ -12145,7 +12217,6 @@ float3 __ovld vload_half3(size_t offset, const __private half *p);
+@@ -12145,7 +12214,6 @@ float3 __ovld vload_half3(size_t offset, const __private half *p);
  float4 __ovld vload_half4(size_t offset, const __private half *p);
  float8 __ovld vload_half8(size_t offset, const __private half *p);
  float16 __ovld vload_half16(size_t offset, const __private half *p);
@@ -3024,7 +3012,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * The float value given by data is first
-@@ -12158,20 +12229,20 @@ float16 __ovld vload_half16(size_t offset, const __private half *p);
+@@ -12158,20 +12226,20 @@ float16 __ovld vload_half16(size_t offset, const __private half *p);
   * The default current rounding mode is round to
   * nearest even.
   */
@@ -3049,7 +3037,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore_half(float data, size_t offset, __global half *p);
  void __ovld vstore_half_rte(float data, size_t offset, __global half *p);
  void __ovld vstore_half_rtz(float data, size_t offset, __global half *p);
-@@ -12187,7 +12258,7 @@ void __ovld vstore_half_rte(float data, size_t offset, __private half *p);
+@@ -12187,7 +12255,7 @@ void __ovld vstore_half_rte(float data, size_t offset, __private half *p);
  void __ovld vstore_half_rtz(float data, size_t offset, __private half *p);
  void __ovld vstore_half_rtp(float data, size_t offset, __private half *p);
  void __ovld vstore_half_rtn(float data, size_t offset, __private half *p);
@@ -3058,7 +3046,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore_half(double data, size_t offset, __global half *p);
  void __ovld vstore_half_rte(double data, size_t offset, __global half *p);
  void __ovld vstore_half_rtz(double data, size_t offset, __global half *p);
-@@ -12203,8 +12274,7 @@ void __ovld vstore_half_rte(double data, size_t offset, __private half *p);
+@@ -12203,8 +12271,7 @@ void __ovld vstore_half_rte(double data, size_t offset, __private half *p);
  void __ovld vstore_half_rtz(double data, size_t offset, __private half *p);
  void __ovld vstore_half_rtp(double data, size_t offset, __private half *p);
  void __ovld vstore_half_rtn(double data, size_t offset, __private half *p);
@@ -3068,7 +3056,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * The floatn value given by data is converted to
-@@ -12217,7 +12287,7 @@ void __ovld vstore_half_rtn(double data, size_t offset, __private half *p);
+@@ -12217,7 +12284,7 @@ void __ovld vstore_half_rtn(double data, size_t offset, __private half *p);
   * The default current rounding mode is round to
   * nearest even.
   */
@@ -3077,7 +3065,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore_half2(float2 data, size_t offset, half *p);
  void __ovld vstore_half3(float3 data, size_t offset, half *p);
  void __ovld vstore_half4(float4 data, size_t offset, half *p);
-@@ -12243,7 +12313,7 @@ void __ovld vstore_half3_rtn(float3 data, size_t offset, half *p);
+@@ -12243,7 +12310,7 @@ void __ovld vstore_half3_rtn(float3 data, size_t offset, half *p);
  void __ovld vstore_half4_rtn(float4 data, size_t offset, half *p);
  void __ovld vstore_half8_rtn(float8 data, size_t offset, half *p);
  void __ovld vstore_half16_rtn(float16 data, size_t offset, half *p);
@@ -3086,7 +3074,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore_half2(double2 data, size_t offset, half *p);
  void __ovld vstore_half3(double3 data, size_t offset, half *p);
  void __ovld vstore_half4(double4 data, size_t offset, half *p);
-@@ -12269,8 +12339,8 @@ void __ovld vstore_half3_rtn(double3 data, size_t offset, half *p);
+@@ -12269,8 +12336,8 @@ void __ovld vstore_half3_rtn(double3 data, size_t offset, half *p);
  void __ovld vstore_half4_rtn(double4 data, size_t offset, half *p);
  void __ovld vstore_half8_rtn(double8 data, size_t offset, half *p);
  void __ovld vstore_half16_rtn(double16 data, size_t offset, half *p);
@@ -3097,7 +3085,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore_half2(float2 data, size_t offset, __global half *p);
  void __ovld vstore_half3(float3 data, size_t offset, __global half *p);
  void __ovld vstore_half4(float4 data, size_t offset, __global half *p);
-@@ -12346,7 +12416,7 @@ void __ovld vstore_half3_rtn(float3 data, size_t offset, __private half *p);
+@@ -12346,7 +12413,7 @@ void __ovld vstore_half3_rtn(float3 data, size_t offset, __private half *p);
  void __ovld vstore_half4_rtn(float4 data, size_t offset, __private half *p);
  void __ovld vstore_half8_rtn(float8 data, size_t offset, __private half *p);
  void __ovld vstore_half16_rtn(float16 data, size_t offset, __private half *p);
@@ -3106,7 +3094,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstore_half2(double2 data, size_t offset, __global half *p);
  void __ovld vstore_half3(double3 data, size_t offset, __global half *p);
  void __ovld vstore_half4(double4 data, size_t offset, __global half *p);
-@@ -12422,8 +12492,7 @@ void __ovld vstore_half3_rtn(double3 data, size_t offset, __private half *p);
+@@ -12422,8 +12489,7 @@ void __ovld vstore_half3_rtn(double3 data, size_t offset, __private half *p);
  void __ovld vstore_half4_rtn(double4 data, size_t offset, __private half *p);
  void __ovld vstore_half8_rtn(double8 data, size_t offset, __private half *p);
  void __ovld vstore_half16_rtn(double16 data, size_t offset, __private half *p);
@@ -3116,7 +3104,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * For n = 1, 2, 4, 8 and 16 read sizeof (halfn)
-@@ -12444,14 +12513,14 @@ float3 __ovld vloada_half3(size_t offset, const __constant half *p);
+@@ -12444,14 +12510,14 @@ float3 __ovld vloada_half3(size_t offset, const __constant half *p);
  float4 __ovld vloada_half4(size_t offset, const __constant half *p);
  float8 __ovld vloada_half8(size_t offset, const __constant half *p);
  float16 __ovld vloada_half16(size_t offset, const __constant half *p);
@@ -3133,7 +3121,7 @@ index 514c710c11..7def52945a 100644
  float __ovld vloada_half(size_t offset, const __global half *p);
  float2 __ovld vloada_half2(size_t offset, const __global half *p);
  float3 __ovld vloada_half3(size_t offset, const __global half *p);
-@@ -12470,8 +12539,6 @@ float3 __ovld vloada_half3(size_t offset, const __private half *p);
+@@ -12470,8 +12536,6 @@ float3 __ovld vloada_half3(size_t offset, const __private half *p);
  float4 __ovld vloada_half4(size_t offset, const __private half *p);
  float8 __ovld vloada_half8(size_t offset, const __private half *p);
  float16 __ovld vloada_half16(size_t offset, const __private half *p);
@@ -3142,7 +3130,7 @@ index 514c710c11..7def52945a 100644
  /**
   * The floatn value given by data is converted to
   * a halfn value using the appropriate rounding
-@@ -12488,7 +12555,7 @@ float16 __ovld vloada_half16(size_t offset, const __private half *p);
+@@ -12488,7 +12552,7 @@ float16 __ovld vloada_half16(size_t offset, const __private half *p);
   * mode. The default current rounding mode is
   * round to nearest even.
   */
@@ -3151,7 +3139,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstorea_half(float data, size_t offset, half *p);
  void __ovld vstorea_half2(float2 data, size_t offset, half *p);
  void __ovld vstorea_half3(float3 data, size_t offset, half *p);
-@@ -12524,7 +12591,7 @@ void __ovld vstorea_half4_rtn(float4 data, size_t offset, half *p);
+@@ -12524,7 +12588,7 @@ void __ovld vstorea_half4_rtn(float4 data, size_t offset, half *p);
  void __ovld vstorea_half8_rtn(float8 data, size_t offset, half *p);
  void __ovld vstorea_half16_rtn(float16 data, size_t offset, half *p);
  
@@ -3160,7 +3148,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstorea_half(double data, size_t offset, half *p);
  void __ovld vstorea_half2(double2 data, size_t offset, half *p);
  void __ovld vstorea_half3(double3 data, size_t offset, half *p);
-@@ -12559,9 +12626,9 @@ void __ovld vstorea_half3_rtn(double3 data, size_t offset, half *p);
+@@ -12559,9 +12623,9 @@ void __ovld vstorea_half3_rtn(double3 data, size_t offset, half *p);
  void __ovld vstorea_half4_rtn(double4 data, size_t offset, half *p);
  void __ovld vstorea_half8_rtn(double8 data, size_t offset, half *p);
  void __ovld vstorea_half16_rtn(double16 data, size_t offset, half *p);
@@ -3172,7 +3160,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstorea_half(float data, size_t offset, __global half *p);
  void __ovld vstorea_half2(float2 data, size_t offset, __global half *p);
  void __ovld vstorea_half3(float3 data, size_t offset, __global half *p);
-@@ -12667,7 +12734,7 @@ void __ovld vstorea_half4_rtn(float4 data, size_t offset, __private half *p);
+@@ -12667,7 +12731,7 @@ void __ovld vstorea_half4_rtn(float4 data, size_t offset, __private half *p);
  void __ovld vstorea_half8_rtn(float8 data, size_t offset, __private half *p);
  void __ovld vstorea_half16_rtn(float16 data, size_t offset, __private half *p);
  
@@ -3181,7 +3169,7 @@ index 514c710c11..7def52945a 100644
  void __ovld vstorea_half(double data, size_t offset, __global half *p);
  void __ovld vstorea_half2(double2 data, size_t offset, __global half *p);
  void __ovld vstorea_half3(double3 data, size_t offset, __global half *p);
-@@ -12772,8 +12839,7 @@ void __ovld vstorea_half3_rtn(double3 data,size_t offset, __private half *p);
+@@ -12772,8 +12836,7 @@ void __ovld vstorea_half3_rtn(double3 data,size_t offset, __private half *p);
  void __ovld vstorea_half4_rtn(double4 data,size_t offset, __private half *p);
  void __ovld vstorea_half8_rtn(double8 data,size_t offset, __private half *p);
  void __ovld vstorea_half16_rtn(double16 data,size_t offset, __private half *p);
@@ -3191,7 +3179,7 @@ index 514c710c11..7def52945a 100644
  
  // OpenCL v1.1 s6.11.8, v1.2 s6.12.8, v2.0 s6.13.8 - Synchronization Functions
  
-@@ -12838,9 +12904,15 @@ void __ovld __conv barrier(cl_mem_fence_flags flags);
+@@ -12838,9 +12901,17 @@ void __ovld __conv barrier(cl_mem_fence_flags flags);
  typedef enum memory_scope {
    memory_scope_work_item = __OPENCL_MEMORY_SCOPE_WORK_ITEM,
    memory_scope_work_group = __OPENCL_MEMORY_SCOPE_WORK_GROUP,
@@ -3199,16 +3187,18 @@ index 514c710c11..7def52945a 100644
    memory_scope_device = __OPENCL_MEMORY_SCOPE_DEVICE,
 +#endif
 +#ifdef __opencl_c_atomic_scope_all_devices
-+  memory_scope_all_devices = __OPENCL_MEMORY_SCOPE_ALL_DEVICES,
++  #if __OPENCL_C_VERSION__ >= CL_VERSION_3_0
++  memory_scope_all_devices = __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES,
++  #endif //__OPENCL_C_VERSION__ >= CL_VERSION_3_0
    memory_scope_all_svm_devices = __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES,
 -#if defined(cl_intel_subgroups) || defined(cl_khr_subgroups)
-+#endif
++#endif // __opencl_c_atomic_scope_all_devices
 +#if defined(cl_intel_subgroups) || defined(cl_khr_subgroups) ||                \
 +    defined(__opencl_c_subgroups)
    memory_scope_sub_group = __OPENCL_MEMORY_SCOPE_SUB_GROUP
  #endif
  } memory_scope;
-@@ -12892,7 +12964,7 @@ void __ovld write_mem_fence(cl_mem_fence_flags flags);
+@@ -12892,7 +12963,7 @@ void __ovld write_mem_fence(cl_mem_fence_flags flags);
  
  // OpenCL v2.0 s6.13.9 - Address Space Qualifier Functions
  
@@ -3217,7 +3207,7 @@ index 514c710c11..7def52945a 100644
  cl_mem_fence_flags __ovld get_fence(const void *ptr);
  cl_mem_fence_flags __ovld get_fence(void *ptr);
  
-@@ -12903,7 +12975,7 @@ cl_mem_fence_flags __ovld get_fence(void *ptr);
+@@ -12903,7 +12974,7 @@ cl_mem_fence_flags __ovld get_fence(void *ptr);
   * where gentype is builtin type or user defined type.
   */
  
@@ -3226,7 +3216,7 @@ index 514c710c11..7def52945a 100644
  
  // OpenCL v1.1 s6.11.10, v1.2 s6.12.10, v2.0 s6.13.10 - Async Copies from Global to Local Memory, Local to Global Memory, and Prefetch
  
-@@ -13042,7 +13114,7 @@ event_t __ovld async_work_group_copy(__global uint16 *dst, const __local uint16
+@@ -13042,7 +13113,7 @@ event_t __ovld async_work_group_copy(__global uint16 *dst, const __local uint16
  event_t __ovld async_work_group_copy(__global long16 *dst, const __local long16 *src, size_t num_elements, event_t event);
  event_t __ovld async_work_group_copy(__global ulong16 *dst, const __local ulong16 *src, size_t num_elements, event_t event);
  event_t __ovld async_work_group_copy(__global float16 *dst, const __local float16 *src, size_t num_elements, event_t event);
@@ -3235,7 +3225,7 @@ index 514c710c11..7def52945a 100644
  event_t __ovld async_work_group_copy(__local double *dst, const __global double *src, size_t num_elements, event_t event);
  event_t __ovld async_work_group_copy(__local double2 *dst, const __global double2 *src, size_t num_elements, event_t event);
  event_t __ovld async_work_group_copy(__local double3 *dst, const __global double3 *src, size_t num_elements, event_t event);
-@@ -13055,7 +13127,7 @@ event_t __ovld async_work_group_copy(__global double3 *dst, const __local double
+@@ -13055,7 +13126,7 @@ event_t __ovld async_work_group_copy(__global double3 *dst, const __local double
  event_t __ovld async_work_group_copy(__global double4 *dst, const __local double4 *src, size_t num_elements, event_t event);
  event_t __ovld async_work_group_copy(__global double8 *dst, const __local double8 *src, size_t num_elements, event_t event);
  event_t __ovld async_work_group_copy(__global double16 *dst, const __local double16 *src, size_t num_elements, event_t event);
@@ -3244,7 +3234,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  event_t __ovld async_work_group_copy(__local half *dst, const __global half *src, size_t num_elements, event_t event);
  event_t __ovld async_work_group_copy(__local half2 *dst, const __global half2 *src, size_t num_elements, event_t event);
-@@ -13205,7 +13277,7 @@ event_t __ovld async_work_group_strided_copy(__global uint16 *dst, const __local
+@@ -13205,7 +13276,7 @@ event_t __ovld async_work_group_strided_copy(__global uint16 *dst, const __local
  event_t __ovld async_work_group_strided_copy(__global long16 *dst, const __local long16 *src, size_t num_elements, size_t dst_stride, event_t event);
  event_t __ovld async_work_group_strided_copy(__global ulong16 *dst, const __local ulong16 *src, size_t num_elements, size_t dst_stride, event_t event);
  event_t __ovld async_work_group_strided_copy(__global float16 *dst, const __local float16 *src, size_t num_elements, size_t dst_stride, event_t event);
@@ -3253,7 +3243,7 @@ index 514c710c11..7def52945a 100644
  event_t __ovld async_work_group_strided_copy(__local double *dst, const __global double *src, size_t num_elements, size_t src_stride, event_t event);
  event_t __ovld async_work_group_strided_copy(__local double2 *dst, const __global double2 *src, size_t num_elements, size_t src_stride, event_t event);
  event_t __ovld async_work_group_strided_copy(__local double3 *dst, const __global double3 *src, size_t num_elements, size_t src_stride, event_t event);
-@@ -13218,7 +13290,7 @@ event_t __ovld async_work_group_strided_copy(__global double3 *dst, const __loca
+@@ -13218,7 +13289,7 @@ event_t __ovld async_work_group_strided_copy(__global double3 *dst, const __loca
  event_t __ovld async_work_group_strided_copy(__global double4 *dst, const __local double4 *src, size_t num_elements, size_t dst_stride, event_t event);
  event_t __ovld async_work_group_strided_copy(__global double8 *dst, const __local double8 *src, size_t num_elements, size_t dst_stride, event_t event);
  event_t __ovld async_work_group_strided_copy(__global double16 *dst, const __local double16 *src, size_t num_elements, size_t dst_stride, event_t event);
@@ -3262,7 +3252,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  event_t __ovld async_work_group_strided_copy(__local half *dst, const __global half *src, size_t num_elements, size_t src_stride, event_t event);
  event_t __ovld async_work_group_strided_copy(__local half2 *dst, const __global half2 *src, size_t num_elements, size_t src_stride, event_t event);
-@@ -13308,14 +13380,14 @@ void __ovld prefetch(const __global uint16 *p, size_t num_elements);
+@@ -13308,14 +13379,14 @@ void __ovld prefetch(const __global uint16 *p, size_t num_elements);
  void __ovld prefetch(const __global long16 *p, size_t num_elements);
  void __ovld prefetch(const __global ulong16 *p, size_t num_elements);
  void __ovld prefetch(const __global float16 *p, size_t num_elements);
@@ -3279,7 +3269,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_fp16
  void __ovld prefetch(const __global half *p, size_t num_elements);
  void __ovld prefetch(const __global half2 *p, size_t num_elements);
-@@ -13338,9 +13410,15 @@ void __ovld prefetch(const __global half16 *p, size_t num_elements);
+@@ -13338,9 +13409,15 @@ void __ovld prefetch(const __global half16 *p, size_t num_elements);
   * pointed by p. The function returns old.
   */
  int __ovld atomic_add(volatile __global int *p, int val);
@@ -3297,7 +3287,7 @@ index 514c710c11..7def52945a 100644
  
  #if defined(cl_khr_global_int32_base_atomics)
  int __ovld atom_add(volatile __global int *p, int val);
-@@ -13364,9 +13442,15 @@ unsigned long __ovld atom_add(volatile __local unsigned long *p, unsigned long v
+@@ -13364,9 +13441,15 @@ unsigned long __ovld atom_add(volatile __local unsigned long *p, unsigned long v
   * returns old.
   */
  int __ovld atomic_sub(volatile __global int *p, int val);
@@ -3315,7 +3305,7 @@ index 514c710c11..7def52945a 100644
  
  #if defined(cl_khr_global_int32_base_atomics)
  int __ovld atom_sub(volatile __global int *p, int val);
-@@ -13390,9 +13474,11 @@ unsigned long __ovld atom_sub(volatile __local unsigned long *p, unsigned long v
+@@ -13390,9 +13473,11 @@ unsigned long __ovld atom_sub(volatile __local unsigned long *p, unsigned long v
   * value.
   */
  int __ovld atomic_xchg(volatile __global int *p, int val);
@@ -3329,7 +3319,7 @@ index 514c710c11..7def52945a 100644
  float __ovld atomic_xchg(volatile __global float *p, float val);
  float __ovld atomic_xchg(volatile __local float *p, float val);
  
-@@ -13474,9 +13560,16 @@ unsigned long __ovld atom_dec(volatile __local unsigned long *p);
+@@ -13474,9 +13559,16 @@ unsigned long __ovld atom_dec(volatile __local unsigned long *p);
   * returns old.
   */
  int __ovld atomic_cmpxchg(volatile __global int *p, int cmp, int val);
@@ -3348,7 +3338,7 @@ index 514c710c11..7def52945a 100644
  
  #if defined(cl_khr_global_int32_base_atomics)
  int __ovld atom_cmpxchg(volatile __global int *p, int cmp, int val);
-@@ -13502,9 +13595,15 @@ unsigned long __ovld atom_cmpxchg(volatile __local unsigned long *p, unsigned lo
+@@ -13502,9 +13594,15 @@ unsigned long __ovld atom_cmpxchg(volatile __local unsigned long *p, unsigned lo
   * returns old.
   */
  int __ovld atomic_min(volatile __global int *p, int val);
@@ -3366,7 +3356,7 @@ index 514c710c11..7def52945a 100644
  
  #if defined(cl_khr_global_int32_extended_atomics)
  int __ovld atom_min(volatile __global int *p, int val);
-@@ -13530,9 +13629,15 @@ unsigned long __ovld atom_min(volatile __local unsigned long *p, unsigned long v
+@@ -13530,9 +13628,15 @@ unsigned long __ovld atom_min(volatile __local unsigned long *p, unsigned long v
   * returns old.
   */
  int __ovld atomic_max(volatile __global int *p, int val);
@@ -3384,7 +3374,7 @@ index 514c710c11..7def52945a 100644
  
  #if defined(cl_khr_global_int32_extended_atomics)
  int __ovld atom_max(volatile __global int *p, int val);
-@@ -13557,9 +13662,15 @@ unsigned long __ovld atom_max(volatile __local unsigned long *p, unsigned long v
+@@ -13557,9 +13661,15 @@ unsigned long __ovld atom_max(volatile __local unsigned long *p, unsigned long v
   * pointed by p. The function returns old.
   */
  int __ovld atomic_and(volatile __global int *p, int val);
@@ -3402,7 +3392,7 @@ index 514c710c11..7def52945a 100644
  
  #if defined(cl_khr_global_int32_extended_atomics)
  int __ovld atom_and(volatile __global int *p, int val);
-@@ -13584,9 +13695,15 @@ unsigned long __ovld atom_and(volatile __local unsigned long *p, unsigned long v
+@@ -13584,9 +13694,15 @@ unsigned long __ovld atom_and(volatile __local unsigned long *p, unsigned long v
   * pointed by p. The function returns old.
   */
  int __ovld atomic_or(volatile __global int *p, int val);
@@ -3420,7 +3410,7 @@ index 514c710c11..7def52945a 100644
  
  #if defined(cl_khr_global_int32_extended_atomics)
  int __ovld atom_or(volatile __global int *p, int val);
-@@ -13611,9 +13728,15 @@ unsigned long __ovld atom_or(volatile __local unsigned long *p, unsigned long va
+@@ -13611,9 +13727,15 @@ unsigned long __ovld atom_or(volatile __local unsigned long *p, unsigned long va
   * pointed by p. The function returns old.
   */
  int __ovld atomic_xor(volatile __global int *p, int val);
@@ -3438,7 +3428,7 @@ index 514c710c11..7def52945a 100644
  
  #if defined(cl_khr_global_int32_extended_atomics)
  int __ovld atom_xor(volatile __global int *p, int val);
-@@ -13661,120 +13784,78 @@ typedef enum memory_order
+@@ -13661,120 +13783,78 @@ typedef enum memory_order
  #endif
  
  // atomic_init()
@@ -3590,7 +3580,7 @@ index 514c710c11..7def52945a 100644
  #endif //defined(cl_khr_int64_base_atomics) && defined(cl_khr_int64_extended_atomics)
  
  // OpenCL v2.0 s6.13.11.7.5:
-@@ -13782,196 +13863,2236 @@ ulong __ovld atomic_fetch_max_explicit(volatile atomic_ulong *object, long opera
+@@ -13782,196 +13862,2236 @@ ulong __ovld atomic_fetch_max_explicit(volatile atomic_ulong *object, long opera
  // or/xor/and/min/max: atomic type argument can be intptr_t/uintptr_t, value type argument can be intptr_t/uintptr_t.
  
  #if defined(cl_khr_int64_base_atomics) && defined(cl_khr_int64_extended_atomics)
@@ -5059,13 +5049,45 @@ index 514c710c11..7def52945a 100644
 +                                           float *expected, float desired);
 +bool __ovld atomic_compare_exchange_weak(volatile atomic_float *object,
 +                                         float *expected, float desired);
-+#if defined(cl_khr_int64_base_atomics) && defined(cl_khr_int64_extended_atomics)
+ #if defined(cl_khr_int64_base_atomics) && defined(cl_khr_int64_extended_atomics)
+-#ifdef cl_khr_fp64
+-bool __ovld atomic_compare_exchange_strong(volatile atomic_double *object, double *expected, double desired);
+-bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_double *object, double *expected,
+-                                                                                 double desired, memory_order success, memory_order failure);
+-bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_double *object, double *expected,
+-                                                                                 double desired, memory_order success, memory_order failure, memory_scope scope);
+-bool __ovld atomic_compare_exchange_weak(volatile atomic_double *object, double *expected, double desired);
+-bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_double *object, double *expected,
+-                                                                                 double desired, memory_order success, memory_order failure);
+-bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_double *object, double *expected,
+-                                                                                 double desired, memory_order success, memory_order failure, memory_scope scope);
+-#endif //cl_khr_fp64
+-bool __ovld atomic_compare_exchange_strong(volatile atomic_long *object, long *expected, long desired);
+-bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_long *object, long *expected,
+-                                                                                 long desired, memory_order success, memory_order failure);
+-bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_long *object, long *expected,
+-                                                                                 long desired, memory_order success, memory_order failure, memory_scope scope);
+-bool __ovld atomic_compare_exchange_weak(volatile atomic_long *object, long *expected, long desired);
+-bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_long *object, long *expected,
+-                                                                                 long desired, memory_order success, memory_order failure);
+-bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_long *object, long *expected,
+-                                                                                 long desired, memory_order success, memory_order failure, memory_scope scope);
+-bool __ovld atomic_compare_exchange_strong(volatile atomic_ulong *object, ulong *expected, ulong desired);
+-bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_ulong *object, ulong *expected,
+-                                                                                 ulong desired, memory_order success, memory_order failure);
+-bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_ulong *object, ulong *expected,
+-                                                                                 ulong desired, memory_order success, memory_order failure, memory_scope scope);
+-bool __ovld atomic_compare_exchange_weak(volatile atomic_ulong *object, ulong *expected, ulong desired);
+-bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_ulong *object, ulong *expected,
+-                                                                                 ulong desired, memory_order success, memory_order failure);
+-bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_ulong *object, ulong *expected,
+-                                                                                 ulong desired, memory_order success, memory_order failure, memory_scope scope);
 +#if defined(cl_khr_fp64) || defined(__opencl_c_fp64)
 +bool __ovld atomic_compare_exchange_strong(volatile atomic_double *object,
 +                                           double *expected, double desired);
 +bool __ovld atomic_compare_exchange_weak(volatile atomic_double *object,
 +                                         double *expected, double desired);
-+#endif
+ #endif
 +bool __ovld atomic_compare_exchange_strong(volatile atomic_long *object,
 +                                           long *expected, long desired);
 +bool __ovld atomic_compare_exchange_weak(volatile atomic_long *object,
@@ -5177,39 +5199,7 @@ index 514c710c11..7def52945a 100644
 +bool __ovld atomic_compare_exchange_weak(volatile atomic_float __local *object,
 +                                         float __private *expected,
 +                                         float desired);
- #if defined(cl_khr_int64_base_atomics) && defined(cl_khr_int64_extended_atomics)
--#ifdef cl_khr_fp64
--bool __ovld atomic_compare_exchange_strong(volatile atomic_double *object, double *expected, double desired);
--bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_double *object, double *expected,
--                                                                                 double desired, memory_order success, memory_order failure);
--bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_double *object, double *expected,
--                                                                                 double desired, memory_order success, memory_order failure, memory_scope scope);
--bool __ovld atomic_compare_exchange_weak(volatile atomic_double *object, double *expected, double desired);
--bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_double *object, double *expected,
--                                                                                 double desired, memory_order success, memory_order failure);
--bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_double *object, double *expected,
--                                                                                 double desired, memory_order success, memory_order failure, memory_scope scope);
--#endif //cl_khr_fp64
--bool __ovld atomic_compare_exchange_strong(volatile atomic_long *object, long *expected, long desired);
--bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_long *object, long *expected,
--                                                                                 long desired, memory_order success, memory_order failure);
--bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_long *object, long *expected,
--                                                                                 long desired, memory_order success, memory_order failure, memory_scope scope);
--bool __ovld atomic_compare_exchange_weak(volatile atomic_long *object, long *expected, long desired);
--bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_long *object, long *expected,
--                                                                                 long desired, memory_order success, memory_order failure);
--bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_long *object, long *expected,
--                                                                                 long desired, memory_order success, memory_order failure, memory_scope scope);
--bool __ovld atomic_compare_exchange_strong(volatile atomic_ulong *object, ulong *expected, ulong desired);
--bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_ulong *object, ulong *expected,
--                                                                                 ulong desired, memory_order success, memory_order failure);
--bool __ovld atomic_compare_exchange_strong_explicit(volatile atomic_ulong *object, ulong *expected,
--                                                                                 ulong desired, memory_order success, memory_order failure, memory_scope scope);
--bool __ovld atomic_compare_exchange_weak(volatile atomic_ulong *object, ulong *expected, ulong desired);
--bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_ulong *object, ulong *expected,
--                                                                                 ulong desired, memory_order success, memory_order failure);
--bool __ovld atomic_compare_exchange_weak_explicit(volatile atomic_ulong *object, ulong *expected,
--                                                                                 ulong desired, memory_order success, memory_order failure, memory_scope scope);
++#if defined(cl_khr_int64_base_atomics) && defined(cl_khr_int64_extended_atomics)
 +#if defined(cl_khr_fp64) || defined(__opencl_c_fp64)
 +bool __ovld
 +atomic_compare_exchange_strong(volatile atomic_double __global *object,
@@ -5247,7 +5237,7 @@ index 514c710c11..7def52945a 100644
 +bool __ovld atomic_compare_exchange_weak(volatile atomic_double __local *object,
 +                                         double __private *expected,
 +                                         double desired);
- #endif
++#endif
 +bool __ovld
 +atomic_compare_exchange_strong(volatile atomic_long __global *object,
 +                               long __global *expected, long desired);
@@ -5979,7 +5969,7 @@ index 514c710c11..7def52945a 100644
  
  #endif //__OPENCL_C_VERSION__ >= CL_VERSION_2_0
  
-@@ -14199,7 +16320,7 @@ float16 __ovld __cnfn shuffle(float4 x, uint16 mask);
+@@ -14199,7 +16319,7 @@ float16 __ovld __cnfn shuffle(float4 x, uint16 mask);
  float16 __ovld __cnfn shuffle(float8 x, uint16 mask);
  float16 __ovld __cnfn shuffle(float16 x, uint16 mask);
  
@@ -5988,7 +5978,7 @@ index 514c710c11..7def52945a 100644
  double2 __ovld __cnfn shuffle(double2 x, ulong2 mask);
  double2 __ovld __cnfn shuffle(double4 x, ulong2 mask);
  double2 __ovld __cnfn shuffle(double8 x, ulong2 mask);
-@@ -14219,7 +16340,7 @@ double16 __ovld __cnfn shuffle(double2 x, ulong16 mask);
+@@ -14219,7 +16339,7 @@ double16 __ovld __cnfn shuffle(double2 x, ulong16 mask);
  double16 __ovld __cnfn shuffle(double4 x, ulong16 mask);
  double16 __ovld __cnfn shuffle(double8 x, ulong16 mask);
  double16 __ovld __cnfn shuffle(double16 x, ulong16 mask);
@@ -5997,7 +5987,7 @@ index 514c710c11..7def52945a 100644
  
  #ifdef cl_khr_fp16
  half2 __ovld __cnfn shuffle(half2 x, ushort2 mask);
-@@ -14423,7 +16544,7 @@ float16 __ovld __cnfn shuffle2(float4 x, float4 y, uint16 mask);
+@@ -14423,7 +16543,7 @@ float16 __ovld __cnfn shuffle2(float4 x, float4 y, uint16 mask);
  float16 __ovld __cnfn shuffle2(float8 x, float8 y, uint16 mask);
  float16 __ovld __cnfn shuffle2(float16 x, float16 y, uint16 mask);
  
@@ -6006,7 +5996,7 @@ index 514c710c11..7def52945a 100644
  double2 __ovld __cnfn shuffle2(double2 x, double2 y, ulong2 mask);
  double2 __ovld __cnfn shuffle2(double4 x, double4 y, ulong2 mask);
  double2 __ovld __cnfn shuffle2(double8 x, double8 y, ulong2 mask);
-@@ -14443,7 +16564,7 @@ double16 __ovld __cnfn shuffle2(double2 x, double2 y, ulong16 mask);
+@@ -14443,7 +16563,7 @@ double16 __ovld __cnfn shuffle2(double2 x, double2 y, ulong16 mask);
  double16 __ovld __cnfn shuffle2(double4 x, double4 y, ulong16 mask);
  double16 __ovld __cnfn shuffle2(double8 x, double8 y, ulong16 mask);
  double16 __ovld __cnfn shuffle2(double16 x, double16 y, ulong16 mask);
@@ -6015,7 +6005,7 @@ index 514c710c11..7def52945a 100644
  
  #ifdef cl_khr_fp16
  half2 __ovld __cnfn shuffle2(half2 x, half2 y, ushort2 mask);
-@@ -14501,6 +16622,7 @@ int printf(__constant const char* st, ...);
+@@ -14501,6 +16621,7 @@ int printf(__constant const char* st, ...);
  #pragma OPENCL EXTENSION cl_khr_gl_msaa_sharing : enable
  #endif //cl_khr_gl_msaa_sharing
  
@@ -6023,7 +6013,7 @@ index 514c710c11..7def52945a 100644
  /**
   * Use the coordinate (coord.xy) to do an element lookup in
   * the 2D image object specified by image.
-@@ -14802,7 +16924,8 @@ half4 __purefn __ovld read_imageh(read_only image1d_buffer_t image, int coord);
+@@ -14802,7 +16923,8 @@ half4 __purefn __ovld read_imageh(read_only image1d_buffer_t image, int coord);
  #endif //cl_khr_fp16
  
  // Image read functions for read_write images
@@ -6033,7 +6023,7 @@ index 514c710c11..7def52945a 100644
  float4 __purefn __ovld read_imagef(read_write image1d_t image, int coord);
  int4 __purefn __ovld read_imagei(read_write image1d_t image, int coord);
  uint4 __purefn __ovld read_imageui(read_write image1d_t image, int coord);
-@@ -14845,7 +16968,8 @@ float __purefn __ovld read_imagef(read_write image2d_msaa_depth_t image, int2 co
+@@ -14845,7 +16967,8 @@ float __purefn __ovld read_imagef(read_write image2d_msaa_depth_t image, int2 co
  float __purefn __ovld read_imagef(read_write image2d_array_msaa_depth_t image, int4 coord, int sample);
  #endif //cl_khr_gl_msaa_sharing
  
@@ -6043,7 +6033,7 @@ index 514c710c11..7def52945a 100644
  #ifdef cl_khr_mipmap_image
  float4 __purefn __ovld read_imagef(read_write image1d_t image, sampler_t sampler, float coord, float lod);
  int4 __purefn __ovld read_imagei(read_write image1d_t image, sampler_t sampler, float coord, float lod);
-@@ -14919,7 +17043,8 @@ float4 __purefn __ovld read_imagef(read_write image3d_t image, sampler_t sampler
+@@ -14919,7 +17042,8 @@ float4 __purefn __ovld read_imagef(read_write image3d_t image, sampler_t sampler
  int4 __purefn __ovld read_imagei(read_write image3d_t image, sampler_t sampler, float4 coord, float lod);
  uint4 __purefn __ovld read_imageui(read_write image3d_t image, sampler_t sampler, float4 coord, float lod);
  #endif //cl_khr_mipmap_image
@@ -6053,7 +6043,7 @@ index 514c710c11..7def52945a 100644
  
  // Image read functions returning half4 type
  #ifdef cl_khr_fp16
-@@ -14930,7 +17055,8 @@ half4 __purefn __ovld read_imageh(read_write image1d_array_t image, int2 coord);
+@@ -14930,7 +17054,8 @@ half4 __purefn __ovld read_imageh(read_write image1d_array_t image, int2 coord);
  half4 __purefn __ovld read_imageh(read_write image2d_array_t image, int4 coord);
  half4 __purefn __ovld read_imageh(read_write image1d_buffer_t image, int coord);
  #endif //cl_khr_fp16
@@ -6063,7 +6053,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * Write color value to location specified by coordinate
-@@ -15019,7 +17145,7 @@ void __ovld write_imagef(write_only image1d_array_t image_array, int2 coord, flo
+@@ -15019,7 +17144,7 @@ void __ovld write_imagef(write_only image1d_array_t image_array, int2 coord, flo
  void __ovld write_imagei(write_only image1d_array_t image_array, int2 coord, int4 color);
  void __ovld write_imageui(write_only image1d_array_t image_array, int2 coord, uint4 color);
  
@@ -6072,7 +6062,7 @@ index 514c710c11..7def52945a 100644
  void __ovld write_imagef(write_only image3d_t image, int4 coord, float4 color);
  void __ovld write_imagei(write_only image3d_t image, int4 coord, int4 color);
  void __ovld write_imageui(write_only image3d_t image, int4 coord, uint4 color);
-@@ -15052,7 +17178,7 @@ void __ovld write_imageui(write_only image2d_array_t image_array, int4 coord, in
+@@ -15052,7 +17177,7 @@ void __ovld write_imageui(write_only image2d_array_t image_array, int4 coord, in
  void __ovld write_imagef(write_only image2d_depth_t image, int2 coord, int lod, float depth);
  void __ovld write_imagef(write_only image2d_array_depth_t image, int4 coord, int lod, float depth);
  
@@ -6081,7 +6071,7 @@ index 514c710c11..7def52945a 100644
  void __ovld write_imagef(write_only image3d_t image, int4 coord, int lod, float4 color);
  void __ovld write_imagei(write_only image3d_t image, int4 coord, int lod, int4 color);
  void __ovld write_imageui(write_only image3d_t image, int4 coord, int lod, uint4 color);
-@@ -15065,7 +17191,7 @@ void __ovld write_imageui(write_only image3d_t image, int4 coord, int lod, uint4
+@@ -15065,7 +17190,7 @@ void __ovld write_imageui(write_only image3d_t image, int4 coord, int lod, uint4
  #ifdef cl_khr_fp16
  void __ovld write_imageh(write_only image1d_t image, int coord, half4 color);
  void __ovld write_imageh(write_only image2d_t image, int2 coord, half4 color);
@@ -6090,7 +6080,7 @@ index 514c710c11..7def52945a 100644
  void __ovld write_imageh(write_only image3d_t image, int4 coord, half4 color);
  #endif
  void __ovld write_imageh(write_only image1d_array_t image, int2 coord, half4 color);
-@@ -15074,7 +17200,8 @@ void __ovld write_imageh(write_only image1d_buffer_t image, int coord, half4 col
+@@ -15074,7 +17199,8 @@ void __ovld write_imageh(write_only image1d_buffer_t image, int coord, half4 col
  #endif //cl_khr_fp16
  
  // Image write functions for read_write images
@@ -6100,7 +6090,7 @@ index 514c710c11..7def52945a 100644
  void __ovld write_imagef(read_write image2d_t image, int2 coord, float4 color);
  void __ovld write_imagei(read_write image2d_t image, int2 coord, int4 color);
  void __ovld write_imageui(read_write image2d_t image, int2 coord, uint4 color);
-@@ -15095,7 +17222,7 @@ void __ovld write_imagef(read_write image1d_array_t image_array, int2 coord, flo
+@@ -15095,7 +17221,7 @@ void __ovld write_imagef(read_write image1d_array_t image_array, int2 coord, flo
  void __ovld write_imagei(read_write image1d_array_t image_array, int2 coord, int4 color);
  void __ovld write_imageui(read_write image1d_array_t image_array, int2 coord, uint4 color);
  
@@ -6109,7 +6099,7 @@ index 514c710c11..7def52945a 100644
  void __ovld write_imagef(read_write image3d_t image, int4 coord, float4 color);
  void __ovld write_imagei(read_write image3d_t image, int4 coord, int4 color);
  void __ovld write_imageui(read_write image3d_t image, int4 coord, uint4 color);
-@@ -15127,7 +17254,7 @@ void __ovld write_imageui(read_write image2d_array_t image_array, int4 coord, in
+@@ -15127,7 +17253,7 @@ void __ovld write_imageui(read_write image2d_array_t image_array, int4 coord, in
  void __ovld write_imagef(read_write image2d_depth_t image, int2 coord, int lod, float color);
  void __ovld write_imagef(read_write image2d_array_depth_t image, int4 coord, int lod, float color);
  
@@ -6118,7 +6108,7 @@ index 514c710c11..7def52945a 100644
  void __ovld write_imagef(read_write image3d_t image, int4 coord, int lod, float4 color);
  void __ovld write_imagei(read_write image3d_t image, int4 coord, int lod, int4 color);
  void __ovld write_imageui(read_write image3d_t image, int4 coord, int lod, uint4 color);
-@@ -15140,14 +17267,15 @@ void __ovld write_imageui(read_write image3d_t image, int4 coord, int lod, uint4
+@@ -15140,14 +17266,15 @@ void __ovld write_imageui(read_write image3d_t image, int4 coord, int lod, uint4
  #ifdef cl_khr_fp16
  void __ovld write_imageh(read_write image1d_t image, int coord, half4 color);
  void __ovld write_imageh(read_write image2d_t image, int2 coord, half4 color);
@@ -6136,7 +6126,7 @@ index 514c710c11..7def52945a 100644
  
  // Note: In OpenCL v1.0/1.1/1.2, image argument of image query builtin functions does not have
  // access qualifier, which by default assume read_only access qualifier. Image query builtin
-@@ -15160,7 +17288,7 @@ void __ovld write_imageh(read_write image1d_buffer_t image, int coord, half4 col
+@@ -15160,7 +17287,7 @@ void __ovld write_imageh(read_write image1d_buffer_t image, int coord, half4 col
  int __ovld __cnfn get_image_width(read_only image1d_t image);
  int __ovld __cnfn get_image_width(read_only image1d_buffer_t image);
  int __ovld __cnfn get_image_width(read_only image2d_t image);
@@ -6145,7 +6135,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_width(read_only image3d_t image);
  #endif
  int __ovld __cnfn get_image_width(read_only image1d_array_t image);
-@@ -15179,7 +17307,7 @@ int __ovld __cnfn get_image_width(read_only image2d_array_msaa_depth_t image);
+@@ -15179,7 +17306,7 @@ int __ovld __cnfn get_image_width(read_only image2d_array_msaa_depth_t image);
  int __ovld __cnfn get_image_width(write_only image1d_t image);
  int __ovld __cnfn get_image_width(write_only image1d_buffer_t image);
  int __ovld __cnfn get_image_width(write_only image2d_t image);
@@ -6154,7 +6144,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_width(write_only image3d_t image);
  #endif
  int __ovld __cnfn get_image_width(write_only image1d_array_t image);
-@@ -15195,7 +17323,8 @@ int __ovld __cnfn get_image_width(write_only image2d_array_msaa_t image);
+@@ -15195,7 +17322,8 @@ int __ovld __cnfn get_image_width(write_only image2d_array_msaa_t image);
  int __ovld __cnfn get_image_width(write_only image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
  
@@ -6164,7 +6154,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_width(read_write image1d_t image);
  int __ovld __cnfn get_image_width(read_write image1d_buffer_t image);
  int __ovld __cnfn get_image_width(read_write image2d_t image);
-@@ -15212,7 +17341,8 @@ int __ovld __cnfn get_image_width(read_write image2d_msaa_depth_t image);
+@@ -15212,7 +17340,8 @@ int __ovld __cnfn get_image_width(read_write image2d_msaa_depth_t image);
  int __ovld __cnfn get_image_width(read_write image2d_array_msaa_t image);
  int __ovld __cnfn get_image_width(read_write image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
@@ -6174,7 +6164,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * Return the image height in pixels.
-@@ -15232,7 +17362,7 @@ int __ovld __cnfn get_image_height(read_only image2d_array_msaa_depth_t image);
+@@ -15232,7 +17361,7 @@ int __ovld __cnfn get_image_height(read_only image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
  
  int __ovld __cnfn get_image_height(write_only image2d_t image);
@@ -6183,7 +6173,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_height(write_only image3d_t image);
  #endif
  int __ovld __cnfn get_image_height(write_only image2d_array_t image);
-@@ -15247,7 +17377,8 @@ int __ovld __cnfn get_image_height(write_only image2d_array_msaa_t image);
+@@ -15247,7 +17376,8 @@ int __ovld __cnfn get_image_height(write_only image2d_array_msaa_t image);
  int __ovld __cnfn get_image_height(write_only image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
  
@@ -6193,7 +6183,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_height(read_write image2d_t image);
  int __ovld __cnfn get_image_height(read_write image3d_t image);
  int __ovld __cnfn get_image_height(read_write image2d_array_t image);
-@@ -15261,20 +17392,23 @@ int __ovld __cnfn get_image_height(read_write image2d_msaa_depth_t image);
+@@ -15261,20 +17391,23 @@ int __ovld __cnfn get_image_height(read_write image2d_msaa_depth_t image);
  int __ovld __cnfn get_image_height(read_write image2d_array_msaa_t image);
  int __ovld __cnfn get_image_height(read_write image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
@@ -6221,7 +6211,7 @@ index 514c710c11..7def52945a 100644
  
  // OpenCL Extension v2.0 s9.18 - Mipmaps
  #if __OPENCL_C_VERSION__ >= CL_VERSION_2_0
-@@ -15289,13 +17423,15 @@ int __ovld get_image_num_mip_levels(read_only image3d_t image);
+@@ -15289,13 +17422,15 @@ int __ovld get_image_num_mip_levels(read_only image3d_t image);
  
  int __ovld get_image_num_mip_levels(write_only image1d_t image);
  int __ovld get_image_num_mip_levels(write_only image2d_t image);
@@ -6238,7 +6228,7 @@ index 514c710c11..7def52945a 100644
  
  int __ovld get_image_num_mip_levels(read_only image1d_array_t image);
  int __ovld get_image_num_mip_levels(read_only image2d_array_t image);
-@@ -15307,10 +17443,12 @@ int __ovld get_image_num_mip_levels(write_only image2d_array_t image);
+@@ -15307,10 +17442,12 @@ int __ovld get_image_num_mip_levels(write_only image2d_array_t image);
  int __ovld get_image_num_mip_levels(write_only image2d_array_depth_t image);
  int __ovld get_image_num_mip_levels(write_only image2d_depth_t image);
  
@@ -6251,7 +6241,7 @@ index 514c710c11..7def52945a 100644
  
  #endif //cl_khr_mipmap_image
  #endif //__OPENCL_C_VERSION__ >= CL_VERSION_2_0
-@@ -15374,7 +17512,7 @@ int __ovld __cnfn get_image_channel_data_type(read_only image2d_array_msaa_depth
+@@ -15374,7 +17511,7 @@ int __ovld __cnfn get_image_channel_data_type(read_only image2d_array_msaa_depth
  int __ovld __cnfn get_image_channel_data_type(write_only image1d_t image);
  int __ovld __cnfn get_image_channel_data_type(write_only image1d_buffer_t image);
  int __ovld __cnfn get_image_channel_data_type(write_only image2d_t image);
@@ -6260,7 +6250,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_channel_data_type(write_only image3d_t image);
  #endif
  int __ovld __cnfn get_image_channel_data_type(write_only image1d_array_t image);
-@@ -15390,7 +17528,8 @@ int __ovld __cnfn get_image_channel_data_type(write_only image2d_array_msaa_t im
+@@ -15390,7 +17527,8 @@ int __ovld __cnfn get_image_channel_data_type(write_only image2d_array_msaa_t im
  int __ovld __cnfn get_image_channel_data_type(write_only image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
  
@@ -6270,7 +6260,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_channel_data_type(read_write image1d_t image);
  int __ovld __cnfn get_image_channel_data_type(read_write image1d_buffer_t image);
  int __ovld __cnfn get_image_channel_data_type(read_write image2d_t image);
-@@ -15407,7 +17546,8 @@ int __ovld __cnfn get_image_channel_data_type(read_write image2d_msaa_depth_t im
+@@ -15407,7 +17545,8 @@ int __ovld __cnfn get_image_channel_data_type(read_write image2d_msaa_depth_t im
  int __ovld __cnfn get_image_channel_data_type(read_write image2d_array_msaa_t image);
  int __ovld __cnfn get_image_channel_data_type(read_write image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
@@ -6280,7 +6270,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * Return the image channel order. Valid values are:
-@@ -15470,7 +17610,7 @@ int __ovld __cnfn get_image_channel_order(read_only image2d_array_msaa_depth_t i
+@@ -15470,7 +17609,7 @@ int __ovld __cnfn get_image_channel_order(read_only image2d_array_msaa_depth_t i
  int __ovld __cnfn get_image_channel_order(write_only image1d_t image);
  int __ovld __cnfn get_image_channel_order(write_only image1d_buffer_t image);
  int __ovld __cnfn get_image_channel_order(write_only image2d_t image);
@@ -6289,7 +6279,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_channel_order(write_only image3d_t image);
  #endif
  int __ovld __cnfn get_image_channel_order(write_only image1d_array_t image);
-@@ -15486,7 +17626,8 @@ int __ovld __cnfn get_image_channel_order(write_only image2d_array_msaa_t image)
+@@ -15486,7 +17625,8 @@ int __ovld __cnfn get_image_channel_order(write_only image2d_array_msaa_t image)
  int __ovld __cnfn get_image_channel_order(write_only image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
  
@@ -6299,7 +6289,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __cnfn get_image_channel_order(read_write image1d_t image);
  int __ovld __cnfn get_image_channel_order(read_write image1d_buffer_t image);
  int __ovld __cnfn get_image_channel_order(read_write image2d_t image);
-@@ -15503,7 +17644,8 @@ int __ovld __cnfn get_image_channel_order(read_write image2d_msaa_depth_t image)
+@@ -15503,7 +17643,8 @@ int __ovld __cnfn get_image_channel_order(read_write image2d_msaa_depth_t image)
  int __ovld __cnfn get_image_channel_order(read_write image2d_array_msaa_t image);
  int __ovld __cnfn get_image_channel_order(read_write image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
@@ -6309,7 +6299,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * Return the 2D image width and height as an int2
-@@ -15536,7 +17678,8 @@ int2 __ovld __cnfn get_image_dim(write_only image2d_array_msaa_t image);
+@@ -15536,7 +17677,8 @@ int2 __ovld __cnfn get_image_dim(write_only image2d_array_msaa_t image);
  int2 __ovld __cnfn get_image_dim(write_only image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
  
@@ -6319,7 +6309,7 @@ index 514c710c11..7def52945a 100644
  int2 __ovld __cnfn get_image_dim(read_write image2d_t image);
  int2 __ovld __cnfn get_image_dim(read_write image2d_array_t image);
  #ifdef cl_khr_depth_images
-@@ -15549,7 +17692,8 @@ int2 __ovld __cnfn get_image_dim(read_write image2d_msaa_depth_t image);
+@@ -15549,7 +17691,8 @@ int2 __ovld __cnfn get_image_dim(read_write image2d_msaa_depth_t image);
  int2 __ovld __cnfn get_image_dim(read_write image2d_array_msaa_t image);
  int2 __ovld __cnfn get_image_dim(read_write image2d_array_msaa_depth_t image);
  #endif //cl_khr_gl_msaa_sharing
@@ -6329,7 +6319,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * Return the 3D image width, height, and depth as an
-@@ -15558,12 +17702,14 @@ int2 __ovld __cnfn get_image_dim(read_write image2d_array_msaa_depth_t image);
+@@ -15558,12 +17701,14 @@ int2 __ovld __cnfn get_image_dim(read_write image2d_array_msaa_depth_t image);
   * component and the w component is 0.
   */
  int4 __ovld __cnfn get_image_dim(read_only image3d_t image);
@@ -6347,7 +6337,7 @@ index 514c710c11..7def52945a 100644
  
  /**
   * Return the image array size.
-@@ -15589,7 +17735,8 @@ size_t __ovld __cnfn get_image_array_size(write_only image2d_array_msaa_t image_
+@@ -15589,7 +17734,8 @@ size_t __ovld __cnfn get_image_array_size(write_only image2d_array_msaa_t image_
  size_t __ovld __cnfn get_image_array_size(write_only image2d_array_msaa_depth_t image_array);
  #endif //cl_khr_gl_msaa_sharing
  
@@ -6357,7 +6347,7 @@ index 514c710c11..7def52945a 100644
  size_t __ovld __cnfn get_image_array_size(read_write image1d_array_t image_array);
  size_t __ovld __cnfn get_image_array_size(read_write image2d_array_t image_array);
  #ifdef cl_khr_depth_images
-@@ -15599,7 +17746,8 @@ size_t __ovld __cnfn get_image_array_size(read_write image2d_array_depth_t image
+@@ -15599,7 +17745,8 @@ size_t __ovld __cnfn get_image_array_size(read_write image2d_array_depth_t image
  size_t __ovld __cnfn get_image_array_size(read_write image2d_array_msaa_t image_array);
  size_t __ovld __cnfn get_image_array_size(read_write image2d_array_msaa_depth_t image_array);
  #endif //cl_khr_gl_msaa_sharing
@@ -6367,7 +6357,7 @@ index 514c710c11..7def52945a 100644
  
  /**
  * Return the number of samples associated with image
-@@ -15617,18 +17765,23 @@ int __ovld get_image_num_samples(write_only image2d_array_msaa_depth_t image);
+@@ -15617,18 +17764,23 @@ int __ovld get_image_num_samples(write_only image2d_array_msaa_depth_t image);
  int __ovld get_image_num_samples(write_only image2d_array_msaa_t image);
  int __ovld get_image_num_samples(write_only image2d_array_msaa_depth_t image);
  
@@ -6394,7 +6384,7 @@ index 514c710c11..7def52945a 100644
  int __ovld __conv work_group_all(int predicate);
  int __ovld __conv work_group_any(int predicate);
  
-@@ -15652,11 +17805,11 @@ ulong __ovld __conv work_group_broadcast(ulong a, size_t x, size_t y, size_t z);
+@@ -15652,11 +17804,11 @@ ulong __ovld __conv work_group_broadcast(ulong a, size_t x, size_t y, size_t z);
  float __ovld __conv work_group_broadcast(float a, size_t local_id);
  float __ovld __conv work_group_broadcast(float a, size_t x, size_t y);
  float __ovld __conv work_group_broadcast(float a, size_t x, size_t y, size_t z);
@@ -6408,7 +6398,7 @@ index 514c710c11..7def52945a 100644
  
  #ifdef cl_khr_fp16
  half __ovld __conv work_group_reduce_add(half x);
-@@ -15714,7 +17867,7 @@ float __ovld __conv work_group_scan_exclusive_max(float x);
+@@ -15714,7 +17866,7 @@ float __ovld __conv work_group_scan_exclusive_max(float x);
  float __ovld __conv work_group_scan_inclusive_add(float x);
  float __ovld __conv work_group_scan_inclusive_min(float x);
  float __ovld __conv work_group_scan_inclusive_max(float x);
@@ -6417,7 +6407,7 @@ index 514c710c11..7def52945a 100644
  double __ovld __conv work_group_reduce_add(double x);
  double __ovld __conv work_group_reduce_min(double x);
  double __ovld __conv work_group_reduce_max(double x);
-@@ -15724,19 +17877,12 @@ double __ovld __conv work_group_scan_exclusive_max(double x);
+@@ -15724,19 +17876,12 @@ double __ovld __conv work_group_scan_exclusive_max(double x);
  double __ovld __conv work_group_scan_inclusive_add(double x);
  double __ovld __conv work_group_scan_inclusive_min(double x);
  double __ovld __conv work_group_scan_inclusive_max(double x);
@@ -6441,7 +6431,7 @@ index 514c710c11..7def52945a 100644
  
  #define CL_COMPLETE                                 0x0
  #define CL_RUNNING                                  0x1
-@@ -15775,7 +17921,17 @@ typedef struct {
+@@ -15775,7 +17920,17 @@ typedef struct {
      size_t globalWorkSize[MAX_WORK_DIM];
      size_t localWorkSize[MAX_WORK_DIM];
  } ndrange_t;
@@ -6459,7 +6449,7 @@ index 514c710c11..7def52945a 100644
  ndrange_t __ovld ndrange_1D(size_t);
  ndrange_t __ovld ndrange_1D(size_t, size_t);
  ndrange_t __ovld ndrange_1D(size_t, size_t, size_t);
-@@ -15803,11 +17959,13 @@ bool __ovld is_valid_event (clk_event_t event);
+@@ -15803,11 +17958,13 @@ bool __ovld is_valid_event (clk_event_t event);
  void __ovld capture_event_profiling_info(clk_event_t, clk_profiling_info, __global void* value);
  
  queue_t __ovld get_default_queue(void);
@@ -6475,7 +6465,7 @@ index 514c710c11..7def52945a 100644
  // Shared Sub Group Functions
  uint    __ovld get_sub_group_size(void);
  uint    __ovld get_max_sub_group_size(void);
-@@ -15893,7 +18051,7 @@ half    __ovld __conv sub_group_scan_inclusive_min(half x);
+@@ -15893,7 +18050,7 @@ half    __ovld __conv sub_group_scan_inclusive_min(half x);
  half    __ovld __conv sub_group_scan_inclusive_max(half x);
  #endif //cl_khr_fp16
  
@@ -6484,7 +6474,7 @@ index 514c710c11..7def52945a 100644
  double  __ovld __conv sub_group_broadcast(double x, uint sub_group_local_id);
  double  __ovld __conv sub_group_reduce_add(double x);
  double  __ovld __conv sub_group_reduce_min(double x);
-@@ -15904,7 +18062,7 @@ double  __ovld __conv sub_group_scan_exclusive_max(double x);
+@@ -15904,7 +18061,7 @@ double  __ovld __conv sub_group_scan_exclusive_max(double x);
  double  __ovld __conv sub_group_scan_inclusive_add(double x);
  double  __ovld __conv sub_group_scan_inclusive_min(double x);
  double  __ovld __conv sub_group_scan_inclusive_max(double x);
@@ -6493,7 +6483,7 @@ index 514c710c11..7def52945a 100644
  
  #endif //cl_khr_subgroups cl_intel_subgroups
  
-@@ -16006,34 +18164,46 @@ uint16  __ovld __conv intel_sub_group_shuffle_xor( uint16 x, uint c );
+@@ -16006,34 +18163,46 @@ uint16  __ovld __conv intel_sub_group_shuffle_xor( uint16 x, uint c );
  long    __ovld __conv intel_sub_group_shuffle_xor( long x, uint c );
  ulong   __ovld __conv intel_sub_group_shuffle_xor( ulong x, uint c );
  
@@ -6544,7 +6534,7 @@ index 514c710c11..7def52945a 100644
  
  void    __ovld __conv intel_sub_group_block_write( __global uint* p, uint data );
  void    __ovld __conv intel_sub_group_block_write2( __global uint* p, uint2 data );
-@@ -16047,7 +18217,7 @@ half    __ovld __conv intel_sub_group_shuffle_up( half prev, half cur, uint c );
+@@ -16047,7 +18216,7 @@ half    __ovld __conv intel_sub_group_shuffle_up( half prev, half cur, uint c );
  half    __ovld __conv intel_sub_group_shuffle_xor( half x, uint c );
  #endif
  
@@ -6553,7 +6543,7 @@ index 514c710c11..7def52945a 100644
  double  __ovld __conv intel_sub_group_shuffle( double x, uint c );
  double  __ovld __conv intel_sub_group_shuffle_down( double prev, double cur, uint c );
  double  __ovld __conv intel_sub_group_shuffle_up( double prev, double cur, uint c );
-@@ -16146,68 +18316,92 @@ ushort      __ovld __conv intel_sub_group_scan_inclusive_min( ushort  x );
+@@ -16146,68 +18315,92 @@ ushort      __ovld __conv intel_sub_group_scan_inclusive_min( ushort  x );
  short       __ovld __conv intel_sub_group_scan_inclusive_max( short   x );
  ushort      __ovld __conv intel_sub_group_scan_inclusive_max( ushort  x );
  
@@ -6654,7 +6644,7 @@ index 514c710c11..7def52945a 100644
  
  void        __ovld __conv intel_sub_group_block_write_us(  __global ushort* p, ushort  data );
  void        __ovld __conv intel_sub_group_block_write_us2( __global ushort* p, ushort2 data );
-@@ -16457,6 +18651,7 @@ short2 __ovld intel_sub_group_avc_ime_adjust_ref_offset(
+@@ -16457,6 +18650,7 @@ short2 __ovld intel_sub_group_avc_ime_adjust_ref_offset(
      short2 ref_offset, ushort2 src_coord, ushort2 ref_window_size,
      ushort2 image_size);
  
@@ -6662,7 +6652,7 @@ index 514c710c11..7def52945a 100644
  intel_sub_group_avc_ime_result_t __ovld
  intel_sub_group_avc_ime_evaluate_with_single_reference(
      read_only image2d_t src_image, read_only image2d_t ref_image,
-@@ -16497,6 +18692,7 @@ intel_sub_group_avc_ime_evaluate_with_dual_reference_streaminout(
+@@ -16497,6 +18691,7 @@ intel_sub_group_avc_ime_evaluate_with_dual_reference_streaminout(
      read_only image2d_t bwd_ref_image, sampler_t vme_media_sampler,
      intel_sub_group_avc_ime_payload_t payload,
      intel_sub_group_avc_ime_dual_reference_streamin_t streamin_components);
@@ -6670,7 +6660,7 @@ index 514c710c11..7def52945a 100644
  
  intel_sub_group_avc_ime_single_reference_streamin_t __ovld
  intel_sub_group_avc_ime_get_single_reference_streamin(
-@@ -16561,6 +18757,7 @@ intel_sub_group_avc_ref_payload_t __ovld
+@@ -16561,6 +18756,7 @@ intel_sub_group_avc_ref_payload_t __ovld
  intel_sub_group_avc_ref_set_bilinear_filter_enable(
      intel_sub_group_avc_ref_payload_t payload);
  
@@ -6678,7 +6668,7 @@ index 514c710c11..7def52945a 100644
  intel_sub_group_avc_ref_result_t __ovld
  intel_sub_group_avc_ref_evaluate_with_single_reference(
      read_only image2d_t src_image, read_only image2d_t ref_image,
-@@ -16579,6 +18776,7 @@ intel_sub_group_avc_ref_evaluate_with_multi_reference(
+@@ -16579,6 +18775,7 @@ intel_sub_group_avc_ref_evaluate_with_multi_reference(
      read_only image2d_t src_image, uint packed_reference_ids,
      uchar packed_reference_field_polarities, sampler_t vme_media_sampler,
      intel_sub_group_avc_ref_payload_t payload);
@@ -6686,7 +6676,7 @@ index 514c710c11..7def52945a 100644
  
  // SIC built-in functions
  intel_sub_group_avc_sic_payload_t __ovld
-@@ -16629,6 +18827,7 @@ intel_sub_group_avc_sic_set_block_based_raw_skip_sad(
+@@ -16629,6 +18826,7 @@ intel_sub_group_avc_sic_set_block_based_raw_skip_sad(
      uchar block_based_skip_type,
      intel_sub_group_avc_sic_payload_t payload);
  
@@ -6694,7 +6684,7 @@ index 514c710c11..7def52945a 100644
  intel_sub_group_avc_sic_result_t __ovld
  intel_sub_group_avc_sic_evaluate_ipe(
      read_only image2d_t src_image, sampler_t vme_media_sampler,
-@@ -16651,6 +18850,7 @@ intel_sub_group_avc_sic_evaluate_with_multi_reference(
+@@ -16651,6 +18849,7 @@ intel_sub_group_avc_sic_evaluate_with_multi_reference(
      read_only image2d_t src_image, uint packed_reference_ids,
      uchar packed_reference_field_polarities, sampler_t vme_media_sampler,
      intel_sub_group_avc_sic_payload_t payload);
@@ -7482,18 +7472,6 @@ index 94a1255f0a..59b76051ed 100644
  __kernel void testPipe( pipe int test )
  {
      int s = sizeof(test);
-diff --git a/test/Preprocessor/init.c b/test/Preprocessor/init.c
-index 770e52cc78..6e033bf103 100644
---- a/test/Preprocessor/init.c
-+++ b/test/Preprocessor/init.c
-@@ -9301,6 +9301,7 @@
- // WEBASSEMBLY64-NEXT:#define __LP64__ 1
- // WEBASSEMBLY-NEXT:#define __NO_INLINE__ 1
- // WEBASSEMBLY-NEXT:#define __OBJC_BOOL_IS_BOOL 0
-+// WEBASSEMBLY-NEXT:#define __OPENCL_MEMORY_SCOPE_ALL_DEVICES 5
- // WEBASSEMBLY-NEXT:#define __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES 3
- // WEBASSEMBLY-NEXT:#define __OPENCL_MEMORY_SCOPE_DEVICE 2
- // WEBASSEMBLY-NEXT:#define __OPENCL_MEMORY_SCOPE_SUB_GROUP 4
 diff --git a/test/Preprocessor/predefined-macros.c b/test/Preprocessor/predefined-macros.c
 index 9296b1cf5a..89572950ee 100644
 --- a/test/Preprocessor/predefined-macros.c
