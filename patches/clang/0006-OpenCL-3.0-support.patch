@@ -1,4 +1,4 @@
-From ebe6029aebb2a7a6b209f51556ef6e677100b054 Mon Sep 17 00:00:00 2001
+From ebfc732638fa68d1bc79fbad02011fe71ffc075a Mon Sep 17 00:00:00 2001
 From: Anton Zabaznov <anton.zabaznov@intel.com>
 Date: Thu, 24 Sep 2020 00:12:24 +0300
 Subject: [PATCH] OpenCL 3.0 support
@@ -766,7 +766,7 @@ index 4cde22ce9a..d248b1c865 100644
  #include "clang/Basic/OpenCLExtensions.def"
  
 diff --git a/lib/Headers/opencl-c.h b/lib/Headers/opencl-c.h
-index 514c710c11..e325990031 100644
+index 514c710c11..0b2efc9f2b 100644
 --- a/lib/Headers/opencl-c.h
 +++ b/lib/Headers/opencl-c.h
 @@ -10,6 +10,60 @@
@@ -3476,7 +3476,7 @@ index 514c710c11..e325990031 100644
  
  // atomic_fetch()
 -
-+#ifdef defined(__opencl_c_atomic_scope_device) &&                              \
++#if defined(__opencl_c_atomic_scope_device) &&                              \
 +    defined(__opencl_c_atomic_order_seq_cst)
 +#ifdef __opencl_c_generic_address_space
  int __ovld atomic_fetch_add(volatile atomic_int *object, int operand);
@@ -3652,7 +3652,7 @@ index 514c710c11..e325990031 100644
 +       // defined(cl_khr_int64_extended_atomics)
 +#endif // __opencl_c_generic_address_space
 +
-+#ifdef(__OPENCL_C_VERSION__ >= CL_VERSION_3_0)
++#if(__OPENCL_C_VERSION__ >= CL_VERSION_3_0)
 +int __ovld atomic_fetch_add(volatile atomic_int __global *object, int operand);
 +uint __ovld atomic_fetch_add(volatile atomic_uint __local *object,
 +                             uint operand);
