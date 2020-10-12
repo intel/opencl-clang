@@ -1,0 +1,70 @@
+From fb4a22c92ce87e6027a5464f1411d8ade41192f8 Mon Sep 17 00:00:00 2001
+From: Anastasia Stulova <anastasia.stulova@arm.com>
+Date: Fri, 18 Jan 2019 11:38:16 +0000
+Subject: [PATCH] [OpenCL] Fix overloading ranking rules for addrspace
+ conversions.
+
+Extend ranking to work with address spaces correctly when
+resolving overloads.
+
+Differential Revision: https://reviews.llvm.org/D56735
+
+
+
+git-svn-id: https://llvm.org/svn/llvm-project/cfe/trunk@351546 91177308-0d34-0410-b5e6-96231b3b80d8
+---
+ lib/Sema/SemaOverload.cpp                     |  5 +++-
+ .../address_space_overloading.cl              | 23 +++++++++++++++++++
+ 2 files changed, 27 insertions(+), 1 deletion(-)
+ create mode 100644 test/SemaOpenCLCXX/address_space_overloading.cl
+
+diff --git a/lib/Sema/SemaOverload.cpp b/lib/Sema/SemaOverload.cpp
+index 52be0598fb..276226b6da 100644
+--- a/lib/Sema/SemaOverload.cpp
++++ b/lib/Sema/SemaOverload.cpp
+@@ -4019,9 +4019,12 @@ CompareQualificationConversions(Sema &S,
+     // to unwrap. This essentially mimics what
+     // IsQualificationConversion does, but here we're checking for a
+     // strict subset of qualifiers.
+-    if (T1.getCVRQualifiers() == T2.getCVRQualifiers())
++    if (T1.getQualifiers().withoutObjCLifetime() ==
++        T2.getQualifiers().withoutObjCLifetime())
+       // The qualifiers are the same, so this doesn't tell us anything
+       // about how the sequences rank.
++      // ObjC ownership quals are omitted above as they interfere with
++      // the ARC overload rule.
+       ;
+     else if (T2.isMoreQualifiedThan(T1)) {
+       // T1 has fewer qualifiers, so it could be the better sequence.
+diff --git a/test/SemaOpenCLCXX/address_space_overloading.cl b/test/SemaOpenCLCXX/address_space_overloading.cl
+new file mode 100644
+index 0000000000..ccdd5735bb
+--- /dev/null
++++ b/test/SemaOpenCLCXX/address_space_overloading.cl
+@@ -0,0 +1,23 @@
++// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=c++
++
++// expected-no-diagnostics
++
++struct RetGlob {
++  int dummy;
++};
++
++struct RetGen {
++  char dummy;
++};
++
++RetGlob foo(const __global int *);
++RetGen foo(const __generic int *);
++
++void kernel k() {
++  __global int *ArgGlob;
++  __generic int *ArgGen;
++  __local int *ArgLoc;
++  RetGlob TestGlob = foo(ArgGlob);
++  RetGen TestGen = foo(ArgGen);
++  TestGen = foo(ArgLoc);
++}
+-- 
+2.17.1
+
