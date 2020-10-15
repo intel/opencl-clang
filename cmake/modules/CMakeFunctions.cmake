@@ -43,9 +43,9 @@ endmacro(use_eh)
 # This function assumes that each of files starts with (for example):
 # From 1a400928bf8fc86fa0f062524c25d0985c94ac6f Mon Sep 17 00:00:00 2001
 function(get_backport_patch_hash patch_path patch_hash)
-  file(READ ${patch_path} first_line LIMIT 40 OFFSET 5)
-  string(STRIP ${first_line} first_line_strip)
-  set(patch_hash ${first_line_strip} PARENT_SCOPE)
+    file(READ ${patch_path} first_line LIMIT 40 OFFSET 5)
+    string(STRIP ${first_line} first_line_strip)
+    set(patch_hash ${first_line_strip} PARENT_SCOPE)
 endfunction()
 
 # Checks if the the patch is present in current local branch
@@ -56,18 +56,18 @@ function(is_backport_patch_present patch_path repo_dir base_branch patch_in_bran
         COMMAND ${GIT_EXECUTABLE} branch --contains ${patch_hash}
         WORKING_DIRECTORY ${repo_dir}
         OUTPUT_VARIABLE patch_in_branches
-	ERROR_QUIET
+        ERROR_QUIET
         )
-      if(NOT patch_in_branches)
-	set(patch_in_branch False PARENT_SCOPE) # The patch is not present in local branch
-      else()
-	string(FIND ${patch_in_branches} ${base_branch} match_branch)
+    if(NOT patch_in_branches)
+        set(patch_in_branch False PARENT_SCOPE) # The patch is not present in local branch
+    else()
+        string(FIND ${patch_in_branches} ${base_branch} match_branch)
         if(${match_branch} EQUAL -1)
-          set(patch_in_branch False PARENT_SCOPE) # The patch is not present in local branch
+            set(patch_in_branch False PARENT_SCOPE) # The patch is not present in local branch
         else()
-          set(patch_in_branch True PARENT_SCOPE)  # The patch is not present in local branch
-	endif()
-      endif()
+            set(patch_in_branch True PARENT_SCOPE)  # The patch is not present in local branch
+        endif()
+    endif()
 endfunction()
 
 #
@@ -94,36 +94,36 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
         RESULT_VARIABLE patches_needed
 	)
     if(patches_needed EQUAL 128) # not a git repo
-      set(ret_not_git_repo 1)
-      message(STATUS "[OPENCL-CLANG] Is not a git repo")
+        set(ret_not_git_repo 1)
+        message(STATUS "[OPENCL-CLANG] Is not a git repo")
     elseif(patches_needed) # The target branch doesn't exist
-      list(SORT patches)
+        list(SORT patches)
         execute_process( # Create the target branch
             COMMAND ${GIT_EXECUTABLE} branch
             WORKING_DIRECTORY ${repo_dir}
             OUTPUT_VARIABLE git_out_base_branch
             )
-	  STRING(REGEX REPLACE "\\* (.*)" "\\1" base_branch ${git_out_base_branch})
-	  message(STATUS "[OPENCL-CLANG] Base branch : ${base_branch}")
-	  execute_process( # Create the target branch
+        STRING(REGEX REPLACE "\\* (.*)" "\\1" base_branch ${git_out_base_branch})
+        message(STATUS "[OPENCL-CLANG] Base branch : ${base_branch}")
+        execute_process( # Create the target branch
             COMMAND ${GIT_EXECUTABLE} checkout -b ${target_branch} ${base_revision}
             WORKING_DIRECTORY ${repo_dir}
             RESULT_VARIABLE ret_check_out
-	    ERROR_VARIABLE checkout_log
+            ERROR_VARIABLE checkout_log
             )
-	  message(STATUS "[OPENCL-CLANG] ${checkout_log}")
-	  foreach(patch ${patches})
-	    is_backport_patch_present(${patch} ${repo_dir} ${base_branch} patch_in_branch)
-           if(${patch_in_branch})
+        message(STATUS "[OPENCL-CLANG] ${checkout_log}")
+        foreach(patch ${patches})
+            is_backport_patch_present(${patch} ${repo_dir} ${base_branch} patch_in_branch)
+            if(${patch_in_branch})
                 message(STATUS "[OPENCL-CLANG] Patch ${patch} is already in local branch - ignore patching")
-           else()
+            else()
                 execute_process( # Apply the patch
-                  COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patch}
-                  WORKING_DIRECTORY ${repo_dir}
-                  OUTPUT_VARIABLE patching_log
-		  )
-		message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
-              endif()
+                    COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patch}
+                    WORKING_DIRECTORY ${repo_dir}
+                    OUTPUT_VARIABLE patching_log
+                )
+                message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
+            endif()
 	    endforeach(patch)
     else() # The target branch already exists
         execute_process( # Check it out
