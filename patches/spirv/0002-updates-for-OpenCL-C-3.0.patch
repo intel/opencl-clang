@@ -14,7 +14,7 @@ OpenCL C 2.0 passes for OpenCL C 3.0.
  4 files changed, 7 insertions(+), 5 deletions(-)
 
 diff --git a/lib/SPIRV/OCL20ToSPIRV.cpp b/lib/SPIRV/OCL20ToSPIRV.cpp
-index 6137692..1262c48 100644
+index a3db49f..ceccb3f 100644
 --- a/lib/SPIRV/OCL20ToSPIRV.cpp
 +++ b/lib/SPIRV/OCL20ToSPIRV.cpp
 @@ -346,7 +346,7 @@ bool OCL20ToSPIRV::runOnModule(Module &Module) {
@@ -50,7 +50,7 @@ index 0cfc0b6..08215c1 100644
  
    LLVM_DEBUG(dbgs() << "Enter OCL21ToSPIRV:\n");
 diff --git a/lib/SPIRV/OCLUtil.h b/lib/SPIRV/OCLUtil.h
-index 6e9ce53..9e34d2d 100644
+index 70576b6..d04bccd 100644
 --- a/lib/SPIRV/OCLUtil.h
 +++ b/lib/SPIRV/OCLUtil.h
 @@ -256,6 +256,7 @@ namespace kOCLVer {
@@ -62,20 +62,20 @@ index 6e9ce53..9e34d2d 100644
  
  namespace OclExt {
 diff --git a/lib/SPIRV/PreprocessMetadata.cpp b/lib/SPIRV/PreprocessMetadata.cpp
-index 0b908ac..e92ad36 100644
+index ef08349..8fd863e 100644
 --- a/lib/SPIRV/PreprocessMetadata.cpp
 +++ b/lib/SPIRV/PreprocessMetadata.cpp
-@@ -208,8 +208,8 @@ void PreprocessMetadata::preprocessOCLMetadata(Module *M, SPIRVMDBuilder *B,
-   // !{x} = !{i32 3, i32 102000}
-   B->addNamedMD(kSPIRVMD::Source)
-       .addOp()
--      .add(CLVer < kOCLVer::CL21 ? spv::SourceLanguageOpenCL_C
--                                 : spv::SourceLanguageOpenCL_CPP)
-+      .add(CLVer == kOCLVer::CL21 ? spv::SourceLanguageOpenCL_CPP
-+                                  : spv::SourceLanguageOpenCL_C)
-       .add(CLVer)
-       .done();
-   if (EraseOCLMD)
+@@ -105,8 +105,8 @@ void PreprocessMetadata::visit(Module *M) {
+     // !{x} = !{i32 3, i32 102000}
+     B.addNamedMD(kSPIRVMD::Source)
+         .addOp()
+-        .add(CLVer < kOCLVer::CL21 ? spv::SourceLanguageOpenCL_C
+-                                   : spv::SourceLanguageOpenCL_CPP)
++        .add(CLVer == kOCLVer::CL21 ? spv::SourceLanguageOpenCL_CPP
++                                    : spv::SourceLanguageOpenCL_C)
+         .add(CLVer)
+         .done();
+     if (EraseOCLMD)
 -- 
 2.20.1
 
