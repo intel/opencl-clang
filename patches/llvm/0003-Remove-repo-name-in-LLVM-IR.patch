@@ -1,0 +1,46 @@
+From b53fd86ffdeacb9b13624bdb110fd25e8c35cb92 Mon Sep 17 00:00:00 2001
+From: Feng Zou <feng.zou@intel.com>
+Date: Mon, 19 Oct 2020 14:43:38 +0800
+Subject: [PATCH] Remove repo name in LLVM IR
+
+---
+ llvm/cmake/modules/VersionFromVCS.cmake | 23 ++++++++++++-----------
+ 1 file changed, 12 insertions(+), 11 deletions(-)
+
+diff --git a/llvm/cmake/modules/VersionFromVCS.cmake b/llvm/cmake/modules/VersionFromVCS.cmake
+index 1b6519b4b7c..8fd6b23bb34 100644
+--- a/llvm/cmake/modules/VersionFromVCS.cmake
++++ b/llvm/cmake/modules/VersionFromVCS.cmake
+@@ -33,17 +33,18 @@ function(get_source_info path revision repository)
+       else()
+         set(remote "origin")
+       endif()
+-      execute_process(COMMAND ${GIT_EXECUTABLE} remote get-url ${remote}
+-        WORKING_DIRECTORY ${path}
+-        RESULT_VARIABLE git_result
+-        OUTPUT_VARIABLE git_output
+-        ERROR_QUIET)
+-      if(git_result EQUAL 0)
+-        string(STRIP "${git_output}" git_output)
+-        set(${repository} ${git_output} PARENT_SCOPE)
+-      else()
+-        set(${repository} ${path} PARENT_SCOPE)
+-      endif()
++      # Do not show repo name in IR
++      # execute_process(COMMAND ${GIT_EXECUTABLE} remote get-url ${remote}
++      #   WORKING_DIRECTORY ${path}
++      #   RESULT_VARIABLE git_result
++      #   OUTPUT_VARIABLE git_output
++      #   ERROR_QUIET)
++      # if(git_result EQUAL 0)
++      #   string(STRIP "${git_output}" git_output)
++      #   set(${repository} ${git_output} PARENT_SCOPE)
++      # else()
++      #   set(${repository} ${path} PARENT_SCOPE)
++      # endif()
+     endif()
+   endif()
+ endfunction()
+-- 
+2.18.1
+
