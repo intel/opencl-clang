@@ -1,0 +1,72 @@
+From 220a594878a89ce1f70ba980d8c87005604f1f3b Mon Sep 17 00:00:00 2001
+From: Feng Zou <feng.zou@intel.com>
+Date: Tue, 20 Oct 2020 18:36:17 +0800
+Subject: [PATCH] Remove repo name in LLVM IR
+
+---
+ cmake/modules/GetSVN.cmake | 35 +++++++++++++++++++----------------
+ 1 file changed, 19 insertions(+), 16 deletions(-)
+
+diff --git a/cmake/modules/GetSVN.cmake b/cmake/modules/GetSVN.cmake
+index f729395f6e4..7bd19169b9a 100644
+--- a/cmake/modules/GetSVN.cmake
++++ b/cmake/modules/GetSVN.cmake
+@@ -32,9 +32,10 @@ macro(get_source_info_svn path revision repository)
+     if (Project_WC_REVISION)
+       set(${revision} ${Project_WC_REVISION} PARENT_SCOPE)
+     endif()
+-    if (Project_WC_URL)
+-      set(${repository} ${Project_WC_URL} PARENT_SCOPE)
+-    endif()
++    # Do not show repo name in IR
++    # if (Project_WC_URL)
++    #   set(${repository} ${Project_WC_URL} PARENT_SCOPE)
++    # endif()
+   endif()
+ endmacro()
+ 
+@@ -50,9 +51,10 @@ macro(get_source_info_git_svn path revision repository)
+       string(REGEX REPLACE "^(.*\n)?Revision: ([^\n]+).*"
+         "\\2" git_svn_rev "${git_output}")
+       set(${revision} ${git_svn_rev} PARENT_SCOPE)
+-      string(REGEX REPLACE "^(.*\n)?URL: ([^\n]+).*"
+-        "\\2" git_url "${git_output}")
+-      set(${repository} ${git_url} PARENT_SCOPE)
++      # Do not show repo name in IR
++      # string(REGEX REPLACE "^(.*\n)?URL: ([^\n]+).*"
++      #   "\\2" git_url "${git_output}")
++      # set(${repository} ${git_url} PARENT_SCOPE)
+     endif()
+   endif()
+ endmacro()
+@@ -68,16 +70,17 @@ macro(get_source_info_git path revision repository)
+     if (git_result EQUAL 0)
+       set(${revision} ${git_output} PARENT_SCOPE)
+     endif()
+-    execute_process(COMMAND ${git_executable} remote -v
+-      WORKING_DIRECTORY ${path}
+-      TIMEOUT 5
+-      RESULT_VARIABLE git_result
+-      OUTPUT_VARIABLE git_output)
+-    if (git_result EQUAL 0)
+-      string(REGEX REPLACE "^(.*\n)?[^ \t]+[ \t]+([^ \t\n]+)[ \t]+\\(fetch\\).*"
+-        "\\2" git_url "${git_output}")
+-      set(${repository} "${git_url}" PARENT_SCOPE)
+-    endif()
++    # Do not show repo name in IR
++    # execute_process(COMMAND ${git_executable} remote -v
++    #   WORKING_DIRECTORY ${path}
++    #   TIMEOUT 5
++    #   RESULT_VARIABLE git_result
++    #   OUTPUT_VARIABLE git_output)
++    # if (git_result EQUAL 0)
++    #   string(REGEX REPLACE "^(.*\n)?[^ \t]+[ \t]+([^ \t\n]+)[ \t]+\\(fetch\\).*"
++    #     "\\2" git_url "${git_output}")
++    #   set(${repository} "${git_url}" PARENT_SCOPE)
++    # endif()
+   endif()
+ endmacro()
+ 
+-- 
+2.18.1
+
