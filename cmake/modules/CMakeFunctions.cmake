@@ -92,24 +92,27 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
         COMMAND ${GIT_EXECUTABLE} rev-parse --verify --no-revs -q ${target_branch}
         WORKING_DIRECTORY ${repo_dir}
         RESULT_VARIABLE patches_needed
+        ERROR_QUIET
+        OUTPUT_QUIET
 	)
     if(patches_needed EQUAL 128) # not a git repo
         set(ret_not_git_repo 1)
         message(STATUS "[OPENCL-CLANG] Is not a git repo")
     elseif(patches_needed) # The target branch doesn't exist
         list(SORT patches)
-        execute_process( # Create the target branch
-            COMMAND ${GIT_EXECUTABLE} branch
+        execute_process( # Take current branch name
+            COMMAND ${GIT_EXECUTABLE} symbolic-ref --short HEAD
             WORKING_DIRECTORY ${repo_dir}
-            OUTPUT_VARIABLE git_out_base_branch
+            OUTPUT_VARIABLE base_branch
+            ERROR_QUIET
             )
-        STRING(REGEX REPLACE "\\* (.*)" "\\1" base_branch ${git_out_base_branch})
         message(STATUS "[OPENCL-CLANG] Base branch : ${base_branch}")
         execute_process( # Create the target branch
             COMMAND ${GIT_EXECUTABLE} checkout -b ${target_branch} ${base_revision}
             WORKING_DIRECTORY ${repo_dir}
             RESULT_VARIABLE ret_check_out
             ERROR_VARIABLE checkout_log
+            OUTPUT_QUIET
             )
         message(STATUS "[OPENCL-CLANG] ${checkout_log}")
         foreach(patch ${patches})
@@ -121,6 +124,7 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
                     COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patch}
                     WORKING_DIRECTORY ${repo_dir}
                     OUTPUT_VARIABLE patching_log
+                    ERROR_QUIET
                 )
                 message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
             endif()
@@ -130,6 +134,8 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
             COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}
             WORKING_DIRECTORY ${repo_dir}
             RESULT_VARIABLE ret_check_out
+            ERROR_QUIET
+            OUTPUT_QUIET
         )
     endif()
     if (NOT (ret_not_git_repo OR ret_check_out OR ret_apply_patch))
