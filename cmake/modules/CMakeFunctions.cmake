@@ -49,24 +49,38 @@ function(get_backport_patch_hash patch_path patch_hash)
 endfunction()
 
 # Checks if the the patch is present in current local branch
-function(is_backport_patch_present patch_path repo_dir base_branch patch_in_branch)
+function(is_backport_patch_present patch_path repo_dir patch_in_branch)
     get_backport_patch_hash(${patch_path} patch_hash)
-    message(STATUS "[OPENCL-CLANG] Checking if patch ${patch_hash} is present in branch ${base_branch}")
+    message(STATUS "[OPENCL-CLANG] Checking if patch ${patch_hash} is present in repository")
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} branch --contains ${patch_hash}
+        COMMAND ${GIT_EXECUTABLE} merge-base --is-ancestor ${patch_hash} HEAD
         WORKING_DIRECTORY ${repo_dir}
-        OUTPUT_VARIABLE patch_in_branches
+        RESULT_VARIABLE patch_not_in_branches
+        OUTPUT_QUIET
         ERROR_QUIET
         )
-    if(NOT patch_in_branches)
+    if(patch_not_in_branches)
         set(patch_in_branch False PARENT_SCOPE) # The patch is not present in local branch
     else()
-        string(FIND ${patch_in_branches} ${base_branch} match_branch)
-        if(${match_branch} EQUAL -1)
-            set(patch_in_branch False PARENT_SCOPE) # The patch is not present in local branch
-        else()
-            set(patch_in_branch True PARENT_SCOPE)  # The patch is not present in local branch
-        endif()
+        set(patch_in_branch True PARENT_SCOPE)  # The patch is not present in local branch
+    endif()
+endfunction()
+
+# Validates if given SHA1/tag/branch name exists in local repo
+function(is_valid_revision repo_dir revision return_val)
+    message(STATUS "[OPENCL-CLANG] Validating ${revision} in repository")
+    # Check if we have under revision exitsting branch/tag/SHA1 in this repo
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} log -1 ${revision}
+        WORKING_DIRECTORY ${repo_dir}
+        RESULT_VARIABLE output_var
+        ERROR_QUIET
+        OUTPUT_QUIET
+        )
+    if(${output_var} EQUAL 0)
+        set(${return_val} True PARENT_SCOPE) # this tag/branch/sha1 existis in repo
+    else()
+        set(${return_val} False PARENT_SCOPE) # this tag/branch/sha1 not existis in repo
     endif()
 endfunction()
 
@@ -100,23 +114,30 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
         message(STATUS "[OPENCL-CLANG] Is not a git repo")
     elseif(patches_needed) # The target branch doesn't exist
         list(SORT patches)
-        execute_process( # Take current branch name
-            COMMAND ${GIT_EXECUTABLE} symbolic-ref --short HEAD
-            WORKING_DIRECTORY ${repo_dir}
-            OUTPUT_VARIABLE base_branch
-            ERROR_QUIET
-            )
-        message(STATUS "[OPENCL-CLANG] Base branch : ${base_branch}")
+        is_valid_revision(${repo_dir} ${base_revision} exists_base_rev)
+
+        if(NOT ${exists_base_rev})
+            execute_process( # take SHA1 from HEAD
+                COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
+                WORKING_DIRECTORY ${repo_dir}
+                OUTPUT_VARIABLE repo_head
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+                )
+            message(STATUS "[OPENCL-CLANG] ref ${base_revision} not exists in repository, using current HEAD:${repo_head}")
+            set(base_revision ${repo_head})
+        endif()
         execute_process( # Create the target branch
             COMMAND ${GIT_EXECUTABLE} checkout -b ${target_branch} ${base_revision}
             WORKING_DIRECTORY ${repo_dir}
             RESULT_VARIABLE ret_check_out
+            ERROR_STRIP_TRAILING_WHITESPACE
             ERROR_VARIABLE checkout_log
             OUTPUT_QUIET
             )
-        message(STATUS "[OPENCL-CLANG] ${checkout_log}")
+        message(STATUS "[OPENCL-CLANG] ${checkout_log} which starts from ref : ${base_revision}")
         foreach(patch ${patches})
-            is_backport_patch_present(${patch} ${repo_dir} ${base_branch} patch_in_branch)
+            is_backport_patch_present(${patch} ${repo_dir} patch_in_branch)
             if(${patch_in_branch})
                 message(STATUS "[OPENCL-CLANG] Patch ${patch} is already in local branch - ignore patching")
             else()
