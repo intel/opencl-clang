@@ -69,7 +69,7 @@ endfunction()
 # Validates if given SHA1/tag/branch name exists in local repo
 function(is_valid_revision repo_dir revision return_val)
     message(STATUS "[OPENCL-CLANG] Validating ${revision} in repository")
-    # Check if we have under revision exitsting branch/tag/SHA1 in this repo
+    # Check if we have under revision existing branch/tag/SHA1 in this repo
     execute_process(
         COMMAND ${GIT_EXECUTABLE} log -1 ${revision}
         WORKING_DIRECTORY ${repo_dir}
@@ -78,9 +78,9 @@ function(is_valid_revision repo_dir revision return_val)
         OUTPUT_QUIET
         )
     if(${output_var} EQUAL 0)
-        set(${return_val} True PARENT_SCOPE) # this tag/branch/sha1 existis in repo
+        set(${return_val} True PARENT_SCOPE) # this tag/branch/sha1 exists in repo
     else()
-        set(${return_val} False PARENT_SCOPE) # this tag/branch/sha1 not existis in repo
+        set(${return_val} False PARENT_SCOPE) # this tag/branch/sha1 not exists in repo
     endif()
 endfunction()
 
