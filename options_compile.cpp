@@ -282,7 +282,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       extMap.begin(), extMap.end(),
       [](decltype(*begin(extMap)) p) { return p.second == false; });
 
-  if (useModules) {
+  if (useModules && (iCLStdSet < 300)) {
     effectiveArgs.push_back("-fmodules");
     if (fp64Enable == 0) {
       if (szTriple.find("spir64") != szTriple.npos) {
