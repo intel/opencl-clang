@@ -22,11 +22,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     if(NOT PREFERRED_LLVM_VERSION)
         set(PREFERRED_LLVM_VERSION "11.0.0")
     endif(NOT PREFERRED_LLVM_VERSION)
-    message(STATUS "Looking for LLVM version ${PREFERRED_LLVM_VERSION}")
+    message(STATUS "[OPENCL-CLANG] Looking for LLVM version ${PREFERRED_LLVM_VERSION}")
     find_package(LLVM ${PREFERRED_LLVM_VERSION} REQUIRED)
 
-    message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-    message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+    message(STATUS "[OPENCL-CLANG] Using LLVMConfig.cmake in: ${LLVM_DIR}")
+    message(STATUS "[OPENCL-CLANG] Found LLVM ${LLVM_PACKAGE_VERSION}")
 
     set(CMAKE_MODULE_PATH
       ${CMAKE_MODULE_PATH}
@@ -38,12 +38,12 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     option(LLVMSPIRV_INCLUDED_IN_LLVM
       "Set to ON if libLLVMSPIRVLib is linked into libLLVM" ON)
     if(LLVMSPIRV_INCLUDED_IN_LLVM)
-        message(STATUS "Assuming that libLLVMSPIRVLib is linked into libLLVM")
+        message(STATUS "[OPENCL-CLANG] Assuming that libLLVMSPIRVLib is linked into libLLVM")
     else(LLVMSPIRV_INCLUDED_IN_LLVM)
         message(STATUS
-          "Assuming that libLLVMSPIRVLib is NOT linked into libLLVM")
+          "[OPENCL-CLANG] Assuming that libLLVMSPIRVLib is NOT linked into libLLVM")
         if(NOT SPIRV_TRANSLATOR_DIR)
-            message(FATAL_ERROR "SPIRV_TRANSLATOR_DIR is required")
+            message(FATAL_ERROR "[OPENCL-CLANG] SPIRV_TRANSLATOR_DIR is required")
         endif(NOT SPIRV_TRANSLATOR_DIR)
     endif(LLVMSPIRV_INCLUDED_IN_LLVM)
 else(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -89,10 +89,10 @@ if(NOT USE_PREBUILT_LLVM)
         set(CLANG_BASE_REVISION release/11.x)
     endif()
     if(EXISTS ${CLANG_SOURCE_DIR})
-        message(STATUS "Using Clang source code direcotry: ${CLANG_SOURCE_DIR}")
+        message(STATUS "[OPENCL-CLANG] source code direcotry: ${CLANG_SOURCE_DIR}")
     else()
         message(FATAL_ERROR
-            "Can't find Clang source code directory!\n"
+            "[OPENCL-CLANG] Can't find Clang source code directory!\n"
             "If you are using LLVM monorepo:\n"
             "  1. Clean CMake cache: `rm CMakeCache.txt`\n"
             "  2. Enable Clang project with `-DLLVM_ENABLE_PROJECTS=\"clang\"` option\n"
@@ -107,10 +107,10 @@ if(NOT USE_PREBUILT_LLVM)
         set(SPIRV_SOURCE_DIR ${LLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR})
     endif()
     if(EXISTS ${SPIRV_SOURCE_DIR})
-        message(STATUS "Using SPIRV-LLVM-Translator source code directory: ${SPIRV_SOURCE_DIR}")
+        message(STATUS "[OPENCL-CLANG] Using SPIRV-LLVM-Translator source code directory: ${SPIRV_SOURCE_DIR}")
     else()
         message(FATAL_ERROR
-            "Can't find SPIRV-LLVM-Translator source code dir!\n"
+            "[OPENCL-CLANG] Can't find SPIRV-LLVM-Translator source code dir!\n"
             "If you are using LLVM monorepo, SPIRV-LLVM-Translator should be checked out "
             "at '<monorepo_root_dir>/llvm-spirv' and it should be enabled as an external LLVM "
             "project using the following 2 options:\n"
