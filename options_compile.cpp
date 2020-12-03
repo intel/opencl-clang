@@ -66,7 +66,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
                                                    ArgsVector &effectiveArgs) {
   // Reset args
   int iCLStdSet = 0;
-  int fp64Enable = 0;
+  bool fp64Enabled = false;
+  bool useFdeclareOpenCLBuiltins = false;
   std::string szTriple;
   std::string sourceName(llvm::Twine(s_progID++).str());
 
@@ -163,6 +164,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       effectiveArgs.push_back("-debug-info-kind=line-tables-only");
       effectiveArgs.push_back("-dwarf-version=4");
       break;
+    case OPT_COMPILE_fdeclare_opencl_builtins:
+      effectiveArgs.push_back("-fdeclare-opencl-builtins");
+      effectiveArgs.push_back("-finclude-default-header");
+      useFdeclareOpenCLBuiltins = true;
     }
   }
 
@@ -198,8 +203,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   }
 
   effectiveArgs.push_back(szTriple);
-  effectiveArgs.push_back("-include");
-  effectiveArgs.push_back("opencl-c.h");
+  if (!useFdeclareOpenCLBuiltins) {
+    effectiveArgs.push_back("-include");
+    effectiveArgs.push_back("opencl-c.h");
+  }
 
   // Don't optimize in the frontend
   // clang defaults to -O0, and in that mode, does not produce IR that is
@@ -230,7 +237,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
                             end = effectiveArgs.end();
        it != end; ++it) {
     if (it->compare("-Dcl_khr_fp64") == 0) {
-      fp64Enable = true;
+      fp64Enabled = true;
     }
   }
 
@@ -287,9 +294,9 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   bool useModules = !std::any_of(extMap.begin(), extMap.end(),
       [](const auto& p) {return p.second == false;});
 
-  if (useModules && (iCLStdSet < 300)) {
+  if (!useFdeclareOpenCLBuiltins && useModules && (iCLStdSet < 300)) {
     effectiveArgs.push_back("-fmodules");
-    if (fp64Enable == 0) {
+    if (!fp64Enabled) {
       if (szTriple.find("spir64") != szTriple.npos) {
         if (iCLStdSet <= 120) {
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
@@ -303,7 +310,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
         }
       }
-    } else if (fp64Enable == 1) {
+    } else {
       if (szTriple.find("spir64") != szTriple.npos) {
         if (iCLStdSet <= 120) {
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
