@@ -1,4 +1,4 @@
-From ebfc732638fa68d1bc79fbad02011fe71ffc075a Mon Sep 17 00:00:00 2001
+From f68c4d91ae0ecca08932de502054d1e89cdf033f Mon Sep 17 00:00:00 2001
 From: Anton Zabaznov <anton.zabaznov@intel.com>
 Date: Thu, 24 Sep 2020 00:12:24 +0300
 Subject: [PATCH] OpenCL 3.0 support
@@ -27,7 +27,7 @@ Subject: [PATCH] OpenCL 3.0 support
  lib/Sema/Sema.cpp                             |   47 +-
  lib/Sema/SemaChecking.cpp                     |   38 +-
  lib/Sema/SemaDecl.cpp                         |    9 +-
- lib/Sema/SemaDeclAttr.cpp                     |    7 +
+ lib/Sema/SemaDeclAttr.cpp                     |    9 +-
  lib/Sema/SemaDeclCXX.cpp                      |   10 +
  lib/Sema/SemaType.cpp                         |   24 +-
  test/CodeGenOpenCL/addr-space-struct-arg.cl   |    7 +-
@@ -65,7 +65,7 @@ Subject: [PATCH] OpenCL 3.0 support
  .../SemaOpenCL/forget-unsupported-builtins.cl |   23 +
  test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl |    1 +
  test/SemaOpenCL/storageclass-cl20.cl          |    1 +
- 61 files changed, 3613 insertions(+), 722 deletions(-)
+ 61 files changed, 3614 insertions(+), 723 deletions(-)
  create mode 100644 test/CodeGenOpenCL/generic-address-space-feature.cl
  create mode 100644 test/Sema/feature-extensions-simult-support.cl
  create mode 100644 test/Sema/features-ignore-pragma.cl
@@ -6967,9 +6967,18 @@ index 7ddf2e88b7..8105b799e0 100644
                << Scope << "global or constant";
          else
 diff --git a/lib/Sema/SemaDeclAttr.cpp b/lib/Sema/SemaDeclAttr.cpp
-index c4c3598ee7..646aea2bd5 100644
+index c4c3598ee7..ce98cbc002 100644
 --- a/lib/Sema/SemaDeclAttr.cpp
 +++ b/lib/Sema/SemaDeclAttr.cpp
+@@ -6112,7 +6112,7 @@ static void handleInternalLinkageAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+ }
+ 
+ static void handleOpenCLNoSVMAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+-  if (S.LangOpts.OpenCLVersion != 200)
++  if (S.LangOpts.OpenCLVersion <= 200)
+     S.Diag(AL.getLoc(), diag::err_attribute_requires_opencl_version)
+         << AL << "2.0" << 0;
+   else
 @@ -6194,6 +6194,13 @@ static void handleOpenCLAccessAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
              << AL << PDecl->getType() << DeclTy->isImageType();
          D->setInvalidDecl(true);
@@ -7934,5 +7943,5 @@ index 581701d2a6..469c526ebc 100644
  int G2 = 0;
  global int G3 = 0;
 -- 
-2.17.1
+2.29.2
 
