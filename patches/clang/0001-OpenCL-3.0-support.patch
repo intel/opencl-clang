@@ -1,7 +1,7 @@
-From 911aba1f4a95f914994957a769c938eac04555ca Mon Sep 17 00:00:00 2001
+From bb88efeda6dc50ff165dd1616f562ec5b6d369c3 Mon Sep 17 00:00:00 2001
 From: Anton Zabaznov <anton.zabaznov@intel.com>
 Date: Tue, 22 Sep 2020 19:03:50 +0300
-Subject: [PATCH 1/2] OpenCL 3.0 support
+Subject: [PATCH] OpenCL 3.0 support
 
 ---
  clang/include/clang/Basic/Builtins.def        |   65 +-
@@ -29,7 +29,7 @@ Subject: [PATCH 1/2] OpenCL 3.0 support
  clang/lib/Sema/Sema.cpp                       |   47 +-
  clang/lib/Sema/SemaChecking.cpp               |   38 +-
  clang/lib/Sema/SemaDecl.cpp                   |   15 +-
- clang/lib/Sema/SemaDeclAttr.cpp               |    7 +
+ clang/lib/Sema/SemaDeclAttr.cpp               |    9 +-
  clang/lib/Sema/SemaDeclCXX.cpp                |   10 +
  clang/lib/Sema/SemaLookup.cpp                 |   19 +-
  clang/lib/Sema/SemaType.cpp                   |   14 +-
@@ -71,7 +71,7 @@ Subject: [PATCH 1/2] OpenCL 3.0 support
  .../SemaOpenCL/invalid-pipe-builtin-cl2.0.cl  |    1 +
  clang/test/SemaOpenCL/storageclass-cl20.cl    |    1 +
  .../TableGen/ClangOpenCLBuiltinEmitter.cpp    |   35 +-
- 67 files changed, 3661 insertions(+), 722 deletions(-)
+ 67 files changed, 3662 insertions(+), 723 deletions(-)
  create mode 100644 clang/test/CodeGenOpenCL/generic-address-space-feature.cl
  create mode 100644 clang/test/Sema/feature-extensions-simult-support.cl
  create mode 100644 clang/test/Sema/features-ignore-pragma.cl
@@ -7142,9 +7142,18 @@ index 64146f4a912..c1e629b5dc7 100644
                << Scope << "global or constant";
          else
 diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
-index 849bc09063b..d891526ccb9 100644
+index 849bc09063b..fccddd7a93d 100644
 --- a/clang/lib/Sema/SemaDeclAttr.cpp
 +++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -6362,7 +6362,7 @@ static void handleInternalLinkageAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+ }
+ 
+ static void handleOpenCLNoSVMAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+-  if (S.LangOpts.OpenCLVersion != 200)
++  if (S.LangOpts.OpenCLVersion <= 200)
+     S.Diag(AL.getLoc(), diag::err_attribute_requires_opencl_version)
+         << AL << "2.0" << 0;
+   else
 @@ -6446,6 +6446,13 @@ static void handleOpenCLAccessAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
              << AL << PDecl->getType() << DeclTy->isImageType();
          D->setInvalidDecl(true);
@@ -8249,5 +8258,5 @@ index 41d33b55068..f50652493e5 100644
    BuiltinNameEmitter NameChecker(Records, OS);
    NameChecker.Emit();
 -- 
-2.17.1
+2.29.2
 
