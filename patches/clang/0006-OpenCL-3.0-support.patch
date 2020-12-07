@@ -1,4 +1,4 @@
-From f68c4d91ae0ecca08932de502054d1e89cdf033f Mon Sep 17 00:00:00 2001
+From 6dd990a8258c0f46b0202492624770b57c0cca12 Mon Sep 17 00:00:00 2001
 From: Anton Zabaznov <anton.zabaznov@intel.com>
 Date: Thu, 24 Sep 2020 00:12:24 +0300
 Subject: [PATCH] OpenCL 3.0 support
@@ -6967,7 +6967,7 @@ index 7ddf2e88b7..8105b799e0 100644
                << Scope << "global or constant";
          else
 diff --git a/lib/Sema/SemaDeclAttr.cpp b/lib/Sema/SemaDeclAttr.cpp
-index c4c3598ee7..ce98cbc002 100644
+index c4c3598ee7..8e56a1f4f0 100644
 --- a/lib/Sema/SemaDeclAttr.cpp
 +++ b/lib/Sema/SemaDeclAttr.cpp
 @@ -6112,7 +6112,7 @@ static void handleInternalLinkageAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
@@ -6975,7 +6975,7 @@ index c4c3598ee7..ce98cbc002 100644
  
  static void handleOpenCLNoSVMAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 -  if (S.LangOpts.OpenCLVersion != 200)
-+  if (S.LangOpts.OpenCLVersion <= 200)
++  if (S.LangOpts.OpenCLVersion < 200)
      S.Diag(AL.getLoc(), diag::err_attribute_requires_opencl_version)
          << AL << "2.0" << 0;
    else
