@@ -1,4 +1,4 @@
-From 335b94d893b724213bd763926a969155ddf6dc99 Mon Sep 17 00:00:00 2001
+From cfb396bbe1357fab58dfa08a5914728683c35317 Mon Sep 17 00:00:00 2001
 From: Anastasia Stulova <anastasia.stulova@arm.com>
 Date: Thu, 24 Sep 2020 11:56:15 +0300
 Subject: [PATCH] [PATCH] [OpenCL] Add cl_khr_extended_subgroup extensions.
@@ -12,15 +12,15 @@ Tags: #clang
 
 Differential Revision: https://reviews.llvm.org/D79781
 ---
- include/clang/Basic/OpenCLExtensions.def |   7 +
- lib/Headers/opencl-c.h                   | 668 +++++++++++++++++++++++
- test/SemaOpenCL/extension-version.cl     |  84 +++
+ .../include/clang/Basic/OpenCLExtensions.def  |   7 +
+ clang/lib/Headers/opencl-c.h                  | 668 ++++++++++++++++++
+ clang/test/SemaOpenCL/extension-version.cl    |  84 +++
  3 files changed, 759 insertions(+)
 
-diff --git a/include/clang/Basic/OpenCLExtensions.def b/include/clang/Basic/OpenCLExtensions.def
-index 608f78a13e..d1574164f9 100644
---- a/include/clang/Basic/OpenCLExtensions.def
-+++ b/include/clang/Basic/OpenCLExtensions.def
+diff --git a/clang/include/clang/Basic/OpenCLExtensions.def b/clang/include/clang/Basic/OpenCLExtensions.def
+index 608f78a13ee..d1574164f9b 100644
+--- a/clang/include/clang/Basic/OpenCLExtensions.def
++++ b/clang/include/clang/Basic/OpenCLExtensions.def
 @@ -74,6 +74,13 @@ OPENCLEXT_INTERNAL(cl_khr_mipmap_image_writes, 200, ~0U)
  OPENCLEXT_INTERNAL(cl_khr_srgb_image_writes, 200, ~0U)
  OPENCLEXT_INTERNAL(cl_khr_subgroups, 200, ~0U)
@@ -35,11 +35,11 @@ index 608f78a13e..d1574164f9 100644
  
  // Clang Extensions.
  OPENCLEXT_INTERNAL(cl_clang_storage_class_specifiers, 100, ~0U)
-diff --git a/lib/Headers/opencl-c.h b/lib/Headers/opencl-c.h
-index 2782e5bf5d..c57f742908 100644
---- a/lib/Headers/opencl-c.h
-+++ b/lib/Headers/opencl-c.h
-@@ -17531,6 +17531,674 @@ double  __ovld __conv sub_group_scan_inclusive_max(double x);
+diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
+index 9b55e2402de..4d7140cb8e4 100644
+--- a/clang/lib/Headers/opencl-c.h
++++ b/clang/lib/Headers/opencl-c.h
+@@ -17534,6 +17534,674 @@ double  __ovld __conv sub_group_scan_inclusive_max(double x);
  
  #endif //cl_khr_subgroups cl_intel_subgroups
  
@@ -714,10 +714,10 @@ index 2782e5bf5d..c57f742908 100644
  #if defined(cl_intel_subgroups)
  // Intel-Specific Sub Group Functions
  float   __ovld __conv intel_sub_group_shuffle( float  x, uint c );
-diff --git a/test/SemaOpenCL/extension-version.cl b/test/SemaOpenCL/extension-version.cl
-index 0e6bbb7d3b..4d0e79cd39 100644
---- a/test/SemaOpenCL/extension-version.cl
-+++ b/test/SemaOpenCL/extension-version.cl
+diff --git a/clang/test/SemaOpenCL/extension-version.cl b/clang/test/SemaOpenCL/extension-version.cl
+index 0e6bbb7d3bc..4d0e79cd39c 100644
+--- a/clang/test/SemaOpenCL/extension-version.cl
++++ b/clang/test/SemaOpenCL/extension-version.cl
 @@ -333,3 +333,87 @@
  #endif
  #pragma OPENCL EXTENSION cl_intel_device_side_avc_motion_estimation : enable
@@ -807,5 +807,5 @@ index 0e6bbb7d3b..4d0e79cd39 100644
 +#pragma OPENCL EXTENSION cl_khr_subgroup_clustered_reduce : enable
 +
 -- 
-2.17.1
+2.18.1
 

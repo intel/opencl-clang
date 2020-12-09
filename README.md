@@ -1,6 +1,6 @@
 [![Build Status](https://travis-ci.com/intel/opencl-clang.svg?branch=ocl-open-90)](https://travis-ci.com/intel/opencl-clang)
 
-Common clang is a thin wrapper library around clang. Common clang has
+opencl-clang is a thin wrapper library around clang. opencl-clang has
 OpenCL-oriented API and is capable to compile OpenCL C kernels to SPIR-V
 modules.
 
@@ -17,30 +17,30 @@ following:
 
 ```
 <workspace>
-`-- llvm
-    |-- tools
-    |   `-- clang
-    `-- projects
-        |-- llvm-spirv
-        `-- common-clang
+|-- llvm
+|-- clang
+|-- SPIRV-LLVM-Translator
+|-- opencl-clang
 ```
 
 This can be done using the following commands:
 ```
 cd <workspace>
-git clone https://github.com/llvm-mirror/llvm.git -b release_90
-cd <workspace>/llvm/tools
-git clone https://github.com/llvm-mirror/clang.git -b release_90
-cd <workspace>/llvm/projects
-git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git llvm-spirv -b llvm_release_90
+git clone https://github.com/llvm/llvm-project.git -b release/9.x
+git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_90
 git clone https://github.com/intel/opencl-clang.git -b ocl-open-90
 ```
 
 Then we need to create a build directory and run the build:
 ```
-cd <workspace>
+export OCL_CLANG_WS=<workspace>
+cd $OCL_CLANG_WS
 mkdir build && cd build
-cmake -DLLVM_TARGETS_TO_BUILD="X86" ../llvm
+cmake -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_ENABLE_PROJECTS="clang" \
+      -DLLVM_EXTERNAL_PROJECTS="llvm-spirv;opencl-clang" \
+      -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR="$OCL_CLANG_WS/SPIRV-LLVM-Translator" \
+      -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR="$OCL_CLANG_WS/opencl-clang" \
+      $OCL_CLANG_WS/llvm
 make opencl-clang -j`nproc`
 ```
 
@@ -49,7 +49,7 @@ For sanity check of the built please run `make check-clang` and
 
 ### Out-of-tree build
 
-To build Common clang as standalone project, you need to obtain pre-built LLVM
+To build opencl-clang as standalone project, you need to obtain pre-built LLVM
 and SPIR-V Translator libraries. **Note:** currently this kind of build is
 supported on Linux only.
 
@@ -59,7 +59,7 @@ documented in [Embedding LLVM in your project](https://llvm.org/docs/CMake.html#
 Commands to checkout sources and build:
 ```
 cd <workspace>
-git clone https://github.com/intel/opencl-clang.git
+git clone https://github.com/intel/opencl-clang.git -b ocl-open-90
 mkdir build && cd build
 cmake ../opencl-clang
 make all -j`nproc`
@@ -69,7 +69,7 @@ make all -j`nproc`
 
 ##### Preferred LLVM version
 
-By default, Common clang's cmake script is searching for LLVM 9.0.0. You can
+By default, opencl-clang's cmake script is searching for LLVM 9.0.0. You can
 override target version of LLVM by using `PREFERRED_LLVM_VERSION` cmake option:
 
 Example:
@@ -98,7 +98,7 @@ cmake -DLLVM_DIR=/path/to/installed/llvm/lib/cmake/llvm ../opencl-clang
 
 ##### Location of SPIR-V Translator library
 
-By default, Common clang's cmake script assumes that SPIR-V Translator library
+By default, opencl-clang's cmake script assumes that SPIR-V Translator library
 is built as part of LLVM, installed in the same place and libLLVMSPIRVLib is
 linked into libLLVM.
 
