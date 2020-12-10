@@ -89,17 +89,18 @@ endfunction()
 # Then all patches from the `patches_dir` are committed to the `target_branch`.
 # Does nothing if the `target_branch` is already checked out in the `repo_dir`.
 #
-function(apply_patches repo_dir patches_dir base_revision target_branch ret)
-    file(GLOB patches ${patches_dir}/*.patch)
+function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
+    set(patches "")
+    foreach(patches_dir ${patches_dirs})
+        file(GLOB patches_in_dir ${patches_dir}/*.patch)
+        list(APPEND patches ${patches_in_dir})
+    endforeach()
     if(NOT patches)
         message(STATUS "[OPENCL-CLANG] No patches in ${patches_dir}")
         return()
     endif()
 
-    # Sort patches to set an order
-    list(SORT patches)
-
-    message(STATUS "[OPENCL-CLANG] Patching repository ${repo_dir}:")
+    message(STATUS "[OPENCL-CLANG] Patching repository ${repo_dir}")
     # Check if the target branch already exists
     execute_process(
         COMMAND ${GIT_EXECUTABLE} rev-parse --verify --no-revs -q ${target_branch}
@@ -107,7 +108,7 @@ function(apply_patches repo_dir patches_dir base_revision target_branch ret)
         RESULT_VARIABLE patches_needed
         ERROR_QUIET
         OUTPUT_QUIET
-    )
+	)
     if(patches_needed EQUAL 128) # not a git repo
         set(ret_not_git_repo 1)
         message(STATUS "[OPENCL-CLANG] Is not a git repo")
@@ -148,7 +149,7 @@ function(apply_patches repo_dir patches_dir base_revision target_branch ret)
                 )
                 message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
             endif()
-        endforeach(patch)
+	    endforeach(patch)
     else() # The target branch already exists
         execute_process( # Check it out
             COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}

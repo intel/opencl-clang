@@ -1,16 +1,16 @@
-From 9e78c38a7beb5044ac11785659d608cf31dda368 Mon Sep 17 00:00:00 2001
+From 77d15bb78c92f9b758d48d160dffca407ae65428 Mon Sep 17 00:00:00 2001
 From: Feng Zou <feng.zou@intel.com>
-Date: Tue, 20 Oct 2020 12:20:53 +0800
+Date: Wed, 9 Dec 2020 22:18:15 +0800
 Subject: [PATCH] Remove repo name in LLVM IR
 
 ---
- cmake/modules/VersionFromVCS.cmake | 37 ++++++++++++++++--------------
+ llvm/cmake/modules/VersionFromVCS.cmake | 37 +++++++++++++------------
  1 file changed, 20 insertions(+), 17 deletions(-)
 
-diff --git a/cmake/modules/VersionFromVCS.cmake b/cmake/modules/VersionFromVCS.cmake
+diff --git a/llvm/cmake/modules/VersionFromVCS.cmake b/llvm/cmake/modules/VersionFromVCS.cmake
 index 56331a3a81f..6d648df0ab6 100644
---- a/cmake/modules/VersionFromVCS.cmake
-+++ b/cmake/modules/VersionFromVCS.cmake
+--- a/llvm/cmake/modules/VersionFromVCS.cmake
++++ b/llvm/cmake/modules/VersionFromVCS.cmake
 @@ -17,9 +17,10 @@ function(get_source_info_svn path revision repository)
      if(Project_WC_REVISION)
        set(${revision} ${Project_WC_REVISION} PARENT_SCOPE)

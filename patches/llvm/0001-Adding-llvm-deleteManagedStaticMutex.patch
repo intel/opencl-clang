@@ -1,17 +1,17 @@
-From 7e1048625f90371cf76baf040310a7cfa1203555 Mon Sep 17 00:00:00 2001
+From 3233e5eafdaf38142fa5f1dcff76d07c39602b51 Mon Sep 17 00:00:00 2001
 From: Viktoria Maksimova <viktoria.maksimova@intel.com>
 Date: Wed, 9 Sep 2020 10:11:01 +0800
 Subject: [PATCH] Adding llvm::deleteManagedStaticMutex
 
 ---
- include/llvm/Support/ManagedStatic.h | 8 ++++++++
- lib/Support/ManagedStatic.cpp        | 5 +++++
+ llvm/include/llvm/Support/ManagedStatic.h | 8 ++++++++
+ llvm/lib/Support/ManagedStatic.cpp        | 5 +++++
  2 files changed, 13 insertions(+)
 
-diff --git a/include/llvm/Support/ManagedStatic.h b/include/llvm/Support/ManagedStatic.h
+diff --git a/llvm/include/llvm/Support/ManagedStatic.h b/llvm/include/llvm/Support/ManagedStatic.h
 index e65bb051f18..14ca50b8f7e 100644
---- a/include/llvm/Support/ManagedStatic.h
-+++ b/include/llvm/Support/ManagedStatic.h
+--- a/llvm/include/llvm/Support/ManagedStatic.h
++++ b/llvm/include/llvm/Support/ManagedStatic.h
 @@ -107,6 +107,14 @@ public:
  /// llvm_shutdown - Deallocate and destroy all ManagedStatic variables.
  void llvm_shutdown();
@@ -27,10 +27,10 @@ index e65bb051f18..14ca50b8f7e 100644
  /// llvm_shutdown_obj - This is a simple helper class that calls
  /// llvm_shutdown() when it is destroyed.
  struct llvm_shutdown_obj {
-diff --git a/lib/Support/ManagedStatic.cpp b/lib/Support/ManagedStatic.cpp
+diff --git a/llvm/lib/Support/ManagedStatic.cpp b/llvm/lib/Support/ManagedStatic.cpp
 index 28ceb1a70e4..5c2d03d0e5f 100644
---- a/lib/Support/ManagedStatic.cpp
-+++ b/lib/Support/ManagedStatic.cpp
+--- a/llvm/lib/Support/ManagedStatic.cpp
++++ b/llvm/lib/Support/ManagedStatic.cpp
 @@ -82,3 +82,8 @@ void llvm::llvm_shutdown() {
    while (StaticList)
      StaticList->destroy();

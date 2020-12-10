@@ -90,7 +90,7 @@ if(NOT USE_PREBUILT_LLVM)
         set(CLANG_BASE_REVISION release/9.x)
     endif()
     if(EXISTS ${CLANG_SOURCE_DIR})
-        message(STATUS "[OPENCL-CLANG] Using Clang source code direcotry: ${CLANG_SOURCE_DIR}")
+        message(STATUS "[OPENCL-CLANG] Using Clang source code directory: ${CLANG_SOURCE_DIR}")
     else()
         message(FATAL_ERROR
             "[OPENCL-CLANG] Can't find Clang source code directory!\n"
@@ -124,20 +124,17 @@ if(NOT USE_PREBUILT_LLVM)
 
     set(SPIRV_BASE_REVISION llvm_release_90)
     set(TARGET_BRANCH "ocl-open-90")
-
-    apply_patches(${LLVM_SOURCE_DIR}
-                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
+    get_filename_component(LLVM_MONOREPO_DIR ${LLVM_SOURCE_DIR} DIRECTORY)
+    set(LLVM_PATCHES_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
+                          ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang)
+    apply_patches(${LLVM_MONOREPO_DIR}
+                  "${LLVM_PATCHES_DIRS}"
                   ${LLVM_BASE_REVISION}
                   ${TARGET_BRANCH}
                   ret)
     if(${ret})
         add_definitions(-DAPPLIED_LLVM_PATCHES)
     endif()
-    apply_patches(${CLANG_SOURCE_DIR}
-                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
-                  ${CLANG_BASE_REVISION}
-                  ${TARGET_BRANCH}
-                  ret)
     apply_patches(${SPIRV_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
                   ${SPIRV_BASE_REVISION}

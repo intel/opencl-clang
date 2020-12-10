@@ -1,86 +1,86 @@
-From 40844c89a3386e409442b3726e40211082aea254 Mon Sep 17 00:00:00 2001
+From 47802e13038bf07392b2373e7faf0daf94e3becb Mon Sep 17 00:00:00 2001
 From: Anton Zabaznov <anton.zabaznov@intel.com>
 Date: Thu, 24 Sep 2020 00:12:24 +0300
 Subject: [PATCH] OpenCL 3.0 support
 
 ---
- include/clang/Basic/Builtins.def              |   65 +-
- include/clang/Basic/Builtins.h                |   13 +-
- include/clang/Basic/DiagnosticParseKinds.td   |    2 +
- include/clang/Basic/DiagnosticSemaKinds.td    |    7 +
- include/clang/Basic/LangOptions.def           |    2 +
- include/clang/Basic/OpenCLExtensions.def      |   15 +
- include/clang/Basic/OpenCLOptions.h           |  144 +-
- include/clang/Driver/Options.td               |    2 +-
- include/clang/Frontend/LangStandards.def      |    4 +
- include/clang/Sema/Sema.h                     |    9 +
- lib/AST/ASTContext.cpp                        |    3 +-
- lib/Basic/Builtins.cpp                        |   28 +-
- lib/Basic/TargetInfo.cpp                      |   11 +
- lib/Basic/Targets.cpp                         |    1 -
- lib/CodeGen/CodeGenFunction.cpp               |    6 +-
- lib/Frontend/CompilerInvocation.cpp           |   22 +-
- lib/Frontend/InitPreprocessor.cpp             |    6 +-
- lib/Headers/opencl-c-base.h                   |   77 +-
- lib/Headers/opencl-c.h                        | 3228 ++++++++++++++---
- lib/Parse/ParseDecl.cpp                       |   12 +-
- lib/Parse/ParsePragma.cpp                     |   10 +-
- lib/Sema/Sema.cpp                             |   47 +-
- lib/Sema/SemaChecking.cpp                     |   38 +-
- lib/Sema/SemaDecl.cpp                         |   11 +-
- lib/Sema/SemaDeclAttr.cpp                     |    9 +-
- lib/Sema/SemaDeclCXX.cpp                      |   10 +
- lib/Sema/SemaType.cpp                         |   24 +-
- lib/Sema/TreeTransform.h                      |    3 +-
- test/CodeGenOpenCL/addr-space-struct-arg.cl   |    7 +-
+ clang/include/clang/Basic/Builtins.def        |   65 +-
+ clang/include/clang/Basic/Builtins.h          |   13 +-
+ .../clang/Basic/DiagnosticParseKinds.td       |    2 +
+ .../clang/Basic/DiagnosticSemaKinds.td        |    7 +
+ clang/include/clang/Basic/LangOptions.def     |    2 +
+ .../include/clang/Basic/OpenCLExtensions.def  |   15 +
+ clang/include/clang/Basic/OpenCLOptions.h     |  144 +-
+ clang/include/clang/Driver/Options.td         |    2 +-
+ .../include/clang/Frontend/LangStandards.def  |    4 +
+ clang/include/clang/Sema/Sema.h               |    9 +
+ clang/lib/AST/ASTContext.cpp                  |    3 +-
+ clang/lib/Basic/Builtins.cpp                  |   28 +-
+ clang/lib/Basic/TargetInfo.cpp                |   11 +
+ clang/lib/Basic/Targets.cpp                   |    1 -
+ clang/lib/CodeGen/CodeGenFunction.cpp         |    6 +-
+ clang/lib/Frontend/CompilerInvocation.cpp     |   22 +-
+ clang/lib/Frontend/InitPreprocessor.cpp       |    6 +-
+ clang/lib/Headers/opencl-c-base.h             |   77 +-
+ clang/lib/Headers/opencl-c.h                  | 3228 ++++++++++++++---
+ clang/lib/Parse/ParseDecl.cpp                 |   12 +-
+ clang/lib/Parse/ParsePragma.cpp               |   10 +-
+ clang/lib/Sema/Sema.cpp                       |   47 +-
+ clang/lib/Sema/SemaChecking.cpp               |   38 +-
+ clang/lib/Sema/SemaDecl.cpp                   |   11 +-
+ clang/lib/Sema/SemaDeclAttr.cpp               |    9 +-
+ clang/lib/Sema/SemaDeclCXX.cpp                |   10 +
+ clang/lib/Sema/SemaType.cpp                   |   24 +-
+ clang/lib/Sema/TreeTransform.h                |    3 +-
+ .../CodeGenOpenCL/addr-space-struct-arg.cl    |    7 +-
  .../address-spaces-conversions.cl             |    2 +
- test/CodeGenOpenCL/address-spaces-mangling.cl |    3 +-
- test/CodeGenOpenCL/address-spaces.cl          |    4 +
+ .../CodeGenOpenCL/address-spaces-mangling.cl  |    3 +-
+ clang/test/CodeGenOpenCL/address-spaces.cl    |    4 +
  .../amdgcn-automatic-variable.cl              |    1 +
- test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl   |   21 +-
- test/CodeGenOpenCL/arm-integer-dot-product.cl |    1 +
- test/CodeGenOpenCL/cl-uniform-wg-size.cl      |    2 +
- test/CodeGenOpenCL/fpmath.cl                  |    2 +
+ .../CodeGenOpenCL/amdgpu-sizeof-alignof.cl    |   21 +-
+ .../CodeGenOpenCL/arm-integer-dot-product.cl  |    1 +
+ .../test/CodeGenOpenCL/cl-uniform-wg-size.cl  |    2 +
+ clang/test/CodeGenOpenCL/fpmath.cl            |    2 +
  .../generic-address-space-feature.cl          |   26 +
  .../intel-subgroups-avc-ext-types.cl          |    1 +
  .../kernels-have-spir-cc-by-default.cl        |    3 +
- test/CodeGenOpenCL/logical-ops.cl             |    1 +
- test/CodeGenOpenCL/no-half.cl                 |    1 +
- test/CodeGenOpenCL/pipe_builtin.cl            |    3 +
- test/CodeGenOpenCL/pipe_types.cl              |    1 +
- test/CodeGenOpenCL/printf.cl                  |    2 +
- test/CodeGenOpenCL/unroll-hint.cl             |    1 +
- test/Driver/autocomplete.c                    |    2 +
- test/Driver/opencl.cl                         |    2 +
- test/Driver/unknown-std.cl                    |    1 +
- test/Frontend/stdlang.c                       |    1 +
- test/Headers/opencl-c-header.cl               |    7 +-
- test/Index/pipe-size.cl                       |    7 +
- test/Preprocessor/predefined-macros.c         |   13 +
+ clang/test/CodeGenOpenCL/logical-ops.cl       |    1 +
+ clang/test/CodeGenOpenCL/no-half.cl           |    1 +
+ clang/test/CodeGenOpenCL/pipe_builtin.cl      |    3 +
+ clang/test/CodeGenOpenCL/pipe_types.cl        |    1 +
+ clang/test/CodeGenOpenCL/printf.cl            |    2 +
+ clang/test/CodeGenOpenCL/unroll-hint.cl       |    1 +
+ clang/test/Driver/autocomplete.c              |    2 +
+ clang/test/Driver/opencl.cl                   |    2 +
+ clang/test/Driver/unknown-std.cl              |    1 +
+ clang/test/Frontend/stdlang.c                 |    1 +
+ clang/test/Headers/opencl-c-header.cl         |    7 +-
+ clang/test/Index/pipe-size.cl                 |    7 +
+ clang/test/Preprocessor/predefined-macros.c   |   13 +
  .../Sema/feature-extensions-simult-support.cl |   75 +
- test/Sema/features-ignore-pragma.cl           |   24 +
- test/Sema/opencl-features-pipes.cl            |   18 +
- test/Sema/opencl-features.cl                  |  128 +
- test/Sema/pipe_builtins_feature.cl            |   23 +
+ clang/test/Sema/features-ignore-pragma.cl     |   24 +
+ clang/test/Sema/opencl-features-pipes.cl      |   18 +
+ clang/test/Sema/opencl-features.cl            |  128 +
+ clang/test/Sema/pipe_builtins_feature.cl      |   23 +
  .../address-spaces-conversions-cl2.0.cl       |    3 +
- test/SemaOpenCL/address-spaces.cl             |    1 +
- test/SemaOpenCL/cl20-device-side-enqueue.cl   |   16 +-
+ clang/test/SemaOpenCL/address-spaces.cl       |    1 +
+ .../SemaOpenCL/cl20-device-side-enqueue.cl    |   16 +-
  .../SemaOpenCL/forget-unsupported-builtins.cl |   23 +
- test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl |    1 +
- test/SemaOpenCL/storageclass-cl20.cl          |    1 +
+ .../SemaOpenCL/invalid-pipe-builtin-cl2.0.cl  |    1 +
+ clang/test/SemaOpenCL/storageclass-cl20.cl    |    1 +
  64 files changed, 3547 insertions(+), 690 deletions(-)
- create mode 100644 test/CodeGenOpenCL/generic-address-space-feature.cl
- create mode 100644 test/Sema/feature-extensions-simult-support.cl
- create mode 100644 test/Sema/features-ignore-pragma.cl
- create mode 100644 test/Sema/opencl-features-pipes.cl
- create mode 100644 test/Sema/opencl-features.cl
- create mode 100644 test/Sema/pipe_builtins_feature.cl
- create mode 100644 test/SemaOpenCL/forget-unsupported-builtins.cl
+ create mode 100644 clang/test/CodeGenOpenCL/generic-address-space-feature.cl
+ create mode 100644 clang/test/Sema/feature-extensions-simult-support.cl
+ create mode 100644 clang/test/Sema/features-ignore-pragma.cl
+ create mode 100644 clang/test/Sema/opencl-features-pipes.cl
+ create mode 100644 clang/test/Sema/opencl-features.cl
+ create mode 100644 clang/test/Sema/pipe_builtins_feature.cl
+ create mode 100644 clang/test/SemaOpenCL/forget-unsupported-builtins.cl
 
-diff --git a/include/clang/Basic/Builtins.def b/include/clang/Basic/Builtins.def
-index 08c999af1f..dbb31e7e4d 100644
---- a/include/clang/Basic/Builtins.def
-+++ b/include/clang/Basic/Builtins.def
+diff --git a/clang/include/clang/Basic/Builtins.def b/clang/include/clang/Basic/Builtins.def
+index 08c999af1f1..dbb31e7e4d1 100644
+--- a/clang/include/clang/Basic/Builtins.def
++++ b/clang/include/clang/Basic/Builtins.def
 @@ -106,6 +106,10 @@
  #  define LANGBUILTIN(ID, TYPE, ATTRS, BUILTIN_LANG) BUILTIN(ID, TYPE, ATTRS)
  #endif
@@ -180,10 +180,10 @@ index 08c999af1f..dbb31e7e4d 100644
  #undef LIBBUILTIN
  #undef LANGBUILTIN
 +#undef OPENCLBUILTIN
-diff --git a/include/clang/Basic/Builtins.h b/include/clang/Basic/Builtins.h
-index fed0dae201..29ca27522d 100644
---- a/include/clang/Basic/Builtins.h
-+++ b/include/clang/Basic/Builtins.h
+diff --git a/clang/include/clang/Basic/Builtins.h b/clang/include/clang/Basic/Builtins.h
+index fed0dae2019..29ca27522d0 100644
+--- a/clang/include/clang/Basic/Builtins.h
++++ b/clang/include/clang/Basic/Builtins.h
 @@ -35,13 +35,13 @@ enum LanguageID {
    CXX_LANG = 0x4,     // builtin for cplusplus only.
    OBJC_LANG = 0x8,    // builtin for objective-c and objective-c++
@@ -223,10 +223,10 @@ index fed0dae201..29ca27522d 100644
    /// Helper function for isPrintfLike and isScanfLike.
    bool isLike(unsigned ID, unsigned &FormatIdx, bool &HasVAListArg,
                const char *Fmt) const;
-diff --git a/include/clang/Basic/DiagnosticParseKinds.td b/include/clang/Basic/DiagnosticParseKinds.td
-index 8e6ced0dea..6f47b70286 100644
---- a/include/clang/Basic/DiagnosticParseKinds.td
-+++ b/include/clang/Basic/DiagnosticParseKinds.td
+diff --git a/clang/include/clang/Basic/DiagnosticParseKinds.td b/clang/include/clang/Basic/DiagnosticParseKinds.td
+index 8e6ced0dea5..6f47b702867 100644
+--- a/clang/include/clang/Basic/DiagnosticParseKinds.td
++++ b/clang/include/clang/Basic/DiagnosticParseKinds.td
 @@ -1147,6 +1147,8 @@ def warn_pragma_unsupported_extension : Warning<
    "unsupported OpenCL extension %0 - ignoring">, InGroup<IgnoredPragmas>;
  def warn_pragma_extension_is_core : Warning<
@@ -236,10 +236,10 @@ index 8e6ced0dea..6f47b70286 100644
  
  // OpenCL errors.
  def err_opencl_taking_function_address_parser : Error<
-diff --git a/include/clang/Basic/DiagnosticSemaKinds.td b/include/clang/Basic/DiagnosticSemaKinds.td
-index 275c4e4365..6df0206450 100644
---- a/include/clang/Basic/DiagnosticSemaKinds.td
-+++ b/include/clang/Basic/DiagnosticSemaKinds.td
+diff --git a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+index 275c4e4365d..6df0206450c 100644
+--- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
++++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
 @@ -8831,6 +8831,13 @@ def ext_opencl_ext_vector_type_rgba_selector: ExtWarn<
  def err_openclcxx_placement_new : Error<
    "use of placement new requires explicit declaration">;
@@ -254,10 +254,10 @@ index 275c4e4365..6df0206450 100644
  // MIG routine annotations.
  def warn_mig_server_routine_does_not_return_kern_return_t : Warning<
    "'mig_server_routine' attribute only applies to routines that return a kern_return_t">,
-diff --git a/include/clang/Basic/LangOptions.def b/include/clang/Basic/LangOptions.def
-index 31aca2b0d6..07ab831539 100644
---- a/include/clang/Basic/LangOptions.def
-+++ b/include/clang/Basic/LangOptions.def
+diff --git a/clang/include/clang/Basic/LangOptions.def b/clang/include/clang/Basic/LangOptions.def
+index 31aca2b0d69..07ab8315390 100644
+--- a/clang/include/clang/Basic/LangOptions.def
++++ b/clang/include/clang/Basic/LangOptions.def
 @@ -199,6 +199,8 @@ LANGOPT(OpenCL            , 1, 0, "OpenCL")
  LANGOPT(OpenCLVersion     , 32, 0, "OpenCL C version")
  LANGOPT(OpenCLCPlusPlus   , 1, 0, "C++ for OpenCL")
@@ -267,10 +267,10 @@ index 31aca2b0d6..07ab831539 100644
  LANGOPT(NativeHalfType    , 1, 0, "Native half type support")
  LANGOPT(NativeHalfArgsAndReturns, 1, 0, "Native half args and returns")
  LANGOPT(HalfArgsAndReturns, 1, 0, "half args and returns")
-diff --git a/include/clang/Basic/OpenCLExtensions.def b/include/clang/Basic/OpenCLExtensions.def
-index 5174815843..608f78a13e 100644
---- a/include/clang/Basic/OpenCLExtensions.def
-+++ b/include/clang/Basic/OpenCLExtensions.def
+diff --git a/clang/include/clang/Basic/OpenCLExtensions.def b/clang/include/clang/Basic/OpenCLExtensions.def
+index 51748158431..608f78a13ee 100644
+--- a/clang/include/clang/Basic/OpenCLExtensions.def
++++ b/clang/include/clang/Basic/OpenCLExtensions.def
 @@ -93,6 +93,21 @@ OPENCLEXT_INTERNAL(cl_intel_subgroups, 120, ~0U)
  OPENCLEXT_INTERNAL(cl_intel_subgroups_short, 120, ~0U)
  OPENCLEXT_INTERNAL(cl_intel_device_side_avc_motion_estimation, 120, ~0U)
@@ -293,10 +293,10 @@ index 5174815843..608f78a13e 100644
  #undef OPENCLEXT_INTERNAL
  
  #ifdef OPENCLEXT
-diff --git a/include/clang/Basic/OpenCLOptions.h b/include/clang/Basic/OpenCLOptions.h
-index 47310da1d6..1ba6a2c02e 100644
---- a/include/clang/Basic/OpenCLOptions.h
-+++ b/include/clang/Basic/OpenCLOptions.h
+diff --git a/clang/include/clang/Basic/OpenCLOptions.h b/clang/include/clang/Basic/OpenCLOptions.h
+index 47310da1d6d..1ba6a2c02eb 100644
+--- a/clang/include/clang/Basic/OpenCLOptions.h
++++ b/clang/include/clang/Basic/OpenCLOptions.h
 @@ -16,11 +16,16 @@
  
  #include "clang/Basic/LangOptions.h"
@@ -521,10 +521,10 @@ index 47310da1d6..1ba6a2c02e 100644
    friend class ASTWriter;
    friend class ASTReader;
  };
-diff --git a/include/clang/Driver/Options.td b/include/clang/Driver/Options.td
-index 4ea8bfff09..dd6d5c0caf 100644
---- a/include/clang/Driver/Options.td
-+++ b/include/clang/Driver/Options.td
+diff --git a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
+index 4ea8bfff097..dd6d5c0cafe 100644
+--- a/clang/include/clang/Driver/Options.td
++++ b/clang/include/clang/Driver/Options.td
 @@ -518,7 +518,7 @@ def cl_mad_enable : Flag<["-"], "cl-mad-enable">, Group<opencl_Group>, Flags<[CC
  def cl_no_signed_zeros : Flag<["-"], "cl-no-signed-zeros">, Group<opencl_Group>, Flags<[CC1Option]>,
    HelpText<"OpenCL only. Allow use of less precise no signed zeros computations in the generated binary.">;
@@ -534,10 +534,10 @@ index 4ea8bfff09..dd6d5c0caf 100644
  def cl_denorms_are_zero : Flag<["-"], "cl-denorms-are-zero">, Group<opencl_Group>, Flags<[CC1Option]>,
    HelpText<"OpenCL only. Allow denormals to be flushed to zero.">;
  def cl_fp32_correctly_rounded_divide_sqrt : Flag<["-"], "cl-fp32-correctly-rounded-divide-sqrt">, Group<opencl_Group>, Flags<[CC1Option]>,
-diff --git a/include/clang/Frontend/LangStandards.def b/include/clang/Frontend/LangStandards.def
-index fef7d4dd9a..34918b03cb 100644
---- a/include/clang/Frontend/LangStandards.def
-+++ b/include/clang/Frontend/LangStandards.def
+diff --git a/clang/include/clang/Frontend/LangStandards.def b/clang/include/clang/Frontend/LangStandards.def
+index fef7d4dd9ab..34918b03cb6 100644
+--- a/clang/include/clang/Frontend/LangStandards.def
++++ b/clang/include/clang/Frontend/LangStandards.def
 @@ -165,6 +165,9 @@ LANGSTANDARD(opencl12, "cl1.2",
  LANGSTANDARD(opencl20, "cl2.0",
               OpenCL, "OpenCL 2.0",
@@ -556,10 +556,10 @@ index fef7d4dd9a..34918b03cb 100644
  LANGSTANDARD_ALIAS_DEPR(openclcpp, "CLC++")
  
  // CUDA
-diff --git a/include/clang/Sema/Sema.h b/include/clang/Sema/Sema.h
-index e6c63fd9c0..128e0c197a 100644
---- a/include/clang/Sema/Sema.h
-+++ b/include/clang/Sema/Sema.h
+diff --git a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
+index e6c63fd9c01..128e0c197a8 100644
+--- a/clang/include/clang/Sema/Sema.h
++++ b/clang/include/clang/Sema/Sema.h
 @@ -8982,6 +8982,10 @@ public:
    /// \return true if type is disabled.
    bool checkOpenCLDisabledDecl(const NamedDecl &D, const Expr &E);
@@ -583,10 +583,10 @@ index e6c63fd9c0..128e0c197a 100644
    /// CheckCXXBooleanCondition - Returns true if conversion to bool is invalid.
    ExprResult CheckCXXBooleanCondition(Expr *CondExpr, bool IsConstexpr = false);
  
-diff --git a/lib/AST/ASTContext.cpp b/lib/AST/ASTContext.cpp
-index 93bdaafc2a..9e563342cd 100644
---- a/lib/AST/ASTContext.cpp
-+++ b/lib/AST/ASTContext.cpp
+diff --git a/clang/lib/AST/ASTContext.cpp b/clang/lib/AST/ASTContext.cpp
+index 93bdaafc2ac..9e563342cdb 100644
+--- a/clang/lib/AST/ASTContext.cpp
++++ b/clang/lib/AST/ASTContext.cpp
 @@ -1307,7 +1307,8 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target,
    ObjCSuperType = QualType();
  
@@ -597,10 +597,10 @@ index 93bdaafc2a..9e563342cd 100644
      auto Q = VoidTy.getQualifiers();
      Q.setAddressSpace(LangAS::opencl_generic);
      VoidPtrTy = getPointerType(getCanonicalType(
-diff --git a/lib/Basic/Builtins.cpp b/lib/Basic/Builtins.cpp
-index d23c280d47..235e59a14b 100644
---- a/lib/Basic/Builtins.cpp
-+++ b/lib/Basic/Builtins.cpp
+diff --git a/clang/lib/Basic/Builtins.cpp b/clang/lib/Basic/Builtins.cpp
+index d23c280d475..235e59a14b7 100644
+--- a/clang/lib/Basic/Builtins.cpp
++++ b/clang/lib/Basic/Builtins.cpp
 @@ -23,6 +23,8 @@ static const Builtin::Info BuiltinInfo[] = {
    { #ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr },
  #define LANGBUILTIN(ID, TYPE, ATTRS, LANGS)                                    \
@@ -653,10 +653,10 @@ index d23c280d47..235e59a14b 100644
 +    const Builtin::Info &BuiltinInfo) const {
 +  return BuiltinInfo.Features && llvm::StringRef(BuiltinInfo.Features) != "";
 +}
-diff --git a/lib/Basic/TargetInfo.cpp b/lib/Basic/TargetInfo.cpp
-index a9dfe69b90..6c407f9657 100644
---- a/lib/Basic/TargetInfo.cpp
-+++ b/lib/Basic/TargetInfo.cpp
+diff --git a/clang/lib/Basic/TargetInfo.cpp b/clang/lib/Basic/TargetInfo.cpp
+index a9dfe69b90c..6c407f9657e 100644
+--- a/clang/lib/Basic/TargetInfo.cpp
++++ b/clang/lib/Basic/TargetInfo.cpp
 @@ -371,6 +371,17 @@ void TargetInfo::adjust(LangOptions &Opts) {
      HalfFormat = &llvm::APFloat::IEEEhalf();
      FloatFormat = &llvm::APFloat::IEEEsingle();
@@ -675,10 +675,10 @@ index a9dfe69b90..6c407f9657 100644
    }
  
    if (Opts.LongDoubleSize) {
-diff --git a/lib/Basic/Targets.cpp b/lib/Basic/Targets.cpp
-index a08e399e72..b52d7894d0 100644
---- a/lib/Basic/Targets.cpp
-+++ b/lib/Basic/Targets.cpp
+diff --git a/clang/lib/Basic/Targets.cpp b/clang/lib/Basic/Targets.cpp
+index a08e399e727..b52d7894d0d 100644
+--- a/clang/lib/Basic/Targets.cpp
++++ b/clang/lib/Basic/Targets.cpp
 @@ -39,7 +39,6 @@
  #include "clang/Basic/Diagnostic.h"
  #include "llvm/ADT/StringExtras.h"
@@ -687,10 +687,10 @@ index a08e399e72..b52d7894d0 100644
  using namespace clang;
  
  namespace clang {
-diff --git a/lib/CodeGen/CodeGenFunction.cpp b/lib/CodeGen/CodeGenFunction.cpp
-index eafe266744..0500daf14d 100644
---- a/lib/CodeGen/CodeGenFunction.cpp
-+++ b/lib/CodeGen/CodeGenFunction.cpp
+diff --git a/clang/lib/CodeGen/CodeGenFunction.cpp b/clang/lib/CodeGen/CodeGenFunction.cpp
+index eafe2667443..0500daf14db 100644
+--- a/clang/lib/CodeGen/CodeGenFunction.cpp
++++ b/clang/lib/CodeGen/CodeGenFunction.cpp
 @@ -2205,11 +2205,11 @@ void CodeGenFunction::checkTargetFeatures(SourceLocation Loc,
    std::string MissingFeature;
    if (BuiltinID) {
@@ -706,10 +706,10 @@ index eafe266744..0500daf14d 100644
      StringRef(FeatureList).split(ReqFeatures, ',');
      if (!hasRequiredFeatures(ReqFeatures, CGM, FD, MissingFeature))
        CGM.getDiags().Report(Loc, diag::err_builtin_needs_feature)
-diff --git a/lib/Frontend/CompilerInvocation.cpp b/lib/Frontend/CompilerInvocation.cpp
-index bc54e38a1a..e9577d03c4 100644
---- a/lib/Frontend/CompilerInvocation.cpp
-+++ b/lib/Frontend/CompilerInvocation.cpp
+diff --git a/clang/lib/Frontend/CompilerInvocation.cpp b/clang/lib/Frontend/CompilerInvocation.cpp
+index bc54e38a1a6..e9577d03c4c 100644
+--- a/clang/lib/Frontend/CompilerInvocation.cpp
++++ b/clang/lib/Frontend/CompilerInvocation.cpp
 @@ -2195,6 +2195,8 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
      Opts.OpenCLVersion = 120;
    else if (LangStd == LangStandard::lang_opencl20)
@@ -753,10 +753,10 @@ index bc54e38a1a..e9577d03c4 100644
    Opts.BlocksRuntimeOptional = Args.hasArg(OPT_fblocks_runtime_optional);
    Opts.Coroutines = Opts.CPlusPlus2a || Args.hasArg(OPT_fcoroutines_ts);
  
-diff --git a/lib/Frontend/InitPreprocessor.cpp b/lib/Frontend/InitPreprocessor.cpp
-index 6feb7bcbd4..8264229dd6 100644
---- a/lib/Frontend/InitPreprocessor.cpp
-+++ b/lib/Frontend/InitPreprocessor.cpp
+diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
+index 6feb7bcbd4b..8264229dd69 100644
+--- a/clang/lib/Frontend/InitPreprocessor.cpp
++++ b/clang/lib/Frontend/InitPreprocessor.cpp
 @@ -434,6 +434,9 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
        case 200:
          Builder.defineMacro("__OPENCL_C_VERSION__", "200");
@@ -784,10 +784,10 @@ index 6feb7bcbd4..8264229dd6 100644
      Builder.defineMacro(#Ext);
  #include "clang/Basic/OpenCLExtensions.def"
  
-diff --git a/lib/Headers/opencl-c-base.h b/lib/Headers/opencl-c-base.h
-index 9a23333a33..0b27e4010e 100644
---- a/lib/Headers/opencl-c-base.h
-+++ b/lib/Headers/opencl-c-base.h
+diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
+index 9a23333a33e..0b27e4010ea 100644
+--- a/clang/lib/Headers/opencl-c-base.h
++++ b/clang/lib/Headers/opencl-c-base.h
 @@ -9,6 +9,61 @@
  #ifndef _OPENCL_BASE_H_
  #define _OPENCL_BASE_H_
@@ -900,10 +900,10 @@ index 9a23333a33..0b27e4010e 100644
  } memory_order;
  
  #endif // defined(__OPENCL_CPP_VERSION__) || (__OPENCL_C_VERSION__ >= CL_VERSION_2_0)
-diff --git a/lib/Headers/opencl-c.h b/lib/Headers/opencl-c.h
-index d3ae0dd503..9b55e2402d 100644
---- a/lib/Headers/opencl-c.h
-+++ b/lib/Headers/opencl-c.h
+diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
+index d3ae0dd5037..9b55e2402de 100644
+--- a/clang/lib/Headers/opencl-c.h
++++ b/clang/lib/Headers/opencl-c.h
 @@ -35,7 +35,6 @@
  #define __purefn __attribute__((pure))
  #define __cnfn __attribute__((const))
@@ -6633,10 +6633,10 @@ index d3ae0dd503..9b55e2402d 100644
  
  uchar __ovld intel_sub_group_avc_sic_get_ipe_luma_shape(
      intel_sub_group_avc_sic_result_t result);
-diff --git a/lib/Parse/ParseDecl.cpp b/lib/Parse/ParseDecl.cpp
-index 73b4f50fda..dbb0a9cbf4 100644
---- a/lib/Parse/ParseDecl.cpp
-+++ b/lib/Parse/ParseDecl.cpp
+diff --git a/clang/lib/Parse/ParseDecl.cpp b/clang/lib/Parse/ParseDecl.cpp
+index 73b4f50fda4..dbb0a9cbf42 100644
+--- a/clang/lib/Parse/ParseDecl.cpp
++++ b/clang/lib/Parse/ParseDecl.cpp
 @@ -3781,8 +3781,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
        isInvalid = DS.SetTypeAltiVecBool(true, Loc, PrevSpec, DiagID, Policy);
        break;
@@ -6677,10 +6677,10 @@ index 73b4f50fda..dbb0a9cbf4 100644
      return true;
  
    if (!Lang.CPlusPlus)
-diff --git a/lib/Parse/ParsePragma.cpp b/lib/Parse/ParsePragma.cpp
-index f81ecc738c..cf2a6f985f 100644
---- a/lib/Parse/ParsePragma.cpp
-+++ b/lib/Parse/ParsePragma.cpp
+diff --git a/clang/lib/Parse/ParsePragma.cpp b/clang/lib/Parse/ParsePragma.cpp
+index f81ecc738c2..cf2a6f985fe 100644
+--- a/clang/lib/Parse/ParsePragma.cpp
++++ b/clang/lib/Parse/ParsePragma.cpp
 @@ -697,12 +697,14 @@ void Parser::HandlePragmaOpenCLExtension() {
    if (Name == "all") {
      if (State == Disable) {
@@ -6710,10 +6710,10 @@ index f81ecc738c..cf2a6f985f 100644
      PP.Diag(NameLoc, diag::warn_pragma_extension_is_core) << Ident;
    else
      PP.Diag(NameLoc, diag::warn_pragma_unsupported_extension) << Ident;
-diff --git a/lib/Sema/Sema.cpp b/lib/Sema/Sema.cpp
-index 485d39e2c9..f5d193c86f 100644
---- a/lib/Sema/Sema.cpp
-+++ b/lib/Sema/Sema.cpp
+diff --git a/clang/lib/Sema/Sema.cpp b/clang/lib/Sema/Sema.cpp
+index 485d39e2c9e..f5d193c86f8 100644
+--- a/clang/lib/Sema/Sema.cpp
++++ b/clang/lib/Sema/Sema.cpp
 @@ -266,9 +266,10 @@ void Sema::Initialize() {
    // Initialize predefined OpenCL types and supported extensions and (optional)
    // core features.
@@ -6799,10 +6799,10 @@ index 485d39e2c9..f5d193c86f 100644
 +  }
 +  return false;
 +}
-diff --git a/lib/Sema/SemaChecking.cpp b/lib/Sema/SemaChecking.cpp
-index f9f82cdeef..48a5a969d8 100644
---- a/lib/Sema/SemaChecking.cpp
-+++ b/lib/Sema/SemaChecking.cpp
+diff --git a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema/SemaChecking.cpp
+index f9f82cdeef4..48a5a969d84 100644
+--- a/clang/lib/Sema/SemaChecking.cpp
++++ b/clang/lib/Sema/SemaChecking.cpp
 @@ -513,20 +513,11 @@ static bool checkOpenCLBlockArgs(Sema &S, Expr *BlockArg) {
    return IllegalParams;
  }
@@ -6883,11 +6883,11 @@ index f9f82cdeef..48a5a969d8 100644
    }
  
    if (auto ScopeModel = AtomicExpr::getScopeModel(Op)) {
-diff --git a/lib/Sema/SemaDecl.cpp b/lib/Sema/SemaDecl.cpp
-index 8f19edbc4f..230cb192db 100644
---- a/lib/Sema/SemaDecl.cpp
-+++ b/lib/Sema/SemaDecl.cpp
-@@ -7452,6 +7452,10 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
+diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+index a8ee656dced..e8474ca1f99 100644
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -7457,6 +7457,10 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
      // OpenCL C v2.0 s6.5.1 - Variables defined at program scope and static
      // variables inside a function can also be declared in the global
      // address space.
@@ -6898,7 +6898,7 @@ index 8f19edbc4f..230cb192db 100644
      // C++ for OpenCL inherits rule from OpenCL C v2.0.
      // FIXME: Adding local AS in C++ for OpenCL might make sense.
      if (NewVD->isFileVarDecl() || NewVD->isStaticLocal() ||
-@@ -7459,10 +7463,11 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
+@@ -7464,10 +7468,11 @@ void Sema::CheckVariableDeclarationType(VarDecl *NewVD) {
        if (!T->isSamplerT() &&
            !(T.getAddressSpace() == LangAS::opencl_constant ||
              (T.getAddressSpace() == LangAS::opencl_global &&
@@ -6913,10 +6913,10 @@ index 8f19edbc4f..230cb192db 100644
            Diag(NewVD->getLocation(), diag::err_opencl_global_invalid_addr_space)
                << Scope << "global or constant";
          else
-diff --git a/lib/Sema/SemaDeclAttr.cpp b/lib/Sema/SemaDeclAttr.cpp
-index ee06f8ae51..c7555d591c 100644
---- a/lib/Sema/SemaDeclAttr.cpp
-+++ b/lib/Sema/SemaDeclAttr.cpp
+diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
+index ee06f8ae511..c7555d591ce 100644
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
 @@ -6371,7 +6371,7 @@ static void handleInternalLinkageAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
  }
  
@@ -6940,10 +6940,10 @@ index ee06f8ae51..c7555d591c 100644
        }
      }
    }
-diff --git a/lib/Sema/SemaDeclCXX.cpp b/lib/Sema/SemaDeclCXX.cpp
-index 2f9e4f961f..e0fd907ec0 100644
---- a/lib/Sema/SemaDeclCXX.cpp
-+++ b/lib/Sema/SemaDeclCXX.cpp
+diff --git a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
+index 2f9e4f961f4..e0fd907ec0c 100644
+--- a/clang/lib/Sema/SemaDeclCXX.cpp
++++ b/clang/lib/Sema/SemaDeclCXX.cpp
 @@ -13290,6 +13290,11 @@ CheckOperatorNewDeleteTypes(Sema &SemaRef, const FunctionDecl *FnDecl,
      if (auto *PtrTy = ResultType->getAs<PointerType>()) {
        ResultType = RemoveAddressSpaceFromPtr(SemaRef, PtrTy);
@@ -6968,10 +6968,10 @@ index 2f9e4f961f..e0fd907ec0 100644
    }
    if (SemaRef.Context.getCanonicalType(FirstParamType).getUnqualifiedType() !=
        ExpectedFirstParamType)
-diff --git a/lib/Sema/SemaType.cpp b/lib/Sema/SemaType.cpp
-index 2b9d06814d..afc9fe79cc 100644
---- a/lib/Sema/SemaType.cpp
-+++ b/lib/Sema/SemaType.cpp
+diff --git a/clang/lib/Sema/SemaType.cpp b/clang/lib/Sema/SemaType.cpp
+index 5bbaebe24ce..bdd783f3d88 100644
+--- a/clang/lib/Sema/SemaType.cpp
++++ b/clang/lib/Sema/SemaType.cpp
 @@ -1962,7 +1962,7 @@ static bool checkQualifiedFunction(Sema &S, QualType T, SourceLocation Loc,
    return true;
  }
@@ -7000,7 +7000,7 @@ index 2b9d06814d..afc9fe79cc 100644
        break;
      }
      }
-@@ -7474,16 +7480,18 @@ static void deduceOpenCLImplicitAddrSpace(TypeProcessingState &State,
+@@ -7481,16 +7487,18 @@ static void deduceOpenCLImplicitAddrSpace(TypeProcessingState &State,
      // (...)
      // Pointers that are declared without pointing to a named address space
      // point to the generic address space.
@@ -7023,10 +7023,10 @@ index 2b9d06814d..afc9fe79cc 100644
            ImpAddr = LangAS::opencl_global;
          } else {
            ImpAddr = LangAS::opencl_private;
-diff --git a/lib/Sema/TreeTransform.h b/lib/Sema/TreeTransform.h
-index 8df18b5c27..69939d0c4c 100644
---- a/lib/Sema/TreeTransform.h
-+++ b/lib/Sema/TreeTransform.h
+diff --git a/clang/lib/Sema/TreeTransform.h b/clang/lib/Sema/TreeTransform.h
+index 8df18b5c278..69939d0c4cc 100644
+--- a/clang/lib/Sema/TreeTransform.h
++++ b/clang/lib/Sema/TreeTransform.h
 @@ -4541,7 +4541,8 @@ QualType TreeTransform<Derived>::TransformDecayedType(TypeLocBuilder &TLB,
  static void deduceOpenCLPointeeAddrSpace(Sema &SemaRef, QualType &PointeeType) {
    if (PointeeType.getAddressSpace() == LangAS::Default)
@@ -7037,10 +7037,10 @@ index 8df18b5c27..69939d0c4c 100644
  }
  
  template<typename Derived>
-diff --git a/test/CodeGenOpenCL/addr-space-struct-arg.cl b/test/CodeGenOpenCL/addr-space-struct-arg.cl
-index cdbf28bbca..0bedff5ef0 100644
---- a/test/CodeGenOpenCL/addr-space-struct-arg.cl
-+++ b/test/CodeGenOpenCL/addr-space-struct-arg.cl
+diff --git a/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl b/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl
+index cdbf28bbcad..0bedff5ef0f 100644
+--- a/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl
++++ b/clang/test/CodeGenOpenCL/addr-space-struct-arg.cl
 @@ -2,7 +2,8 @@
  // RUN: %clang_cc1 %s -emit-llvm -o - -O0 -triple amdgcn | FileCheck -enable-var-scope -check-prefixes=COM,AMDGCN %s
  // RUN: %clang_cc1 %s -emit-llvm -o - -cl-std=CL2.0 -O0 -triple amdgcn | FileCheck -enable-var-scope -check-prefixes=COM,AMDGCN,AMDGCN20 %s
@@ -7069,10 +7069,10 @@ index cdbf28bbca..0bedff5ef0 100644
  void test_indirect_arg_globl(void) {
    FuncOneLargeMember(g_s);
  }
-diff --git a/test/CodeGenOpenCL/address-spaces-conversions.cl b/test/CodeGenOpenCL/address-spaces-conversions.cl
-index 52feccc540..9ecffcca5e 100644
---- a/test/CodeGenOpenCL/address-spaces-conversions.cl
-+++ b/test/CodeGenOpenCL/address-spaces-conversions.cl
+diff --git a/clang/test/CodeGenOpenCL/address-spaces-conversions.cl b/clang/test/CodeGenOpenCL/address-spaces-conversions.cl
+index 52feccc540b..9ecffcca5ee 100644
+--- a/clang/test/CodeGenOpenCL/address-spaces-conversions.cl
++++ b/clang/test/CodeGenOpenCL/address-spaces-conversions.cl
 @@ -1,5 +1,7 @@
  // RUN: %clang_cc1 %s -triple x86_64-unknown-linux-gnu -O0 -ffake-address-space-map -cl-std=CL2.0 -emit-llvm -o - | FileCheck %s
 +// RUN: %clang_cc1 %s -triple x86_64-unknown-linux-gnu -O0 -ffake-address-space-map -cl-std=CL3.0 -cl-ext=__opencl_c_generic_address_space -emit-llvm -o - | FileCheck %s
@@ -7081,10 +7081,10 @@ index 52feccc540..9ecffcca5e 100644
  // When -ffake-address-space-map is not used, all addr space mapped to 0 for x86_64.
  
  // test that we generate address space casts everywhere we need conversions of
-diff --git a/test/CodeGenOpenCL/address-spaces-mangling.cl b/test/CodeGenOpenCL/address-spaces-mangling.cl
-index 50622f0991..e19ec8451d 100644
---- a/test/CodeGenOpenCL/address-spaces-mangling.cl
-+++ b/test/CodeGenOpenCL/address-spaces-mangling.cl
+diff --git a/clang/test/CodeGenOpenCL/address-spaces-mangling.cl b/clang/test/CodeGenOpenCL/address-spaces-mangling.cl
+index 50622f09914..e19ec8451d0 100644
+--- a/clang/test/CodeGenOpenCL/address-spaces-mangling.cl
++++ b/clang/test/CodeGenOpenCL/address-spaces-mangling.cl
 @@ -6,6 +6,7 @@
  // We check that the address spaces are mangled the same in both version of OpenCL
  // RUN: %clang_cc1 %s -triple spir-unknown-unknown -cl-std=CL2.0 -emit-llvm -o - | FileCheck -check-prefix=OCL-20 %s
@@ -7102,10 +7102,10 @@ index 50622f0991..e19ec8451d 100644
  __attribute__((overloadable))
  void f(generic int *arg) { }
  // ASMANG20: @_Z1fPU3AS4i
-diff --git a/test/CodeGenOpenCL/address-spaces.cl b/test/CodeGenOpenCL/address-spaces.cl
-index 3c8fea2a80..26a741338b 100644
---- a/test/CodeGenOpenCL/address-spaces.cl
-+++ b/test/CodeGenOpenCL/address-spaces.cl
+diff --git a/clang/test/CodeGenOpenCL/address-spaces.cl b/clang/test/CodeGenOpenCL/address-spaces.cl
+index 3c8fea2a80b..26a741338b3 100644
+--- a/clang/test/CodeGenOpenCL/address-spaces.cl
++++ b/clang/test/CodeGenOpenCL/address-spaces.cl
 @@ -1,9 +1,13 @@
  // RUN: %clang_cc1 %s -O0 -ffake-address-space-map -emit-llvm -o - | FileCheck %s --check-prefixes=CHECK,SPIR
 +// RUN: %clang_cc1 %s -O0 -cl-std=CL3.0 -ffake-address-space-map -emit-llvm -o - | FileCheck %s --check-prefixes=CHECK,SPIR
@@ -7120,20 +7120,20 @@ index 3c8fea2a80..26a741338b 100644
  
  // SPIR: %struct.S = type { i32, i32, i32* }
  // CL20SPIR: %struct.S = type { i32, i32, i32 addrspace(4)* }
-diff --git a/test/CodeGenOpenCL/amdgcn-automatic-variable.cl b/test/CodeGenOpenCL/amdgcn-automatic-variable.cl
-index 7216cb5174..8d3b30fe80 100644
---- a/test/CodeGenOpenCL/amdgcn-automatic-variable.cl
-+++ b/test/CodeGenOpenCL/amdgcn-automatic-variable.cl
+diff --git a/clang/test/CodeGenOpenCL/amdgcn-automatic-variable.cl b/clang/test/CodeGenOpenCL/amdgcn-automatic-variable.cl
+index 7216cb51749..8d3b30fe807 100644
+--- a/clang/test/CodeGenOpenCL/amdgcn-automatic-variable.cl
++++ b/clang/test/CodeGenOpenCL/amdgcn-automatic-variable.cl
 @@ -1,4 +1,5 @@
  // RUN: %clang_cc1 -O0 -cl-std=CL1.2 -triple amdgcn---amdgizcl -emit-llvm %s -o - | FileCheck -check-prefixes=CHECK,CL12 %s
 +// RUN: %clang_cc1 -O0 -cl-std=CL3.0 -triple amdgcn---amdgizcl -emit-llvm %s -o - | FileCheck -check-prefixes=CHECK,CL12 %s
  // RUN: %clang_cc1 -O0 -cl-std=CL2.0 -triple amdgcn---amdgizcl -emit-llvm %s -o - | FileCheck -check-prefixes=CHECK,CL20 %s
  
  // CL12-LABEL: define void @func1(i32 addrspace(5)* %x)
-diff --git a/test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl b/test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl
-index a5d438933f..059260d061 100644
---- a/test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl
-+++ b/test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl
+diff --git a/clang/test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl b/clang/test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl
+index a5d438933fa..059260d0613 100644
+--- a/clang/test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl
++++ b/clang/test/CodeGenOpenCL/amdgpu-sizeof-alignof.cl
 @@ -4,6 +4,17 @@
  // RUN: %clang_cc1 -triple amdgcn---opencl -cl-std=CL2.0 %s -emit-llvm -o - | FileCheck %s
  // RUN: %clang_cc1 -triple amdgcn---amdgizcl -cl-std=CL1.2 %s -emit-llvm -o - | FileCheck %s
@@ -7176,20 +7176,20 @@ index a5d438933f..059260d061 100644
    check(sizeof(global_ptr_t) == PTSIZE);
    check(__alignof__(global_ptr_t) == PTSIZE);
    check(sizeof(constant_ptr_t) == PTSIZE);
-diff --git a/test/CodeGenOpenCL/arm-integer-dot-product.cl b/test/CodeGenOpenCL/arm-integer-dot-product.cl
-index d1ab6aceac..70c5bace02 100644
---- a/test/CodeGenOpenCL/arm-integer-dot-product.cl
-+++ b/test/CodeGenOpenCL/arm-integer-dot-product.cl
+diff --git a/clang/test/CodeGenOpenCL/arm-integer-dot-product.cl b/clang/test/CodeGenOpenCL/arm-integer-dot-product.cl
+index d1ab6aceac5..70c5bace023 100644
+--- a/clang/test/CodeGenOpenCL/arm-integer-dot-product.cl
++++ b/clang/test/CodeGenOpenCL/arm-integer-dot-product.cl
 @@ -1,4 +1,5 @@
  // RUN: %clang_cc1 %s -triple spir-unknown-unknown -finclude-default-header -cl-std=CL1.2 -emit-llvm -o - -O0 | FileCheck %s
 +// RUN: %clang_cc1 %s -triple spir-unknown-unknown -finclude-default-header -cl-std=CL3.0 -emit-llvm -o - -O0 | FileCheck %s
  
  #pragma OPENCL EXTENSION cl_arm_integer_dot_product_int8 : enable
  void test_int8(uchar4 ua, uchar4 ub, char4 sa, char4 sb) {
-diff --git a/test/CodeGenOpenCL/cl-uniform-wg-size.cl b/test/CodeGenOpenCL/cl-uniform-wg-size.cl
-index 76ace5dca2..5dc43e222f 100644
---- a/test/CodeGenOpenCL/cl-uniform-wg-size.cl
-+++ b/test/CodeGenOpenCL/cl-uniform-wg-size.cl
+diff --git a/clang/test/CodeGenOpenCL/cl-uniform-wg-size.cl b/clang/test/CodeGenOpenCL/cl-uniform-wg-size.cl
+index 76ace5dca21..5dc43e222f7 100644
+--- a/clang/test/CodeGenOpenCL/cl-uniform-wg-size.cl
++++ b/clang/test/CodeGenOpenCL/cl-uniform-wg-size.cl
 @@ -1,6 +1,8 @@
  // RUN: %clang_cc1 -emit-llvm -O0 -cl-std=CL1.2 -o - %s 2>&1 | FileCheck %s -check-prefixes CHECK,CHECK-UNIFORM
  // RUN: %clang_cc1 -emit-llvm -O0 -cl-std=CL2.0 -o - %s 2>&1 | FileCheck %s -check-prefixes CHECK,CHECK-NONUNIFORM
@@ -7199,10 +7199,10 @@ index 76ace5dca2..5dc43e222f 100644
  
  kernel void ker() {};
  // CHECK: define{{.*}}@ker() #0
-diff --git a/test/CodeGenOpenCL/fpmath.cl b/test/CodeGenOpenCL/fpmath.cl
-index 0108d909c9..b28392739c 100644
---- a/test/CodeGenOpenCL/fpmath.cl
-+++ b/test/CodeGenOpenCL/fpmath.cl
+diff --git a/clang/test/CodeGenOpenCL/fpmath.cl b/clang/test/CodeGenOpenCL/fpmath.cl
+index 0108d909c94..b28392739c7 100644
+--- a/clang/test/CodeGenOpenCL/fpmath.cl
++++ b/clang/test/CodeGenOpenCL/fpmath.cl
 @@ -2,6 +2,8 @@
  // RUN: %clang_cc1 %s -emit-llvm -o - -triple spir-unknown-unknown -cl-fp32-correctly-rounded-divide-sqrt | FileCheck --check-prefix=CHECK --check-prefix=DIVOPT %s
  // RUN: %clang_cc1 %s -emit-llvm -o - -DNOFP64 -cl-std=CL1.2 -triple r600-unknown-unknown -target-cpu r600 -pedantic | FileCheck --check-prefix=CHECK-FLT %s
@@ -7212,11 +7212,11 @@ index 0108d909c9..b28392739c 100644
  
  typedef __attribute__(( ext_vector_type(4) )) float float4;
  
-diff --git a/test/CodeGenOpenCL/generic-address-space-feature.cl b/test/CodeGenOpenCL/generic-address-space-feature.cl
+diff --git a/clang/test/CodeGenOpenCL/generic-address-space-feature.cl b/clang/test/CodeGenOpenCL/generic-address-space-feature.cl
 new file mode 100644
-index 0000000000..3be428a5f9
+index 00000000000..3be428a5f99
 --- /dev/null
-+++ b/test/CodeGenOpenCL/generic-address-space-feature.cl
++++ b/clang/test/CodeGenOpenCL/generic-address-space-feature.cl
 @@ -0,0 +1,26 @@
 +// RUN: %clang_cc1 %s -triple  spir-unknown-unknown -O0 -cl-std=CL1.2 -cl-ext=-cl_khr_fp64 -finclude-default-header -emit-llvm -o - | FileCheck %s --check-prefixes=CL12
 +// RUN: %clang_cc1 %s -triple  spir-unknown-unknown -O0 -cl-std=CL2.0 -cl-ext=-cl_khr_fp64 -finclude-default-header -emit-llvm -o - | FileCheck %s --check-prefixes=CL20
@@ -7244,20 +7244,20 @@ index 0000000000..3be428a5f9
 +}
 +
 +
-diff --git a/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl b/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
-index 515f13f6e7..5aa31ac6f3 100644
---- a/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
-+++ b/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
+diff --git a/clang/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl b/clang/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
+index 515f13f6e76..5aa31ac6f34 100644
+--- a/clang/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
++++ b/clang/test/CodeGenOpenCL/intel-subgroups-avc-ext-types.cl
 @@ -1,4 +1,5 @@
  // RUN: %clang_cc1 %s -triple spir-unknown-unknown -cl-std=CL1.2 -cl-ext=+cl_intel_device_side_avc_motion_estimation -emit-llvm -o - -O0 | FileCheck %s
 +// RUN: %clang_cc1 %s -triple spir-unknown-unknown -cl-std=CL3.0 -cl-ext=+cl_intel_device_side_avc_motion_estimation -emit-llvm -o - -O0 | FileCheck %s
  
  // CHECK: %opencl.intel_sub_group_avc_mce_payload_t = type opaque
  // CHECK: %opencl.intel_sub_group_avc_ime_payload_t = type opaque
-diff --git a/test/CodeGenOpenCL/kernels-have-spir-cc-by-default.cl b/test/CodeGenOpenCL/kernels-have-spir-cc-by-default.cl
-index e892376234..3d6708ac36 100644
---- a/test/CodeGenOpenCL/kernels-have-spir-cc-by-default.cl
-+++ b/test/CodeGenOpenCL/kernels-have-spir-cc-by-default.cl
+diff --git a/clang/test/CodeGenOpenCL/kernels-have-spir-cc-by-default.cl b/clang/test/CodeGenOpenCL/kernels-have-spir-cc-by-default.cl
+index e8923762347..3d6708ac361 100644
+--- a/clang/test/CodeGenOpenCL/kernels-have-spir-cc-by-default.cl
++++ b/clang/test/CodeGenOpenCL/kernels-have-spir-cc-by-default.cl
 @@ -1,5 +1,8 @@
  // RUN: %clang_cc1 %s -cl-std=CL1.2 -emit-llvm -triple x86_64-unknown-unknown -o - | FileCheck %s
  // RUN: %clang_cc1 %s -cl-std=CL1.2 -emit-llvm -triple amdgcn-unknown-unknown -o - | FileCheck -check-prefixes=AMDGCN %s
@@ -7267,20 +7267,20 @@ index e892376234..3d6708ac36 100644
  // Test that the kernels always use the SPIR calling convention
  // to have unambiguous mapping of arguments to feasibly implement
  // clSetKernelArg().
-diff --git a/test/CodeGenOpenCL/logical-ops.cl b/test/CodeGenOpenCL/logical-ops.cl
-index f083a8580e..499eab6503 100644
---- a/test/CodeGenOpenCL/logical-ops.cl
-+++ b/test/CodeGenOpenCL/logical-ops.cl
+diff --git a/clang/test/CodeGenOpenCL/logical-ops.cl b/clang/test/CodeGenOpenCL/logical-ops.cl
+index f083a8580ee..499eab65039 100644
+--- a/clang/test/CodeGenOpenCL/logical-ops.cl
++++ b/clang/test/CodeGenOpenCL/logical-ops.cl
 @@ -1,4 +1,5 @@
  // RUN: %clang_cc1 %s -emit-llvm -o - -cl-std=CL1.2 -O1 -triple x86_64-unknown-linux-gnu | FileCheck %s
 +// RUN: %clang_cc1 %s -emit-llvm -o - -cl-std=CL3.0 -cl-ext=__opencl_c_fp64 -O1 -triple x86_64-unknown-linux-gnu | FileCheck %s
  // RUN: %clang_cc1 %s -emit-llvm -o - -cl-std=clc++ -O1 -triple x86_64-unknown-linux-gnu | FileCheck %s
  
  #pragma OPENCL EXTENSION cl_khr_fp64 : enable
-diff --git a/test/CodeGenOpenCL/no-half.cl b/test/CodeGenOpenCL/no-half.cl
-index aee8f678f0..46da7fa339 100644
---- a/test/CodeGenOpenCL/no-half.cl
-+++ b/test/CodeGenOpenCL/no-half.cl
+diff --git a/clang/test/CodeGenOpenCL/no-half.cl b/clang/test/CodeGenOpenCL/no-half.cl
+index aee8f678f01..46da7fa339e 100644
+--- a/clang/test/CodeGenOpenCL/no-half.cl
++++ b/clang/test/CodeGenOpenCL/no-half.cl
 @@ -1,6 +1,7 @@
  // RUN: %clang_cc1 %s -cl-std=cl2.0 -emit-llvm -o - -triple spir-unknown-unknown | FileCheck %s
  // RUN: %clang_cc1 %s -cl-std=cl1.2 -emit-llvm -o - -triple spir-unknown-unknown | FileCheck %s
@@ -7289,10 +7289,10 @@ index aee8f678f0..46da7fa339 100644
  
  #pragma OPENCL EXTENSION cl_khr_fp64:enable
  
-diff --git a/test/CodeGenOpenCL/pipe_builtin.cl b/test/CodeGenOpenCL/pipe_builtin.cl
-index 02b9669b7a..0bf35c3361 100644
---- a/test/CodeGenOpenCL/pipe_builtin.cl
-+++ b/test/CodeGenOpenCL/pipe_builtin.cl
+diff --git a/clang/test/CodeGenOpenCL/pipe_builtin.cl b/clang/test/CodeGenOpenCL/pipe_builtin.cl
+index 02b9669b7ab..0bf35c33619 100644
+--- a/clang/test/CodeGenOpenCL/pipe_builtin.cl
++++ b/clang/test/CodeGenOpenCL/pipe_builtin.cl
 @@ -1,4 +1,7 @@
  // RUN: %clang_cc1 -triple %itanium_abi_triple -emit-llvm -cl-ext=+cl_khr_subgroups -O0 -cl-std=clc++ -o - %s | FileCheck %s
 +// RUN: %clang_cc1 -triple %itanium_abi_triple -emit-llvm -cl-ext=+cl_khr_subgroups -O0 -cl-std=cl2.0 -o - %s | FileCheck %s
@@ -7301,20 +7301,20 @@ index 02b9669b7a..0bf35c3361 100644
  // FIXME: Add MS ABI manglings of OpenCL things and remove %itanium_abi_triple
  // above to support OpenCL in the MS C++ ABI.
  
-diff --git a/test/CodeGenOpenCL/pipe_types.cl b/test/CodeGenOpenCL/pipe_types.cl
-index ba064c6d75..b7a523d4f0 100644
---- a/test/CodeGenOpenCL/pipe_types.cl
-+++ b/test/CodeGenOpenCL/pipe_types.cl
+diff --git a/clang/test/CodeGenOpenCL/pipe_types.cl b/clang/test/CodeGenOpenCL/pipe_types.cl
+index ba064c6d755..b7a523d4f08 100644
+--- a/clang/test/CodeGenOpenCL/pipe_types.cl
++++ b/clang/test/CodeGenOpenCL/pipe_types.cl
 @@ -1,4 +1,5 @@
  // RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -O0 -cl-std=CL2.0 -o - %s | FileCheck %s
 +// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -O0 -cl-std=CL3.0 -cl-ext=__opencl_c_pipes -o - %s | FileCheck %s
  
  // CHECK: %opencl.pipe_ro_t = type opaque
  // CHECK: %opencl.pipe_wo_t = type opaque
-diff --git a/test/CodeGenOpenCL/printf.cl b/test/CodeGenOpenCL/printf.cl
-index fc139d776d..0133c5595d 100644
---- a/test/CodeGenOpenCL/printf.cl
-+++ b/test/CodeGenOpenCL/printf.cl
+diff --git a/clang/test/CodeGenOpenCL/printf.cl b/clang/test/CodeGenOpenCL/printf.cl
+index fc139d776db..0133c5595d8 100644
+--- a/clang/test/CodeGenOpenCL/printf.cl
++++ b/clang/test/CodeGenOpenCL/printf.cl
 @@ -1,5 +1,7 @@
  // RUN: %clang_cc1 -cl-std=CL1.2 -cl-ext=-+cl_khr_fp64 -triple spir-unknown-unknown -disable-llvm-passes -emit-llvm -o - %s | FileCheck -check-prefixes=FP64,ALL %s
  // RUN: %clang_cc1 -cl-std=CL1.2 -cl-ext=-cl_khr_fp64 -triple spir-unknown-unknown -disable-llvm-passes -emit-llvm -o - %s | FileCheck -check-prefixes=NOFP64,ALL %s
@@ -7323,10 +7323,10 @@ index fc139d776d..0133c5595d 100644
  
  typedef __attribute__((ext_vector_type(2))) float float2;
  typedef __attribute__((ext_vector_type(2))) half half2;
-diff --git a/test/CodeGenOpenCL/unroll-hint.cl b/test/CodeGenOpenCL/unroll-hint.cl
-index 0f84450a1a..9347c93586 100644
---- a/test/CodeGenOpenCL/unroll-hint.cl
-+++ b/test/CodeGenOpenCL/unroll-hint.cl
+diff --git a/clang/test/CodeGenOpenCL/unroll-hint.cl b/clang/test/CodeGenOpenCL/unroll-hint.cl
+index 0f84450a1ae..9347c935869 100644
+--- a/clang/test/CodeGenOpenCL/unroll-hint.cl
++++ b/clang/test/CodeGenOpenCL/unroll-hint.cl
 @@ -1,5 +1,6 @@
  // RUN: %clang_cc1 -emit-llvm -O0 -cl-std=CL2.0 -o - %s | FileCheck %s
  // RUN: %clang_cc1 -emit-llvm -O0 -cl-std=CL1.2 -o - %s | FileCheck %s
@@ -7334,10 +7334,10 @@ index 0f84450a1a..9347c93586 100644
  
  /*** for ***/
  void for_count()
-diff --git a/test/Driver/autocomplete.c b/test/Driver/autocomplete.c
-index 5c0bfb69f9..eabdf0b593 100644
---- a/test/Driver/autocomplete.c
-+++ b/test/Driver/autocomplete.c
+diff --git a/clang/test/Driver/autocomplete.c b/clang/test/Driver/autocomplete.c
+index 5c0bfb69f9a..eabdf0b5938 100644
+--- a/clang/test/Driver/autocomplete.c
++++ b/clang/test/Driver/autocomplete.c
 @@ -43,6 +43,8 @@
  // CLSTDALL-NEXT: CL1.2
  // CLSTDALL-NEXT: cl2.0
@@ -7347,10 +7347,10 @@ index 5c0bfb69f9..eabdf0b593 100644
  // CLSTDALL-NEXT: clc++
  // CLSTDALL-NEXT: CLC++
  // RUN: %clang --autocomplete=-fno-sanitize-coverage=,f | FileCheck %s -check-prefix=FNOSANICOVER
-diff --git a/test/Driver/opencl.cl b/test/Driver/opencl.cl
-index 63b04bc1af..ffdd4f7d65 100644
---- a/test/Driver/opencl.cl
-+++ b/test/Driver/opencl.cl
+diff --git a/clang/test/Driver/opencl.cl b/clang/test/Driver/opencl.cl
+index 63b04bc1af4..ffdd4f7d65b 100644
+--- a/clang/test/Driver/opencl.cl
++++ b/clang/test/Driver/opencl.cl
 @@ -2,6 +2,7 @@
  // RUN: %clang -S -### -cl-std=CL1.1 %s 2>&1 | FileCheck --check-prefix=CHECK-CL11 %s
  // RUN: %clang -S -### -cl-std=CL1.2 %s 2>&1 | FileCheck --check-prefix=CHECK-CL12 %s
@@ -7367,10 +7367,10 @@ index 63b04bc1af..ffdd4f7d65 100644
  // CHECK-CLCPP: "-cc1" {{.*}} "-cl-std=clc++"
  // CHECK-OPT-DISABLE: "-cc1" {{.*}} "-cl-opt-disable"
  // CHECK-STRICT-ALIASING: "-cc1" {{.*}} "-cl-strict-aliasing"
-diff --git a/test/Driver/unknown-std.cl b/test/Driver/unknown-std.cl
-index 6f371bac13..00209fb625 100644
---- a/test/Driver/unknown-std.cl
-+++ b/test/Driver/unknown-std.cl
+diff --git a/clang/test/Driver/unknown-std.cl b/clang/test/Driver/unknown-std.cl
+index 6f371bac13a..00209fb6255 100644
+--- a/clang/test/Driver/unknown-std.cl
++++ b/clang/test/Driver/unknown-std.cl
 @@ -10,6 +10,7 @@
  // CHECK-NEXT: note: use 'cl1.1' for 'OpenCL 1.1' standard
  // CHECK-NEXT: note: use 'cl1.2' for 'OpenCL 1.2' standard
@@ -7379,10 +7379,10 @@ index 6f371bac13..00209fb625 100644
  // CHECK-NEXT: note: use 'clc++' for 'C++ for OpenCL' standard
  
  // Make sure that no other output is present.
-diff --git a/test/Frontend/stdlang.c b/test/Frontend/stdlang.c
-index 51484999e3..eac4632fbd 100644
---- a/test/Frontend/stdlang.c
-+++ b/test/Frontend/stdlang.c
+diff --git a/clang/test/Frontend/stdlang.c b/clang/test/Frontend/stdlang.c
+index 51484999e37..eac4632fbdd 100644
+--- a/clang/test/Frontend/stdlang.c
++++ b/clang/test/Frontend/stdlang.c
 @@ -9,6 +9,7 @@
  // RUN: %clang_cc1 -x cl -cl-std=CL1.1 -DOPENCL %s
  // RUN: %clang_cc1 -x cl -cl-std=CL1.2 -DOPENCL %s
@@ -7391,10 +7391,10 @@ index 51484999e3..eac4632fbd 100644
  // RUN: %clang_cc1 -x cl -cl-std=CLC++ -DOPENCL %s
  // RUN: not %clang_cc1 -x cl -std=c99 -DOPENCL %s 2>&1 | FileCheck --check-prefix=CHECK-C99 %s
  // RUN: not %clang_cc1 -x cl -cl-std=invalid -DOPENCL %s 2>&1 | FileCheck --check-prefix=CHECK-INVALID %s
-diff --git a/test/Headers/opencl-c-header.cl b/test/Headers/opencl-c-header.cl
-index 1b151ffdd1..2716076acd 100644
---- a/test/Headers/opencl-c-header.cl
-+++ b/test/Headers/opencl-c-header.cl
+diff --git a/clang/test/Headers/opencl-c-header.cl b/clang/test/Headers/opencl-c-header.cl
+index 1b151ffdd16..2716076acdc 100644
+--- a/clang/test/Headers/opencl-c-header.cl
++++ b/clang/test/Headers/opencl-c-header.cl
 @@ -1,6 +1,7 @@
  // RUN: %clang_cc1 -O0 -triple spir-unknown-unknown -internal-isystem ../../lib/Headers -include opencl-c.h -emit-llvm -o - %s -verify | FileCheck %s
  // RUN: %clang_cc1 -O0 -triple spir-unknown-unknown -internal-isystem ../../lib/Headers -include opencl-c.h -emit-llvm -o - %s -verify -cl-std=CL1.1 | FileCheck %s
@@ -7433,10 +7433,10 @@ index 1b151ffdd1..2716076acd 100644
  global atomic_int z = ATOMIC_VAR_INIT(99);
  #endif //__OPENCL_C_VERSION__
  
-diff --git a/test/Index/pipe-size.cl b/test/Index/pipe-size.cl
-index 94a1255f0a..59b76051ed 100644
---- a/test/Index/pipe-size.cl
-+++ b/test/Index/pipe-size.cl
+diff --git a/clang/test/Index/pipe-size.cl b/clang/test/Index/pipe-size.cl
+index 94a1255f0a4..59b76051eda 100644
+--- a/clang/test/Index/pipe-size.cl
++++ b/clang/test/Index/pipe-size.cl
 @@ -2,6 +2,13 @@
  // RUN: %clang_cc1 -x cl -O0 -cl-std=CL2.0 -emit-llvm -triple spir-unknown-unknown %s -o - | FileCheck %s --check-prefix=SPIR
  // RUN: %clang_cc1 -x cl -O0 -cl-std=CL2.0 -emit-llvm -triple spir64-unknown-unknown %s -o - | FileCheck %s --check-prefix=SPIR64
@@ -7451,10 +7451,10 @@ index 94a1255f0a..59b76051ed 100644
  __kernel void testPipe( pipe int test )
  {
      int s = sizeof(test);
-diff --git a/test/Preprocessor/predefined-macros.c b/test/Preprocessor/predefined-macros.c
-index def105f4c5..b088a37ba6 100644
---- a/test/Preprocessor/predefined-macros.c
-+++ b/test/Preprocessor/predefined-macros.c
+diff --git a/clang/test/Preprocessor/predefined-macros.c b/clang/test/Preprocessor/predefined-macros.c
+index def105f4c52..b088a37ba66 100644
+--- a/clang/test/Preprocessor/predefined-macros.c
++++ b/clang/test/Preprocessor/predefined-macros.c
 @@ -129,6 +129,8 @@
  // RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-CL12
  // RUN: %clang_cc1 %s -E -dM -o - -x cl -cl-std=CL2.0 \
@@ -7502,11 +7502,11 @@ index def105f4c5..b088a37ba6 100644
  // CHECK-FRM: #define __FAST_RELAXED_MATH__ 1
  // CHECK-CLCPP10: #define __CL_CPP_VERSION_1_0__ 100
  // CHECK-CLCPP10: #define __OPENCL_CPP_VERSION__ 100
-diff --git a/test/Sema/feature-extensions-simult-support.cl b/test/Sema/feature-extensions-simult-support.cl
+diff --git a/clang/test/Sema/feature-extensions-simult-support.cl b/clang/test/Sema/feature-extensions-simult-support.cl
 new file mode 100644
-index 0000000000..0789105002
+index 00000000000..0789105002b
 --- /dev/null
-+++ b/test/Sema/feature-extensions-simult-support.cl
++++ b/clang/test/Sema/feature-extensions-simult-support.cl
 @@ -0,0 +1,75 @@
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL1.2 -cl-ext=-cl_khr_fp64
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL1.2 -cl-ext=+cl_khr_fp64
@@ -7583,11 +7583,11 @@ index 0000000000..0789105002
 +#endif
 +
 +kernel void test(){}
-diff --git a/test/Sema/features-ignore-pragma.cl b/test/Sema/features-ignore-pragma.cl
+diff --git a/clang/test/Sema/features-ignore-pragma.cl b/clang/test/Sema/features-ignore-pragma.cl
 new file mode 100644
-index 0000000000..046ce53907
+index 00000000000..046ce539075
 --- /dev/null
-+++ b/test/Sema/features-ignore-pragma.cl
++++ b/clang/test/Sema/features-ignore-pragma.cl
 @@ -0,0 +1,24 @@
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0 -cl-ext=__opencl_c_fp64
@@ -7613,11 +7613,11 @@ index 0000000000..046ce53907
 +#endif
 +
 +kernel void foo() {}
-diff --git a/test/Sema/opencl-features-pipes.cl b/test/Sema/opencl-features-pipes.cl
+diff --git a/clang/test/Sema/opencl-features-pipes.cl b/clang/test/Sema/opencl-features-pipes.cl
 new file mode 100644
-index 0000000000..c0ac778f24
+index 00000000000..c0ac778f24a
 --- /dev/null
-+++ b/test/Sema/opencl-features-pipes.cl
++++ b/clang/test/Sema/opencl-features-pipes.cl
 @@ -0,0 +1,18 @@
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL1.1
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL1.2
@@ -7637,11 +7637,11 @@ index 0000000000..c0ac778f24
 +#endif
 +
 +kernel void foo() {}
-diff --git a/test/Sema/opencl-features.cl b/test/Sema/opencl-features.cl
+diff --git a/clang/test/Sema/opencl-features.cl b/clang/test/Sema/opencl-features.cl
 new file mode 100644
-index 0000000000..aa432f6b60
+index 00000000000..aa432f6b60b
 --- /dev/null
-+++ b/test/Sema/opencl-features.cl
++++ b/clang/test/Sema/opencl-features.cl
 @@ -0,0 +1,128 @@
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL2.0
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL2.0 -cl-ext=-__opencl_c_device_enqueue,-__opencl_c_pipes,-__opencl_c_read_write_images
@@ -7771,11 +7771,11 @@ index 0000000000..aa432f6b60
 +#endif // __OPENCL_C_VERSION__ == CL_VERSION_3_0
 +
 +kernel void foo() {}
-diff --git a/test/Sema/pipe_builtins_feature.cl b/test/Sema/pipe_builtins_feature.cl
+diff --git a/clang/test/Sema/pipe_builtins_feature.cl b/clang/test/Sema/pipe_builtins_feature.cl
 new file mode 100644
-index 0000000000..17673e2387
+index 00000000000..17673e23875
 --- /dev/null
-+++ b/test/Sema/pipe_builtins_feature.cl
++++ b/clang/test/Sema/pipe_builtins_feature.cl
 @@ -0,0 +1,23 @@
 +// RUN: %clang_cc1 -cl-std=cl2.0 -fsyntax-only -verify %s -triple spir-unknown-unknown
 +// RUN: %clang_cc1 -cl-std=cl3.0 -cl-ext=__opencl_c_images -fsyntax-only -verify %s -triple spir-unknown-unknown
@@ -7800,10 +7800,10 @@ index 0000000000..17673e2387
 +
 +
 +
-diff --git a/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl b/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
-index 89cf8e3a81..cc98797791 100644
---- a/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
-+++ b/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
+diff --git a/clang/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl b/clang/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
+index 89cf8e3a812..cc987977911 100644
+--- a/clang/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
++++ b/clang/test/SemaOpenCL/address-spaces-conversions-cl2.0.cl
 @@ -1,6 +1,9 @@
  // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DCONSTANT -cl-std=CL2.0
  // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGLOBAL -cl-std=CL2.0
@@ -7814,10 +7814,10 @@ index 89cf8e3a81..cc98797791 100644
  // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DCONSTANT -cl-std=clc++
  // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGLOBAL -cl-std=clc++
  // RUN: %clang_cc1 %s -ffake-address-space-map -verify -pedantic -fsyntax-only -DGENERIC -cl-std=clc++
-diff --git a/test/SemaOpenCL/address-spaces.cl b/test/SemaOpenCL/address-spaces.cl
-index 55a55dc750..9e0cdc07e6 100644
---- a/test/SemaOpenCL/address-spaces.cl
-+++ b/test/SemaOpenCL/address-spaces.cl
+diff --git a/clang/test/SemaOpenCL/address-spaces.cl b/clang/test/SemaOpenCL/address-spaces.cl
+index 55a55dc7505..9e0cdc07e6a 100644
+--- a/clang/test/SemaOpenCL/address-spaces.cl
++++ b/clang/test/SemaOpenCL/address-spaces.cl
 @@ -1,5 +1,6 @@
  // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only
  // RUN: %clang_cc1 %s -cl-std=CL2.0 -verify -pedantic -fsyntax-only
@@ -7825,10 +7825,10 @@ index 55a55dc750..9e0cdc07e6 100644
  // RUN: %clang_cc1 %s -cl-std=clc++ -verify -pedantic -fsyntax-only
  
  __constant int ci = 1;
-diff --git a/test/SemaOpenCL/cl20-device-side-enqueue.cl b/test/SemaOpenCL/cl20-device-side-enqueue.cl
-index 8946911c09..49ceec183d 100644
---- a/test/SemaOpenCL/cl20-device-side-enqueue.cl
-+++ b/test/SemaOpenCL/cl20-device-side-enqueue.cl
+diff --git a/clang/test/SemaOpenCL/cl20-device-side-enqueue.cl b/clang/test/SemaOpenCL/cl20-device-side-enqueue.cl
+index 8946911c093..49ceec183d6 100644
+--- a/clang/test/SemaOpenCL/cl20-device-side-enqueue.cl
++++ b/clang/test/SemaOpenCL/cl20-device-side-enqueue.cl
 @@ -2,6 +2,12 @@
  // RUN: %clang_cc1 %s -cl-std=CL2.0 -triple "spir-unknown-unknown" -verify -pedantic -fsyntax-only -DB32 -DQUALS="const volatile"
  // RUN: %clang_cc1 %s -cl-std=CL2.0 -triple "spir64-unknown-unknown" -verify -pedantic -fsyntax-only -Wconversion -DWCONV -DQUALS=
@@ -7862,11 +7862,11 @@ index 8946911c09..49ceec183d 100644
 +// expected-error@-2 {{use of declaration 'get_kernel_sub_group_count_for_ndrange' requires cl_khr_subgroups extension to be enabled}}
 +#endif
  }
-diff --git a/test/SemaOpenCL/forget-unsupported-builtins.cl b/test/SemaOpenCL/forget-unsupported-builtins.cl
+diff --git a/clang/test/SemaOpenCL/forget-unsupported-builtins.cl b/clang/test/SemaOpenCL/forget-unsupported-builtins.cl
 new file mode 100644
-index 0000000000..2c94fb0309
+index 00000000000..2c94fb03098
 --- /dev/null
-+++ b/test/SemaOpenCL/forget-unsupported-builtins.cl
++++ b/clang/test/SemaOpenCL/forget-unsupported-builtins.cl
 @@ -0,0 +1,23 @@
 +// RUN: %clang_cc1 -cl-std=cl3.0 -fsyntax-only  -verify %s -triple spir-unknown-unknown
 +// RUN: %clang_cc1 -cl-std=cl3.0 -fsyntax-only -cl-ext=__opencl_c_pipes,__opencl_c_generic_address_space,__opencl_c_device_enqueue -verify %s -triple spir-unknown-unknown -DFEATURES
@@ -7891,20 +7891,20 @@ index 0000000000..2c94fb0309
 +
 +kernel void test(global int *dst) {}
 +
-diff --git a/test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl b/test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl
-index 619b359c7a..6d285e3104 100644
---- a/test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl
-+++ b/test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl
+diff --git a/clang/test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl b/clang/test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl
+index 619b359c7af..6d285e31048 100644
+--- a/clang/test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl
++++ b/clang/test/SemaOpenCL/invalid-pipe-builtin-cl2.0.cl
 @@ -1,4 +1,5 @@
  // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL2.0 -cl-ext=+cl_khr_subgroups
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0 -cl-ext=__opencl_c_subgroups,__opencl_c_pipes
  
  #pragma OPENCL EXTENSION cl_khr_subgroups : enable
  
-diff --git a/test/SemaOpenCL/storageclass-cl20.cl b/test/SemaOpenCL/storageclass-cl20.cl
-index 581701d2a6..469c526ebc 100644
---- a/test/SemaOpenCL/storageclass-cl20.cl
-+++ b/test/SemaOpenCL/storageclass-cl20.cl
+diff --git a/clang/test/SemaOpenCL/storageclass-cl20.cl b/clang/test/SemaOpenCL/storageclass-cl20.cl
+index 581701d2a6a..469c526ebc3 100644
+--- a/clang/test/SemaOpenCL/storageclass-cl20.cl
++++ b/clang/test/SemaOpenCL/storageclass-cl20.cl
 @@ -1,4 +1,5 @@
  // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL2.0
 +// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0 -cl-ext=__opencl_c_program_scope_global_variables,__opencl_c_generic_address_space
@@ -7912,5 +7912,5 @@ index 581701d2a6..469c526ebc 100644
  int G2 = 0;
  global int G3 = 0;
 -- 
-2.29.2
+2.18.1
 
