@@ -41,3 +41,4 @@ def spir_std_1_0: Flag<["-"], "spir-std=1.0">;
 def spir_std_1_2: Flag<["-"], "spir-std=1.2">;
 def x : Separate<["-"], "x">;
 def fdeclare_opencl_builtins : Flag<["-"], "fdeclare-opencl-builtins">;
+def Xclang : Separate<["-"], "Xclang">, HelpText<"Pass an additional option to clang -cc1 invocation">;
