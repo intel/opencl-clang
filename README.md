@@ -26,7 +26,7 @@ following:
 This can be done using the following commands:
 ```
 cd <workspace>
-git clone https://github.com/llvm/llvm-project.git -b release/9.x
+git clone https://github.com/llvm/llvm-project.git . -b release/9.x
 git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_90
 git clone https://github.com/intel/opencl-clang.git -b ocl-open-90
 ```
