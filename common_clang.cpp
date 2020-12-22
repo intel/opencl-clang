@@ -89,9 +89,6 @@ static llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 void CommonClangTerminate() {
   llvm::llvm_shutdown();
-#ifdef APPLIED_LLVM_PATCHES
-  llvm::deleteManagedStaticMutex();
-#endif
 }
 
 // This function mustn't be invoked from a static object constructor,

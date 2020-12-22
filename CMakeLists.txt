@@ -93,9 +93,6 @@ if(NOT USE_PREBUILT_LLVM)
                   ${LLVM_BASE_REVISION}
                   ${TARGET_BRANCH}
                   ret)
-    if(${ret})
-        add_definitions(-DAPPLIED_LLVM_PATCHES)
-    endif()
     apply_patches(${CLANG_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
                   ${CLANG_BASE_REVISION}
