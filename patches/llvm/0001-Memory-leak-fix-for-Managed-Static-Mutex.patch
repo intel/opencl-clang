@@ -1,0 +1,31 @@
+From c86c43b70e029b102543e8a85d269cbeb5c00279 Mon Sep 17 00:00:00 2001
+From: juanrod2 <>
+Date: Tue, 22 Dec 2020 08:33:08 +0800
+Subject: [PATCH] Memory leak fix for Managed Static Mutex
+
+Cleaning a mutex inside ManagedStatic llvm class.
+---
+ llvm/lib/Support/ManagedStatic.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/llvm/lib/Support/ManagedStatic.cpp b/llvm/lib/Support/ManagedStatic.cpp
+index 053493f72fb5..6571580ccecf 100644
+--- a/llvm/lib/Support/ManagedStatic.cpp
++++ b/llvm/lib/Support/ManagedStatic.cpp
+@@ -76,8 +76,12 @@ void ManagedStaticBase::destroy() const {
+ 
+ /// llvm_shutdown - Deallocate and destroy all ManagedStatic variables.
+ void llvm::llvm_shutdown() {
+-  std::lock_guard<std::recursive_mutex> Lock(*getManagedStaticMutex());
++  getManagedStaticMutex()->lock();
+ 
+   while (StaticList)
+     StaticList->destroy();
++
++  getManagedStaticMutex()->unlock();
++  delete ManagedStaticMutex;
++  ManagedStaticMutex = nullptr;
+ }
+-- 
+2.29.2
+
