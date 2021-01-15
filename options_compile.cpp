@@ -168,6 +168,9 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       effectiveArgs.push_back("-fdeclare-opencl-builtins");
       effectiveArgs.push_back("-finclude-default-header");
       useFdeclareOpenCLBuiltins = true;
+    case OPT_COMPILE_Xclang:
+      effectiveArgs.push_back((*it)->getValue());
+      break;
     }
   }
 
@@ -355,6 +358,10 @@ void CompileOptionsParser::processOptions(const char *pszOptions,
     else if (it->compare("-emit-spirv") == 0) {
       m_effectiveArgsRaw.push_back("-emit-llvm-bc");
       m_emitSPIRV = true;
+      continue;
+    }else if (it->compare("-emit-spirv-text") == 0) {
+      m_effectiveArgsRaw.push_back("-emit-llvm-bc");
+      m_emitSPIRVText = true;
       continue;
     }
     m_effectiveArgsRaw.push_back(it->c_str());
