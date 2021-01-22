@@ -142,7 +142,7 @@ private:
 class CompileOptionsParser {
 public:
   CompileOptionsParser(const char *pszOpenCLVersion)
-      : m_commonFilter(pszOpenCLVersion), m_emitSPIRV(false), m_optDisable(false) {}
+      : m_commonFilter(pszOpenCLVersion), m_emitSPIRV(false), m_emitSPIRVText(false), m_optDisable(false) {}
 
   //
   // Validates and prepares the effective options to pass to clang upon
@@ -171,6 +171,7 @@ public:
 
   bool hasEmitSPIRV() const { return m_emitSPIRV; }
   bool hasOptDisable() const { return m_optDisable; }
+  bool hasEmitSPIRVText() const { return m_emitSPIRVText; }
 
 private:
   OpenCLCompileOptTable m_optTbl;
@@ -179,6 +180,7 @@ private:
   llvm::SmallVector<const char *, 16> m_effectiveArgsRaw;
   std::string m_sourceName;
   bool m_emitSPIRV;
+  bool m_emitSPIRVText;
   bool m_optDisable;
 };
 
