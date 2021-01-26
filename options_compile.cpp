@@ -160,6 +160,9 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       effectiveArgs.push_back("-debug-info-kind=line-tables-only");
       effectiveArgs.push_back("-dwarf-version=4");
       break;
+    case OPT_COMPILE_Xclang:
+      effectiveArgs.push_back((*it)->getValue());
+      break;
     }
   }
 
@@ -256,6 +259,10 @@ void CompileOptionsParser::processOptions(const char *pszOptions,
     else if (it->compare("-emit-spirv") == 0) {
       m_effectiveArgsRaw.push_back("-emit-llvm-bc");
       m_emitSPIRV = true;
+      continue;
+    }else if (it->compare("-emit-spirv-text") == 0) {
+      m_effectiveArgsRaw.push_back("-emit-llvm-bc");
+      m_emitSPIRVText = true;
       continue;
     }
     m_effectiveArgsRaw.push_back(it->c_str());

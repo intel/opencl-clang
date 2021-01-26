@@ -79,6 +79,11 @@ Copyright (c) Intel Corporation (2009-2017).
 #include <thread>
 #endif
 
+namespace SPIRV {
+// Use textual format for SPIRV.
+extern bool SPIRVUseTextFormat;
+} // namespace SPIRV
+
 using namespace Intel::OpenCL::ClangFE;
 
 static volatile bool lazyCCInit =
@@ -303,8 +308,10 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
     // llvm::remove_fatal_error_handler();
     err_ostream.flush();
 
-    if (success && optionsParser.hasEmitSPIRV()) {
+    if (success && (optionsParser.hasEmitSPIRV() || optionsParser.hasEmitSPIRVText())) {
       // Translate LLVM IR to SPIR-V.
+      if (optionsParser.hasEmitSPIRVText())
+        SPIRV::SPIRVUseTextFormat = true;
       llvm::StringRef LLVM_IR(static_cast<const char*>(pResult->GetIR()),
                               pResult->GetIRSize());
       std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(LLVM_IR, pResult->GetIRName(), false);
