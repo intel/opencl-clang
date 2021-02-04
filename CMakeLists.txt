@@ -137,7 +137,10 @@ endif(NOT USE_PREBUILT_LLVM)
 set (COMPILE_OPTIONS_TD  opencl_clang_options.td)
 set (COMPILE_OPTIONS_INC opencl_clang_options.inc)
 
-set(LLVM_TABLEGEN_EXE "llvm-tblgen")
+if(NOT DEFINED LLVM_TABLEGEN_EXE)
+  set(LLVM_TABLEGEN_EXE "llvm-tblgen")
+endif()
+
 set(LLVM_TARGET_DEFINITIONS ${COMPILE_OPTIONS_TD})
 if(USE_PREBUILT_LLVM)
   set(TABLEGEN_ADDITIONAL -I ${LLVM_INCLUDE_DIRS})
