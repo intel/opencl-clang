@@ -25,9 +25,9 @@ Before the build all dependencies must be downloaded and laid out as follows:
 This can be done using the following commands:
 ```bash
 cd <workspace>
-git clone https://github.com/llvm/llvm-project.git .
-git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git
-git clone https://github.com/intel/opencl-clang.git
+git clone https://github.com/llvm/llvm-project.git . -b release/12.x
+git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_120
+git clone https://github.com/intel/opencl-clang.git -b ocl-open-120
 ```
 
 Then we need to create a build directory and run the build:
@@ -58,7 +58,7 @@ documented in [Embedding LLVM in your project](https://llvm.org/docs/CMake.html#
 Commands to checkout sources and build:
 ```bash
 cd <workspace>
-git clone https://github.com/intel/opencl-clang.git
+git clone https://github.com/intel/opencl-clang.git -b ocl-open-120
 mkdir build && cd build
 cmake ../opencl-clang
 make all -j`nproc`
@@ -68,13 +68,13 @@ make all -j`nproc`
 
 ##### Preferred LLVM version
 
-By default, openclc-clang's cmake script is searching for LLVM 12.0.0. You can
+By default, opencl-clang's cmake script is searching for LLVM 12.0.0. You can
 override target version of LLVM by using the `PREFERRED_LLVM_VERSION` cmake
 option:
 
 Example:
 ```bash
-cmake -DPREFERRED_LLVM_VERSION="10.0.0" ../opencl-clang
+cmake -DPREFERRED_LLVM_VERSION="12.0.0" ../opencl-clang
 ```
 
 ##### Custom LLVM installation

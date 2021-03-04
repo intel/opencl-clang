@@ -12,6 +12,7 @@ git:
 branches:
   only:
     - master
+    - ocl-open-120
 
 env:
   global:
@@ -31,8 +32,11 @@ before_install:
       libclang-cpp${LLVM_VERSION}-dev
 
 install:
-  - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
-  - unzip /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip -d spirv-llvm-translator
+  git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git spirv-llvm-translator -b llvm_release_${LLVM_VERSION}0
+  - mkdir spirv-llvm-translator/build && cd spirv-llvm-translator/build
+  - cmake .. -DCMAKE_INSTALL_PREFIX=./install -DBUILD_SHARED_LIBS=ON -DLLVM_BUILD_TOOLS=ON -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+  - make -j`nproc` && make install
+  - cd ../../
 
 compiler:
   - gcc
@@ -40,5 +44,5 @@ compiler:
 
 script:
   - mkdir build && cd build
-  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=./spirv-llvm-translator -DCMAKE_INSTALL_PREFIX=./install ..
+  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=${TRAVIS_BUILD_DIR}/spirv-llvm-translator/build/install -DCMAKE_INSTALL_PREFIX=./install ..
   - make install
