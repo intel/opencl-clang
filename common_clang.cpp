@@ -218,144 +218,144 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
   try {
     std::unique_ptr<OCLFEBinaryResult> pResult(new OCLFEBinaryResult());
 
-    // LLVM doesn't guarantee thread safety,
-    // therefore we serialize execution of LLVM code.
-    llvm::sys::SmartScopedLock<true> compileGuard {*compileMutex};
-
-    // Parse options
-    CompileOptionsParser optionsParser(pszOpenCLVer);
-    optionsParser.processOptions(pszOptions, pszOptionsEx);
-
-    // Prepare error log
-    llvm::raw_string_ostream err_ostream(pResult->getLogRef());
-
-    // Prepare our diagnostic client.
-    llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(
-        new clang::DiagnosticIDs());
-    llvm::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(
-        new clang::DiagnosticOptions());
-    DiagOpts->ShowPresumedLoc = true;
-    clang::TextDiagnosticPrinter *DiagsPrinter =
-        new clang::TextDiagnosticPrinter(err_ostream, &*DiagOpts);
-    llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags(
-        new clang::DiagnosticsEngine(DiagID, &*DiagOpts, DiagsPrinter));
-
     // Create the clang compiler
     std::unique_ptr<clang::CompilerInstance> compiler(
-        new clang::CompilerInstance());
+            new clang::CompilerInstance());
 
-    // Prepare output buffer
-    std::unique_ptr<llvm::raw_pwrite_stream>
-        ir_ostream(new llvm::raw_svector_ostream(pResult->getIRBufferRef()));
-    // Set buffers
-    // CompilerInstance takes ownership over output stream
-    compiler->setOutputStream(std::move(ir_ostream));
+    CompileOptionsParser optionsParser(pszOpenCLVer);
+    llvm::raw_string_ostream err_ostream(pResult->getLogRef());
+    {
+        llvm::sys::SmartScopedLock<true> compileGuard {*compileMutex};
 
-    compiler->setDiagnostics(&*Diags);
+        // Parse options
+        optionsParser.processOptions(pszOptions, pszOptionsEx);
+        // Prepare error log
 
-    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS(
-        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
-    llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> MemFS(
-        new llvm::vfs::InMemoryFileSystem);
-    OverlayFS->pushOverlay(MemFS);
+        // Prepare our diagnostic client.
+        llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(
+                new clang::DiagnosticIDs());
+        llvm::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(
+                new clang::DiagnosticOptions());
+        DiagOpts->ShowPresumedLoc = true;
+        clang::TextDiagnosticPrinter *DiagsPrinter =
+            new clang::TextDiagnosticPrinter(err_ostream, &*DiagOpts);
+        llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags(
+                new clang::DiagnosticsEngine(DiagID, &*DiagOpts, DiagsPrinter));
 
-    compiler->createFileManager(OverlayFS);
-    compiler->createSourceManager(compiler->getFileManager());
 
-    // Calling ResetAllOptionOccurrences as WA for issue from here:
-    // https://reviews.llvm.org/D66324?id=219733#1680231
-    llvm::cl::ResetAllOptionOccurrences();
-    // Create compiler invocation from user args before trickering with it
-    clang::CompilerInvocation::CreateFromArgs(compiler->getInvocation(),
-                                              optionsParser.args(), *Diags);
+        // Prepare output buffer
+        std::unique_ptr<llvm::raw_pwrite_stream>
+            ir_ostream(new llvm::raw_svector_ostream(pResult->getIRBufferRef()));
+        // Set buffers
+        // CompilerInstance takes ownership over output stream
+        compiler->setOutputStream(std::move(ir_ostream));
 
-    // Configure our handling of diagnostics.
-    ProcessWarningOptions(*Diags, compiler->getDiagnosticOpts());
+        compiler->setDiagnostics(&*Diags);
 
-    // Map memory buffers to a virtual file system
+        llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS(
+                new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
+        llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> MemFS(
+                new llvm::vfs::InMemoryFileSystem);
+        OverlayFS->pushOverlay(MemFS);
 
-    // Source file
-    MemFS->addFile(
-        optionsParser.getSourceName(), (time_t)0,
-        llvm::MemoryBuffer::getMemBuffer(
-            llvm::StringRef(pszProgramSource), optionsParser.getSourceName()));
+        compiler->createFileManager(OverlayFS);
+        compiler->createSourceManager(compiler->getFileManager());
 
-    // Input header with OpenCL defines.
-    std::vector<Resource> vHeaderWithDefs;
-    if (!GetHeaders(vHeaderWithDefs)) {
-      return CL_COMPILE_PROGRAM_FAILURE;
+        // Calling ResetAllOptionOccurrences as WA for issue from here:
+        // https://reviews.llvm.org/D66324?id=219733#1680231
+        llvm::cl::ResetAllOptionOccurrences();
+        // Create compiler invocation from user args before trickering with it
+        clang::CompilerInvocation::CreateFromArgs(compiler->getInvocation(),
+                optionsParser.args(), *Diags);
+
+        // Configure our handling of diagnostics.
+        ProcessWarningOptions(*Diags, compiler->getDiagnosticOpts());
+
+        // Map memory buffers to a virtual file system
+
+        // Source file
+        MemFS->addFile(
+                optionsParser.getSourceName(), (time_t)0,
+                llvm::MemoryBuffer::getMemBuffer(
+                    llvm::StringRef(pszProgramSource), optionsParser.getSourceName()));
+
+        // Input header with OpenCL defines.
+        std::vector<Resource> vHeaderWithDefs;
+        if (!GetHeaders(vHeaderWithDefs)) {
+            return CL_COMPILE_PROGRAM_FAILURE;
+        }
+
+        for (const auto &Header:vHeaderWithDefs) {
+            auto Buf = llvm::MemoryBuffer::getMemBuffer(
+                    llvm::StringRef(Header.m_data, Header.m_size),
+                    Header.m_name);
+
+            MemFS->addFile(Header.m_name,(time_t)0, std::move(Buf));
+        }
+
+        // Input Headers
+        for (unsigned int i = 0; i < uiNumInputHeaders; ++i) {
+            auto Header = llvm::MemoryBuffer::getMemBuffer(
+                    pInputHeaders[i], pInputHeadersNames[i]);
+            MemFS->addFile(pInputHeadersNames[i], (time_t)0, std::move(Header));
+        }
     }
-
-    for (const auto &Header:vHeaderWithDefs) {
-      auto Buf = llvm::MemoryBuffer::getMemBuffer(
-          llvm::StringRef(Header.m_data, Header.m_size),
-          Header.m_name);
-
-      MemFS->addFile(Header.m_name,(time_t)0, std::move(Buf));
-    }
-
-    // Input Headers
-    for (unsigned int i = 0; i < uiNumInputHeaders; ++i) {
-      auto Header = llvm::MemoryBuffer::getMemBuffer(
-          pInputHeaders[i], pInputHeadersNames[i]);
-      MemFS->addFile(pInputHeadersNames[i], (time_t)0, std::move(Header));
-    }
-
-
     // Execute the frontend actions.
     bool success = false;
     try {
       success = clang::ExecuteCompilerInvocation(compiler.get());
     } catch (const std::exception &) {
     }
+    {
+        llvm::sys::SmartScopedLock<true> compileGuard {*compileMutex};
 
-    pResult->setIRType(IR_TYPE_COMPILED_OBJECT);
-    pResult->setIRName(optionsParser.getSourceName());
+        pResult->setIRType(IR_TYPE_COMPILED_OBJECT);
+        pResult->setIRName(optionsParser.getSourceName());
 
-    // Our error handler depends on the Diagnostics object, which we're
-    // potentially about to delete. Uninstall the handler now so that any
-    // later errors use the default handling behavior instead.
-    // (currently commented out since setting the llvm error handling in
-    // multi-threaded environment is unsupported)
-    // llvm::remove_fatal_error_handler();
-    err_ostream.flush();
+        // Our error handler depends on the Diagnostics object, which we're
+        // potentially about to delete. Uninstall the handler now so that any
+        // later errors use the default handling behavior instead.
+        // (currently commented out since setting the llvm error handling in
+        // multi-threaded environment is unsupported)
+        // llvm::remove_fatal_error_handler();
+        err_ostream.flush();
 
-    if (success && (optionsParser.hasEmitSPIRV() || optionsParser.hasEmitSPIRVText())) {
-      // Translate LLVM IR to SPIR-V.
-      if (optionsParser.hasEmitSPIRVText())
-        SPIRV::SPIRVUseTextFormat = true;
-      llvm::StringRef LLVM_IR(static_cast<const char*>(pResult->GetIR()),
-                              pResult->GetIRSize());
-      std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(LLVM_IR, pResult->GetIRName(), false);
-      llvm::LLVMContext Context;
-      auto E = llvm::getOwningLazyBitcodeModule(std::move(MB), Context,
-                                               /*ShouldLazyLoadMetadata=*/true);
-      llvm::logAllUnhandledErrors(E.takeError(), err_ostream, "error: ");
-      std::unique_ptr<llvm::Module> M = std::move(*E);
+        if (success && (optionsParser.hasEmitSPIRV() || optionsParser.hasEmitSPIRVText())) {
+            // Translate LLVM IR to SPIR-V.
+            if (optionsParser.hasEmitSPIRVText())
+                SPIRV::SPIRVUseTextFormat = true;
+            llvm::StringRef LLVM_IR(static_cast<const char*>(pResult->GetIR()),
+                    pResult->GetIRSize());
+            std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(LLVM_IR, pResult->GetIRName(), false);
+            llvm::LLVMContext Context;
+            auto E = llvm::getOwningLazyBitcodeModule(std::move(MB), Context,
+                    /*ShouldLazyLoadMetadata=*/true);
+            llvm::logAllUnhandledErrors(E.takeError(), err_ostream, "error: ");
+            std::unique_ptr<llvm::Module> M = std::move(*E);
 
-      if (M->materializeAll()) {
-        if (pBinaryResult) {
-          *pBinaryResult = nullptr;
+            if (M->materializeAll()) {
+                if (pBinaryResult) {
+                    *pBinaryResult = nullptr;
+                }
+                assert(!"Failed to read just compiled LLVM IR!");
+                return CL_COMPILE_PROGRAM_FAILURE;
+            }
+            pResult->getIRBufferRef().clear();
+            SmallVectorBuffer StreamBuf(pResult->getIRBufferRef());
+            std::ostream OS(&StreamBuf);
+            std::string Err;
+            SPIRV::TranslatorOpts SPIRVOpts;
+            SPIRVOpts.enableAllExtensions();
+            if (!optionsParser.hasOptDisable()) {
+                SPIRVOpts.setMemToRegEnabled(true);
+            }
+            success = llvm::writeSpirv(M.get(), SPIRVOpts, OS, Err);
+            err_ostream << Err.c_str();
+            err_ostream.flush();
         }
-        assert(!"Failed to read just compiled LLVM IR!");
-        return CL_COMPILE_PROGRAM_FAILURE;
-      }
-      pResult->getIRBufferRef().clear();
-      SmallVectorBuffer StreamBuf(pResult->getIRBufferRef());
-      std::ostream OS(&StreamBuf);
-      std::string Err;
-      SPIRV::TranslatorOpts SPIRVOpts;
-      SPIRVOpts.enableAllExtensions();
-      if (!optionsParser.hasOptDisable()) {
-        SPIRVOpts.setMemToRegEnabled(true);
-      }
-      success = llvm::writeSpirv(M.get(), SPIRVOpts, OS, Err);
-      err_ostream << Err.c_str();
-      err_ostream.flush();
-    }
-
-    if (pBinaryResult) {
-      *pBinaryResult = pResult.release();
+        if (pBinaryResult) {
+          *pBinaryResult = pResult.release();
+        }
     }
     return success ? CL_SUCCESS : CL_COMPILE_PROGRAM_FAILURE;
   } catch (std::bad_alloc &) {
