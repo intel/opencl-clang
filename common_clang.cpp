@@ -45,8 +45,10 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticIDs.h"
 #include "clang/Basic/DiagnosticOptions.h"
+#include "clang/Basic/SourceLocation.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/FrontendTool/Utils.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Serialization/ModuleManager.h"
@@ -248,7 +250,9 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
       // Calling ResetAllOptionOccurrences as WA for issue from here:
       // https://reviews.llvm.org/D66324?id=219733#1680231
+      Diags->setSeverity(clang::diag::warn_profile_data_misexpect, clang::diag::Severity::Warning, clang::SourceLocation());
       llvm::cl::ResetAllOptionOccurrences();
+
       // Create compiler invocation from user args before trickering with it
       clang::CompilerInvocation::CreateFromArgs(compiler->getInvocation(),
           optionsParser.args(), *Diags);
