@@ -1,0 +1,2654 @@
+From 6861d938e5c946cc7079d9849ef7560d07aa2d80 Mon Sep 17 00:00:00 2001
+From: Roman Lebedev <lebedev.ri@gmail.com>
+Date: Sat, 14 Nov 2020 09:44:14 +0300
+Subject: [PATCH] Revert "clang-misexpect: Profile Guided Validation of
+ Performance Annotations in LLVM"
+
+See discussion in https://bugs.llvm.org/show_bug.cgi?id=45073 / https://reviews.llvm.org/D66324#2334485
+the implementation is known-broken for certain inputs,
+the bugreport was up for a significant amount of timer,
+and there has been no activity to address it.
+Therefore, just completely rip out all of misexpect handling.
+
+I suspect, fixing it requires redesigning the internals of MD_misexpect.
+Should anyone commit to fixing the implementation problem,
+starting from clean slate may be better anyways.
+
+This reverts commit 7bdad08429411e7d0ecd58cd696b1efe3cff309e,
+and some of it's follow-ups, that don't stand on their own.
+---
+ clang/docs/DiagnosticsReference.rst           |   9 -
+ .../clang/Basic/DiagnosticFrontendKinds.td    |   6 -
+ clang/include/clang/Basic/DiagnosticGroups.td |   1 -
+ clang/lib/CodeGen/CodeGenAction.cpp           |  36 ---
+ clang/lib/Frontend/CompilerInvocation.cpp     |   3 -
+ .../thinlto-clang-diagnostic-handler-in-be.c  |   2 -
+ .../attr-likelihood-if-vs-builtin-expect.cpp  |  30 +-
+ ...expect-branch-nonconst-expect-arg.proftext |   9 -
+ .../Profile/Inputs/misexpect-branch.proftext  |   9 -
+ .../misexpect-switch-default-only.proftext    |  12 -
+ .../Inputs/misexpect-switch-default.proftext  |  16 -
+ .../Inputs/misexpect-switch-nonconst.proftext |  17 -
+ .../Profile/Inputs/misexpect-switch.proftext  |  16 -
+ clang/test/Profile/misexpect-branch-cold.c    |  26 --
+ .../misexpect-branch-nonconst-expected-val.c  |  23 --
+ .../Profile/misexpect-branch-unpredictable.c  |  25 --
+ clang/test/Profile/misexpect-branch.c         |  28 --
+ clang/test/Profile/misexpect-switch-default.c |  40 ---
+ .../test/Profile/misexpect-switch-nonconst.c  |  43 ---
+ .../misexpect-switch-only-default-case.c      |  35 --
+ clang/test/Profile/misexpect-switch.c         |  41 ---
+ llvm/include/llvm/IR/DiagnosticInfo.h         |  20 --
+ llvm/include/llvm/IR/FixedMetadataKinds.def   |   7 +-
+ llvm/include/llvm/IR/MDBuilder.h              |   4 -
+ .../include/llvm/Transforms/Utils/MisExpect.h |  43 ---
+ llvm/lib/IR/DiagnosticInfo.cpp                |  11 -
+ llvm/lib/IR/MDBuilder.cpp                     |  12 -
+ llvm/lib/Transforms/IPO/SampleProfile.cpp     |   3 -
+ .../Instrumentation/PGOInstrumentation.cpp    |   3 -
+ .../Scalar/LowerExpectIntrinsic.cpp           |  16 -
+ llvm/lib/Transforms/Utils/CMakeLists.txt      |   1 -
+ llvm/lib/Transforms/Utils/MisExpect.cpp       | 178 ----------
+ .../Transforms/LowerExpectIntrinsic/basic.ll  |  29 +-
+ .../expect-with-probability.ll                |  30 +-
+ .../Inputs/misexpect-branch-correct.proftext  |  38 ---
+ .../Inputs/misexpect-branch.proftext          |  38 ---
+ .../Inputs/misexpect-branch_entry.proftext    |  39 ---
+ .../Inputs/misexpect-switch-correct.proftext  |  16 -
+ .../misexpect-switch-correct_entry.proftext   |  17 -
+ .../Inputs/misexpect-switch.proftext          |  16 -
+ .../Inputs/misexpect-switch_entry.proftext    |  17 -
+ .../PGOProfile/misexpect-branch-correct.ll    |  94 ------
+ .../PGOProfile/misexpect-branch-stripped.ll   | 123 -------
+ .../misexpect-branch-unpredictable.ll         |  89 -----
+ .../Transforms/PGOProfile/misexpect-branch.ll | 139 --------
+ .../PGOProfile/misexpect-switch-default.ll    | 194 -----------
+ .../Transforms/PGOProfile/misexpect-switch.ll | 306 ------------------
+ .../llvm/lib/Transforms/Utils/BUILD.gn        |   1 -
+ 48 files changed, 44 insertions(+), 1867 deletions(-)
+ delete mode 100644 clang/test/Profile/Inputs/misexpect-branch-nonconst-expect-arg.proftext
+ delete mode 100644 clang/test/Profile/Inputs/misexpect-branch.proftext
+ delete mode 100644 clang/test/Profile/Inputs/misexpect-switch-default-only.proftext
+ delete mode 100644 clang/test/Profile/Inputs/misexpect-switch-default.proftext
+ delete mode 100644 clang/test/Profile/Inputs/misexpect-switch-nonconst.proftext
+ delete mode 100644 clang/test/Profile/Inputs/misexpect-switch.proftext
+ delete mode 100644 clang/test/Profile/misexpect-branch-cold.c
+ delete mode 100644 clang/test/Profile/misexpect-branch-nonconst-expected-val.c
+ delete mode 100644 clang/test/Profile/misexpect-branch-unpredictable.c
+ delete mode 100644 clang/test/Profile/misexpect-branch.c
+ delete mode 100644 clang/test/Profile/misexpect-switch-default.c
+ delete mode 100644 clang/test/Profile/misexpect-switch-nonconst.c
+ delete mode 100644 clang/test/Profile/misexpect-switch-only-default-case.c
+ delete mode 100644 clang/test/Profile/misexpect-switch.c
+ delete mode 100644 llvm/include/llvm/Transforms/Utils/MisExpect.h
+ delete mode 100644 llvm/lib/Transforms/Utils/MisExpect.cpp
+ delete mode 100644 llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch-correct.proftext
+ delete mode 100644 llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch.proftext
+ delete mode 100644 llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch_entry.proftext
+ delete mode 100644 llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch-correct.proftext
+ delete mode 100644 llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch-correct_entry.proftext
+ delete mode 100644 llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch.proftext
+ delete mode 100644 llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch_entry.proftext
+ delete mode 100644 llvm/test/Transforms/PGOProfile/misexpect-branch-correct.ll
+ delete mode 100644 llvm/test/Transforms/PGOProfile/misexpect-branch-stripped.ll
+ delete mode 100644 llvm/test/Transforms/PGOProfile/misexpect-branch-unpredictable.ll
+ delete mode 100644 llvm/test/Transforms/PGOProfile/misexpect-branch.ll
+ delete mode 100644 llvm/test/Transforms/PGOProfile/misexpect-switch-default.ll
+ delete mode 100644 llvm/test/Transforms/PGOProfile/misexpect-switch.ll
+
+diff --git a/clang/docs/DiagnosticsReference.rst b/clang/docs/DiagnosticsReference.rst
+index 2fab8b5f3026..04d7f74d5bfc 100644
+--- a/clang/docs/DiagnosticsReference.rst
++++ b/clang/docs/DiagnosticsReference.rst
+@@ -7977,15 +7977,6 @@ This diagnostic is enabled by default.
+ +------------------------------------------------------------------------------------------------+
+ 
+ 
+--Wmisexpect
+------------
+-**Diagnostic text:**
+-
+-+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+-|:warning:`warning:` |nbsp| :diagtext:`Potential performance regression from use of \_\_builtin\_expect(): Annotation was correct on` |nbsp| :placeholder:`A` |nbsp| :diagtext:`of profiled executions.`|
+-+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+-
+-
+ -Wmisleading-indentation
+ ------------------------
+ **Diagnostic text:**
+diff --git a/clang/include/clang/Basic/DiagnosticFrontendKinds.td b/clang/include/clang/Basic/DiagnosticFrontendKinds.td
+index 6434d92fd8fc..0f1b68bd0e7d 100644
+--- a/clang/include/clang/Basic/DiagnosticFrontendKinds.td
++++ b/clang/include/clang/Basic/DiagnosticFrontendKinds.td
+@@ -299,12 +299,6 @@ def warn_profile_data_missing : Warning<
+ def warn_profile_data_unprofiled : Warning<
+   "no profile data available for file \"%0\"">,
+   InGroup<ProfileInstrUnprofiled>;
+-def warn_profile_data_misexpect : Warning<
+-  "Potential performance regression from use of __builtin_expect(): "
+-  "Annotation was correct on %0 of profiled executions.">,
+-  BackendInfo,
+-  InGroup<MisExpect>,
+-  DefaultIgnore;
+ } // end of instrumentation issue category
+ 
+ }
+diff --git a/clang/include/clang/Basic/DiagnosticGroups.td b/clang/include/clang/Basic/DiagnosticGroups.td
+index d8e66bdefca1..c2398e5a6881 100644
+--- a/clang/include/clang/Basic/DiagnosticGroups.td
++++ b/clang/include/clang/Basic/DiagnosticGroups.td
+@@ -1156,7 +1156,6 @@ def BackendOptimizationFailure : DiagGroup<"pass-failed">;
+ def ProfileInstrMissing : DiagGroup<"profile-instr-missing">;
+ def ProfileInstrOutOfDate : DiagGroup<"profile-instr-out-of-date">;
+ def ProfileInstrUnprofiled : DiagGroup<"profile-instr-unprofiled">;
+-def MisExpect : DiagGroup<"misexpect">;
+ 
+ // AddressSanitizer frontend instrumentation remarks.
+ def SanitizeAddressRemarks : DiagGroup<"sanitize-address">;
+diff --git a/clang/lib/CodeGen/CodeGenAction.cpp b/clang/lib/CodeGen/CodeGenAction.cpp
+index 871cdb7dac3b..1e935bbeeca7 100644
+--- a/clang/lib/CodeGen/CodeGenAction.cpp
++++ b/clang/lib/CodeGen/CodeGenAction.cpp
+@@ -404,9 +404,6 @@ namespace clang {
+     bool StackSizeDiagHandler(const llvm::DiagnosticInfoStackSize &D);
+     /// Specialized handler for unsupported backend feature diagnostic.
+     void UnsupportedDiagHandler(const llvm::DiagnosticInfoUnsupported &D);
+-    /// Specialized handler for misexpect warnings.
+-    /// Note that misexpect remarks are emitted through ORE
+-    void MisExpectDiagHandler(const llvm::DiagnosticInfoMisExpect &D);
+     /// Specialized handlers for optimization remarks.
+     /// Note that these handlers only accept remarks and they always handle
+     /// them.
+@@ -674,36 +671,6 @@ void BackendConsumer::UnsupportedDiagHandler(
+         << Filename << Line << Column;
+ }
+ 
+-void BackendConsumer::MisExpectDiagHandler(
+-    const llvm::DiagnosticInfoMisExpect &D) {
+-  StringRef Filename;
+-  unsigned Line, Column;
+-  bool BadDebugInfo = false;
+-  FullSourceLoc Loc;
+-  std::string Msg;
+-  raw_string_ostream MsgStream(Msg);
+-  DiagnosticPrinterRawOStream DP(MsgStream);
+-
+-  // Context will be nullptr for IR input files, we will construct the diag
+-  // message from llvm::DiagnosticInfoMisExpect.
+-  if (Context != nullptr) {
+-    Loc = getBestLocationFromDebugLoc(D, BadDebugInfo, Filename, Line, Column);
+-    MsgStream << D.getMsg();
+-  } else {
+-    DiagnosticPrinterRawOStream DP(MsgStream);
+-    D.print(DP);
+-  }
+-  Diags.Report(Loc, diag::warn_profile_data_misexpect) << MsgStream.str();
+-
+-  if (BadDebugInfo)
+-    // If we were not able to translate the file:line:col information
+-    // back to a SourceLocation, at least emit a note stating that
+-    // we could not translate this location. This can happen in the
+-    // case of #line directives.
+-    Diags.Report(Loc, diag::note_fe_backend_invalid_loc)
+-        << Filename << Line << Column;
+-}
+-
+ void BackendConsumer::EmitOptimizationMessage(
+     const llvm::DiagnosticInfoOptimizationBase &D, unsigned DiagID) {
+   // We only support warnings and remarks.
+@@ -881,9 +848,6 @@ void BackendConsumer::DiagnosticHandlerImpl(const DiagnosticInfo &DI) {
+   case llvm::DK_Unsupported:
+     UnsupportedDiagHandler(cast<DiagnosticInfoUnsupported>(DI));
+     return;
+-  case llvm::DK_MisExpect:
+-    MisExpectDiagHandler(cast<DiagnosticInfoMisExpect>(DI));
+-    return;
+   default:
+     // Plugin IDs are not bound to any value as they are set dynamically.
+     ComputeDiagRemarkID(Severity, backend_plugin, DiagID);
+diff --git a/clang/lib/Frontend/CompilerInvocation.cpp b/clang/lib/Frontend/CompilerInvocation.cpp
+index ba6ff82902f8..2e20ecea3334 100644
+--- a/clang/lib/Frontend/CompilerInvocation.cpp
++++ b/clang/lib/Frontend/CompilerInvocation.cpp
+@@ -3833,9 +3833,6 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
+     }
+   }
+ 
+-  if (Diags.isIgnored(diag::warn_profile_data_misexpect, SourceLocation()))
+-    Res.FrontendOpts.LLVMArgs.push_back("-pgo-warn-misexpect");
+-
+   LangOpts.FunctionAlignment =
+       getLastArgIntValue(Args, OPT_function_alignment, 0, Diags);
+ 
+diff --git a/clang/test/CodeGen/thinlto-clang-diagnostic-handler-in-be.c b/clang/test/CodeGen/thinlto-clang-diagnostic-handler-in-be.c
+index 389d24425cc4..32489694289f 100644
+--- a/clang/test/CodeGen/thinlto-clang-diagnostic-handler-in-be.c
++++ b/clang/test/CodeGen/thinlto-clang-diagnostic-handler-in-be.c
+@@ -7,7 +7,6 @@
+ // RUN: llvm-lto -thinlto -o %t %t1.bo
+ // RUN: %clang -cc1 -O2 -fexperimental-new-pass-manager -x ir %t1.bo -fthinlto-index=%t.thinlto.bc -emit-obj -Rpass-analysis=info 2>&1 | FileCheck %s -check-prefix=CHECK-REMARK
+ // RUN: llvm-profdata merge -o %t2.profdata %S/Inputs/thinlto_expect2.proftext
+-// RUN: %clang -cc1 -O2 -fexperimental-new-pass-manager -x ir %t1.bo -fthinlto-index=%t.thinlto.bc -fprofile-instrument-use-path=%t2.profdata -emit-obj -Wmisexpect 2>&1 | FileCheck %s -check-prefix=CHECK-WARNING
+ // RUN: %clang -cc1 -O2 -fexperimental-new-pass-manager -x ir %t1.bo -fthinlto-index=%t.thinlto.bc -fprofile-instrument-use-path=%t2.profdata -emit-obj 2>&1 | FileCheck %s -allow-empty -check-prefix=CHECK-NOWARNING
+ 
+ int sum;
+@@ -20,5 +19,4 @@ __attribute__((noinline)) void foo(int m) {
+     bar();
+ }
+ // CHECK-REMARK: remark: {{.*}}.c:
+-// CHECK-WARNING: warning: Potential performance regression from use of __builtin_expect(): Annotation was correct on {{.*}}.c:{{[0-9]*}}:{{[0-9]*}}: 50.00% (12 / 24) of profiled executions.
+ // CHECK-NOWARNING-NOT: warning: {{.*}}.c:{{[0-9]*}}:26: 50.00% (12 / 24)
+diff --git a/clang/test/CodeGenCXX/attr-likelihood-if-vs-builtin-expect.cpp b/clang/test/CodeGenCXX/attr-likelihood-if-vs-builtin-expect.cpp
+index 5872c4c5273f..b20537bd784a 100644
+--- a/clang/test/CodeGenCXX/attr-likelihood-if-vs-builtin-expect.cpp
++++ b/clang/test/CodeGenCXX/attr-likelihood-if-vs-builtin-expect.cpp
+@@ -36,7 +36,7 @@ void ab0(int &i) {
+   // CHECK: br {{.*}}end{{$}}
+   // CHECK: br {{.*}}end{{$}}
+   // CHECK: br {{.*}}end{{$}}
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
+   if (__builtin_expect(a() && b() && c(), 0)) {
+     ++i;
+   } else {
+@@ -48,7 +48,7 @@ void au(int &i) {
+   // CHECK-LABEL: define{{.*}}au
+   // CHECK: br {{.*}}else{{$}}
+   // CHECK: br {{.*}}else{{$}}
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
+   if (a() && b() && c()) [[unlikely]] {
+     ++i;
+   } else {
+@@ -83,9 +83,9 @@ void ol(int &i) {
+ 
+ void ob0(int &i) {
+   // CHECK-LABEL: define{{.*}}ob0
+-  // CHECK: br {{.*}} !prof !10
+-  // CHECK: br {{.*}} !prof !10
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
++  // CHECK: br {{.*}} !prof !9
++  // CHECK: br {{.*}} !prof !9
+   if (__builtin_expect(a() || b() || c(), 0)) {
+     i = 0;
+   } else {
+@@ -95,9 +95,9 @@ void ob0(int &i) {
+ 
+ void ou(int &i) {
+   // CHECK-LABEL: define{{.*}}ou
+-  // CHECK: br {{.*}} !prof !10
+-  // CHECK: br {{.*}} !prof !10
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
++  // CHECK: br {{.*}} !prof !9
++  // CHECK: br {{.*}} !prof !9
+   if (a() || b() || c()) [[unlikely]] {
+     i = 0;
+   } else {
+@@ -127,7 +127,7 @@ void nl(int &i) {
+ 
+ void nb0(int &i) {
+   // CHECK-LABEL: define{{.*}}nb0
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
+   if (__builtin_expect(!a(), 0)) {
+     ++i;
+   } else {
+@@ -137,7 +137,7 @@ void nb0(int &i) {
+ 
+ void nu(int &i) {
+   // CHECK-LABEL: define{{.*}}nu
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
+   if (bool d = !a()) [[unlikely]] {
+     ++i;
+   } else {
+@@ -188,7 +188,7 @@ void tb0(int &i) {
+   // CHECK: br {{.*}}false{{$}}
+   // CHECK: br {{.*}}end{{$}}
+   // CHECK: br {{.*}}end{{$}}
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
+   if (__builtin_expect(a() ? b() : c(), 0)) {
+     ++i;
+   } else {
+@@ -201,7 +201,7 @@ void tu(int &i) {
+   // CHECK: br {{.*}}false{{$}}
+   // CHECK: br {{.*}}end{{$}}
+   // CHECK: br {{.*}}end{{$}}
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
+   if (bool d = a() ? b() : c()) [[unlikely]] {
+     ++i;
+   } else {
+@@ -212,8 +212,8 @@ void tu(int &i) {
+ void tu2(int &i) {
+   // CHECK-LABEL: define{{.*}}tu
+   // CHECK: br {{.*}}false{{$}}
+-  // CHECK: br {{.*}} !prof !10
+-  // CHECK: br {{.*}} !prof !10
++  // CHECK: br {{.*}} !prof !9
++  // CHECK: br {{.*}} !prof !9
+   if (a() ? b() : c()) [[unlikely]] {
+     ++i;
+   } else {
+@@ -222,4 +222,4 @@ void tu2(int &i) {
+ }
+ 
+ // CHECK: !6 = !{!"branch_weights", i32 2000, i32 1}
+-// CHECK: !10 = !{!"branch_weights", i32 1, i32 2000}
++// CHECK: !9 = !{!"branch_weights", i32 1, i32 2000}
+diff --git a/clang/test/Profile/Inputs/misexpect-branch-nonconst-expect-arg.proftext b/clang/test/Profile/Inputs/misexpect-branch-nonconst-expect-arg.proftext
+deleted file mode 100644
+index a99351c06e5a..000000000000
+--- a/clang/test/Profile/Inputs/misexpect-branch-nonconst-expect-arg.proftext
++++ /dev/null
+@@ -1,9 +0,0 @@
+-bar
+-# Func Hash:
+-11262309464
+-# Num Counters:
+-2
+-# Counter Values:
+-200000
+-2
+-
+diff --git a/clang/test/Profile/Inputs/misexpect-branch.proftext b/clang/test/Profile/Inputs/misexpect-branch.proftext
+deleted file mode 100644
+index b809c1491fbf..000000000000
+--- a/clang/test/Profile/Inputs/misexpect-branch.proftext
++++ /dev/null
+@@ -1,9 +0,0 @@
+-bar
+-# Func Hash:
+-45795613684824
+-# Num Counters:
+-2
+-# Counter Values:
+-200000
+-0
+-
+diff --git a/clang/test/Profile/Inputs/misexpect-switch-default-only.proftext b/clang/test/Profile/Inputs/misexpect-switch-default-only.proftext
+deleted file mode 100644
+index ac59378e7687..000000000000
+--- a/clang/test/Profile/Inputs/misexpect-switch-default-only.proftext
++++ /dev/null
+@@ -1,12 +0,0 @@
+-main
+-# Func Hash:
+-79676873694057560
+-# Num Counters:
+-5
+-# Counter Values:
+-1
+-20
+-20000
+-20000
+-20000
+-
+diff --git a/clang/test/Profile/Inputs/misexpect-switch-default.proftext b/clang/test/Profile/Inputs/misexpect-switch-default.proftext
+deleted file mode 100644
+index 533da9176523..000000000000
+--- a/clang/test/Profile/Inputs/misexpect-switch-default.proftext
++++ /dev/null
+@@ -1,16 +0,0 @@
+-main
+-# Func Hash:
+-8734802134600123338
+-# Num Counters:
+-9
+-# Counter Values:
+-1
+-20000
+-20000
+-4066
+-11889
+-0
+-0
+-4045
+-0
+-
+diff --git a/clang/test/Profile/Inputs/misexpect-switch-nonconst.proftext b/clang/test/Profile/Inputs/misexpect-switch-nonconst.proftext
+deleted file mode 100644
+index 8e8db667d329..000000000000
+--- a/clang/test/Profile/Inputs/misexpect-switch-nonconst.proftext
++++ /dev/null
+@@ -1,17 +0,0 @@
+-main
+-# Func Hash:
+-3721743393642630379
+-# Num Counters:
+-10
+-# Counter Values:
+-1
+-20
+-20000
+-20000
+-1
+-0
+-0
+-0
+-19999
+-0
+-
+diff --git a/clang/test/Profile/Inputs/misexpect-switch.proftext b/clang/test/Profile/Inputs/misexpect-switch.proftext
+deleted file mode 100644
+index ce41cd0552d3..000000000000
+--- a/clang/test/Profile/Inputs/misexpect-switch.proftext
++++ /dev/null
+@@ -1,16 +0,0 @@
+-main
+-# Func Hash:
+-872687477373597607
+-# Num Counters:
+-9
+-# Counter Values:
+-1
+-20
+-20000
+-20000
+-12
+-26
+-0
+-0
+-19962
+-
+diff --git a/clang/test/Profile/misexpect-branch-cold.c b/clang/test/Profile/misexpect-branch-cold.c
+deleted file mode 100644
+index 6d34f92a2545..000000000000
+--- a/clang/test/Profile/misexpect-branch-cold.c
++++ /dev/null
+@@ -1,26 +0,0 @@
+-// Test that misexpect emits no warning when prediction is correct
+-
+-// RUN: llvm-profdata merge %S/Inputs/misexpect-branch.proftext -o %t.profdata
+-// RUN: %clang_cc1 %s -O2 -o - -disable-llvm-passes -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify -Wmisexpect
+-
+-// expected-no-diagnostics
+-#define likely(x) __builtin_expect(!!(x), 1)
+-#define unlikely(x) __builtin_expect(!!(x), 0)
+-
+-int foo(int);
+-int baz(int);
+-int buzz();
+-
+-const int inner_loop = 100;
+-const int outer_loop = 2000;
+-
+-int bar() {
+-  int rando = buzz();
+-  int x = 0;
+-  if (unlikely(rando % (outer_loop * inner_loop) == 0)) {
+-    x = baz(rando);
+-  } else {
+-    x = foo(50);
+-  }
+-  return x;
+-}
+diff --git a/clang/test/Profile/misexpect-branch-nonconst-expected-val.c b/clang/test/Profile/misexpect-branch-nonconst-expected-val.c
+deleted file mode 100644
+index c5167b9a2a0b..000000000000
+--- a/clang/test/Profile/misexpect-branch-nonconst-expected-val.c
++++ /dev/null
+@@ -1,23 +0,0 @@
+-// Test that misexpect emits no warning when condition is not a compile-time constant
+-
+-// RUN: llvm-profdata merge %S/Inputs/misexpect-branch-nonconst-expect-arg.proftext -o %t.profdata
+-// RUN: %clang_cc1 %s -O2 -o - -disable-llvm-passes -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify -Wmisexpect
+-
+-// expected-no-diagnostics
+-int foo(int);
+-int baz(int);
+-int buzz();
+-
+-const int inner_loop = 100;
+-const int outer_loop = 2000;
+-
+-int bar() {
+-  int rando = buzz();
+-  int x = 0;
+-  if (__builtin_expect(rando % (outer_loop * inner_loop) == 0, buzz())) {
+-    x = baz(rando);
+-  } else {
+-    x = foo(50);
+-  }
+-  return x;
+-}
+diff --git a/clang/test/Profile/misexpect-branch-unpredictable.c b/clang/test/Profile/misexpect-branch-unpredictable.c
+deleted file mode 100644
+index 6c4f90146a2a..000000000000
+--- a/clang/test/Profile/misexpect-branch-unpredictable.c
++++ /dev/null
+@@ -1,25 +0,0 @@
+-// Test that misexpect emits no warning when prediction is correct
+-
+-// RUN: llvm-profdata merge %S/Inputs/misexpect-branch.proftext -o %t.profdata
+-// RUN: %clang_cc1 %s -O2 -o - -disable-llvm-passes -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify -Wmisexpect
+-
+-// expected-no-diagnostics
+-#define unpredictable(x) __builtin_unpredictable(!!(x))
+-
+-int foo(int);
+-int baz(int);
+-int buzz();
+-
+-const int inner_loop = 100;
+-const int outer_loop = 2000;
+-
+-int bar() {
+-  int rando = buzz();
+-  int x = 0;
+-  if (unpredictable(rando % (outer_loop * inner_loop) == 0)) {
+-    x = baz(rando);
+-  } else {
+-    x = foo(50);
+-  }
+-  return x;
+-}
+diff --git a/clang/test/Profile/misexpect-branch.c b/clang/test/Profile/misexpect-branch.c
+deleted file mode 100644
+index 503aa7398e9d..000000000000
+--- a/clang/test/Profile/misexpect-branch.c
++++ /dev/null
+@@ -1,28 +0,0 @@
+-// Test that misexpect detects mis-annotated branches
+-
+-// RUN: llvm-profdata merge %S/Inputs/misexpect-branch.proftext -o %t.profdata
+-// RUN: %clang_cc1 %s -O2 -o - -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify=imprecise -Wmisexpect
+-// RUN: %clang_cc1 %s -O2 -o - -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify=exact -Wmisexpect -debug-info-kind=line-tables-only
+-// RUN: %clang_cc1 %s -O2 -o - -disable-llvm-passes -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify=foo
+-
+-// foo-no-diagnostics
+-#define likely(x) __builtin_expect(!!(x), 1)
+-#define unlikely(x) __builtin_expect(!!(x), 0)
+-
+-int foo(int);
+-int baz(int);
+-int buzz();
+-
+-const int inner_loop = 100;
+-const int outer_loop = 2000;
+-
+-int bar() { // imprecise-warning-re {{Potential performance regression from use of __builtin_expect(): Annotation was correct on {{.+}}% ({{[0-9]+ / [0-9]+}}) of profiled executions.}}
+-  int rando = buzz();
+-  int x = 0;
+-  if (likely(rando % (outer_loop * inner_loop) == 0)) { // exact-warning-re {{Potential performance regression from use of __builtin_expect(): Annotation was correct on {{.+}}% ({{[0-9]+ / [0-9]+}}) of profiled executions.}}
+-    x = baz(rando);
+-  } else {
+-    x = foo(50);
+-  }
+-  return x;
+-}
+diff --git a/clang/test/Profile/misexpect-switch-default.c b/clang/test/Profile/misexpect-switch-default.c
+deleted file mode 100644
+index 900c0a5df31f..000000000000
+--- a/clang/test/Profile/misexpect-switch-default.c
++++ /dev/null
+@@ -1,40 +0,0 @@
+-// Test that misexpect detects mis-annotated switch statements for default case
+-
+-// RUN: llvm-profdata merge %S/Inputs/misexpect-switch-default.proftext -o %t.profdata
+-// RUN: %clang_cc1 %s -O2 -o - -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify -Wmisexpect -debug-info-kind=line-tables-only
+-
+-int sum(int *buff, int size);
+-int random_sample(int *buff, int size);
+-int rand();
+-void init_arry();
+-
+-const int inner_loop = 1000;
+-const int outer_loop = 20;
+-enum { arry_size = 25 };
+-
+-int arry[arry_size] = {0};
+-
+-int main() {
+-  init_arry();
+-  int val = 0;
+-  int j;
+-  for (j = 0; j < outer_loop * inner_loop; ++j) {
+-    unsigned condition = rand() % 5;
+-    switch (__builtin_expect(condition, 6)) { // expected-warning-re {{Potential performance regression from use of __builtin_expect(): Annotation was correct on {{.+}}% ({{[0-9]+ / [0-9]+}}) of profiled executions.}}
+-    case 0:
+-      val += sum(arry, arry_size);
+-      break;
+-    case 1:
+-    case 2:
+-    case 3:
+-      break;
+-    case 4:
+-      val += random_sample(arry, arry_size);
+-      break;
+-    default:
+-      __builtin_unreachable();
+-    } // end switch
+-  }   // end outer_loop
+-
+-  return 0;
+-}
+diff --git a/clang/test/Profile/misexpect-switch-nonconst.c b/clang/test/Profile/misexpect-switch-nonconst.c
+deleted file mode 100644
+index 1573df538ac2..000000000000
+--- a/clang/test/Profile/misexpect-switch-nonconst.c
++++ /dev/null
+@@ -1,43 +0,0 @@
+-// Test that misexpect emits no warning when switch condition is non-const
+-
+-// RUN: llvm-profdata merge %S/Inputs/misexpect-switch-nonconst.proftext -o %t.profdata
+-// RUN: %clang_cc1 %s -O2 -o - -disable-llvm-passes -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify
+-
+-// expected-no-diagnostics
+-int sum(int *buff, int size);
+-int random_sample(int *buff, int size);
+-int rand();
+-void init_arry();
+-
+-const int inner_loop = 1000;
+-const int outer_loop = 20;
+-enum { arry_size = 25 };
+-
+-int arry[arry_size] = {0};
+-
+-int main() {
+-  init_arry();
+-  int val = 0;
+-
+-  int j, k;
+-  for (j = 0; j < outer_loop; ++j) {
+-    for (k = 0; k < inner_loop; ++k) {
+-      unsigned condition = rand() % 10000;
+-      switch (__builtin_expect(condition, rand())) {
+-      case 0:
+-        val += sum(arry, arry_size);
+-        break;
+-      case 1:
+-      case 2:
+-      case 3:
+-      case 4:
+-        val += random_sample(arry, arry_size);
+-        break;
+-      default:
+-        __builtin_unreachable();
+-      } // end switch
+-    }   // end inner_loop
+-  }     // end outer_loop
+-
+-  return 0;
+-}
+diff --git a/clang/test/Profile/misexpect-switch-only-default-case.c b/clang/test/Profile/misexpect-switch-only-default-case.c
+deleted file mode 100644
+index d6c68f07d092..000000000000
+--- a/clang/test/Profile/misexpect-switch-only-default-case.c
++++ /dev/null
+@@ -1,35 +0,0 @@
+-// Test that misexpect emits no warning when there is only one switch case
+-
+-// RUN: llvm-profdata merge %S/Inputs/misexpect-switch-default-only.proftext -o %t.profdata
+-// RUN: %clang_cc1 %s -O2 -o - -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify -Wmisexpect -debug-info-kind=line-tables-only
+-
+-// expected-no-diagnostics
+-int sum(int *buff, int size);
+-int random_sample(int *buff, int size);
+-int rand();
+-void init_arry();
+-
+-const int inner_loop = 1000;
+-const int outer_loop = 20;
+-enum { arry_size = 25 };
+-
+-int arry[arry_size] = {0};
+-
+-int main() {
+-  init_arry();
+-  int val = 0;
+-
+-  int j, k;
+-  for (j = 0; j < outer_loop; ++j) {
+-    for (k = 0; k < inner_loop; ++k) {
+-      unsigned condition = rand() % 10000;
+-      switch (__builtin_expect(condition, 0)) {
+-      default:
+-        val += random_sample(arry, arry_size);
+-        break;
+-      }; // end switch
+-    }    // end inner_loop
+-  }      // end outer_loop
+-
+-  return 0;
+-}
+diff --git a/clang/test/Profile/misexpect-switch.c b/clang/test/Profile/misexpect-switch.c
+deleted file mode 100644
+index c4fa5f90d440..000000000000
+--- a/clang/test/Profile/misexpect-switch.c
++++ /dev/null
+@@ -1,41 +0,0 @@
+-// Test that misexpect detects mis-annotated switch statements
+-
+-// RUN: llvm-profdata merge %S/Inputs/misexpect-switch.proftext -o %t.profdata
+-// RUN: %clang_cc1 %s -O2 -o - -emit-llvm -fprofile-instrument-use-path=%t.profdata -verify -Wmisexpect -debug-info-kind=line-tables-only
+-
+-int sum(int *buff, int size);
+-int random_sample(int *buff, int size);
+-int rand();
+-void init_arry();
+-
+-const int inner_loop = 1000;
+-const int outer_loop = 20;
+-enum { arry_size = 25 };
+-
+-int arry[arry_size] = {0};
+-
+-int main() {
+-  init_arry();
+-  int val = 0;
+-
+-  int j, k;
+-  for (j = 0; j < outer_loop; ++j) {
+-    for (k = 0; k < inner_loop; ++k) {
+-      unsigned condition = rand() % 10000;
+-      switch (__builtin_expect(condition, 0)) { // expected-warning-re {{Potential performance regression from use of __builtin_expect(): Annotation was correct on {{.+}}% ({{[0-9]+ / [0-9]+}}) of profiled executions.}}
+-      case 0:
+-        val += sum(arry, arry_size);
+-        break;
+-      case 1:
+-      case 2:
+-      case 3:
+-        break;
+-      default:
+-        val += random_sample(arry, arry_size);
+-        break;
+-      } // end switch
+-    }   // end inner_loop
+-  }     // end outer_loop
+-
+-  return 0;
+-}
+diff --git a/llvm/include/llvm/IR/DiagnosticInfo.h b/llvm/include/llvm/IR/DiagnosticInfo.h
+index 33736321b42b..644d853b9b0d 100644
+--- a/llvm/include/llvm/IR/DiagnosticInfo.h
++++ b/llvm/include/llvm/IR/DiagnosticInfo.h
+@@ -76,7 +76,6 @@ enum DiagnosticKind {
+   DK_LastMachineRemark = DK_MachineOptimizationRemarkAnalysis,
+   DK_MIRParser,
+   DK_PGOProfile,
+-  DK_MisExpect,
+   DK_Unsupported,
+   DK_FirstPluginKind // Must be last value to work with
+                      // getNextAvailablePluginDiagnosticKind
+@@ -1014,25 +1013,6 @@ public:
+   void print(DiagnosticPrinter &DP) const override;
+ };
+ 
+-/// Diagnostic information for MisExpect analysis.
+-class DiagnosticInfoMisExpect : public DiagnosticInfoWithLocationBase {
+-public:
+-    DiagnosticInfoMisExpect(const Instruction *Inst, Twine &Msg);
+-
+-  /// \see DiagnosticInfo::print.
+-  void print(DiagnosticPrinter &DP) const override;
+-
+-  static bool classof(const DiagnosticInfo *DI) {
+-    return DI->getKind() == DK_MisExpect;
+-  }
+-
+-  const Twine &getMsg() const { return Msg; }
+-
+-private:
+-  /// Message to report.
+-  const Twine &Msg;
+-};
+-
+ } // end namespace llvm
+ 
+ #endif // LLVM_IR_DIAGNOSTICINFO_H
+diff --git a/llvm/include/llvm/IR/FixedMetadataKinds.def b/llvm/include/llvm/IR/FixedMetadataKinds.def
+index ec54f3d5c6c4..31979cd2f9db 100644
+--- a/llvm/include/llvm/IR/FixedMetadataKinds.def
++++ b/llvm/include/llvm/IR/FixedMetadataKinds.def
+@@ -39,7 +39,6 @@ LLVM_FIXED_MD_KIND(MD_irr_loop, "irr_loop", 24)
+ LLVM_FIXED_MD_KIND(MD_access_group, "llvm.access.group", 25)
+ LLVM_FIXED_MD_KIND(MD_callback, "callback", 26)
+ LLVM_FIXED_MD_KIND(MD_preserve_access_index, "llvm.preserve.access.index", 27)
+-LLVM_FIXED_MD_KIND(MD_misexpect, "misexpect", 28)
+-LLVM_FIXED_MD_KIND(MD_vcall_visibility, "vcall_visibility", 29)
+-LLVM_FIXED_MD_KIND(MD_noundef, "noundef", 30)
+-LLVM_FIXED_MD_KIND(MD_annotation, "annotation", 31)
++LLVM_FIXED_MD_KIND(MD_vcall_visibility, "vcall_visibility", 28)
++LLVM_FIXED_MD_KIND(MD_noundef, "noundef", 29)
++LLVM_FIXED_MD_KIND(MD_annotation, "annotation", 30)
+diff --git a/llvm/include/llvm/IR/MDBuilder.h b/llvm/include/llvm/IR/MDBuilder.h
+index 11e2e2623257..08cd60c30e6a 100644
+--- a/llvm/include/llvm/IR/MDBuilder.h
++++ b/llvm/include/llvm/IR/MDBuilder.h
+@@ -76,10 +76,6 @@ public:
+   /// Return metadata containing the section prefix for a function.
+   MDNode *createFunctionSectionPrefix(StringRef Prefix);
+ 
+-  /// return metadata containing expected value
+-  MDNode *createMisExpect(uint64_t Index, uint64_t LikelyWeight,
+-                          uint64_t UnlikelyWeight);
+-
+   //===------------------------------------------------------------------===//
+   // Range metadata.
+   //===------------------------------------------------------------------===//
+diff --git a/llvm/include/llvm/Transforms/Utils/MisExpect.h b/llvm/include/llvm/Transforms/Utils/MisExpect.h
+deleted file mode 100644
+index 1dbe8cb95936..000000000000
+--- a/llvm/include/llvm/Transforms/Utils/MisExpect.h
++++ /dev/null
+@@ -1,43 +0,0 @@
+-//===--- MisExpect.h - Check the use of llvm.expect with PGO data ---------===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-//
+-// This contains code to emit warnings for potentially incorrect usage of the
+-// llvm.expect intrinsic. This utility extracts the threshold values from
+-// metadata associated with the instrumented Branch or Switch instruction. The
+-// threshold values are then used to determine if a warning should be emmited.
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#include "llvm/ADT/SmallVector.h"
+-#include "llvm/IR/Function.h"
+-#include "llvm/IR/Instructions.h"
+-#include "llvm/IR/LLVMContext.h"
+-
+-namespace llvm {
+-namespace misexpect {
+-
+-/// verifyMisExpect - compares PGO counters to the thresholds used for
+-/// llvm.expect and warns if the PGO counters are outside of the expected
+-/// range.
+-/// \param I The Instruction being checked
+-/// \param Weights A vector of profile weights for each target block
+-/// \param Ctx The current LLVM context
+-void verifyMisExpect(llvm::Instruction *I,
+-                     const llvm::SmallVector<uint32_t, 4> &Weights,
+-                     llvm::LLVMContext &Ctx);
+-
+-/// checkClangInstrumentation - verify if llvm.expect matches PGO profile
+-/// This function checks the frontend instrumentation in the backend when
+-/// lowering llvm.expect intrinsics. It checks for existing metadata, and
+-/// then validates the use of llvm.expect against the assigned branch weights.
+-//
+-/// \param I the Instruction being checked
+-void checkFrontendInstrumentation(Instruction &I);
+-
+-} // namespace misexpect
+-} // namespace llvm
+diff --git a/llvm/lib/IR/DiagnosticInfo.cpp b/llvm/lib/IR/DiagnosticInfo.cpp
+index 28882cfa8f65..46acc9040433 100644
+--- a/llvm/lib/IR/DiagnosticInfo.cpp
++++ b/llvm/lib/IR/DiagnosticInfo.cpp
+@@ -375,16 +375,5 @@ std::string DiagnosticInfoOptimizationBase::getMsg() const {
+   return OS.str();
+ }
+ 
+-DiagnosticInfoMisExpect::DiagnosticInfoMisExpect(const Instruction *Inst,
+-                                                 Twine &Msg)
+-    : DiagnosticInfoWithLocationBase(DK_MisExpect, DS_Warning,
+-                                     *Inst->getParent()->getParent(),
+-                                     Inst->getDebugLoc()),
+-      Msg(Msg) {}
+-
+-void DiagnosticInfoMisExpect::print(DiagnosticPrinter &DP) const {
+-  DP << getLocationStr() << ": " << getMsg();
+-}
+-
+ void OptimizationRemarkAnalysisFPCommute::anchor() {}
+ void OptimizationRemarkAnalysisAliasing::anchor() {}
+diff --git a/llvm/lib/IR/MDBuilder.cpp b/llvm/lib/IR/MDBuilder.cpp
+index 1f3bed3776d1..25d1c2b3b902 100644
+--- a/llvm/lib/IR/MDBuilder.cpp
++++ b/llvm/lib/IR/MDBuilder.cpp
+@@ -305,15 +305,3 @@ MDNode *MDBuilder::createIrrLoopHeaderWeight(uint64_t Weight) {
+   };
+   return MDNode::get(Context, Vals);
+ }
+-
+-MDNode *MDBuilder::createMisExpect(uint64_t Index, uint64_t LikleyWeight,
+-                                   uint64_t UnlikleyWeight) {
+-  auto *IntType = Type::getInt64Ty(Context);
+-  Metadata *Vals[] = {
+-      createString("misexpect"),
+-      createConstant(ConstantInt::get(IntType, Index)),
+-      createConstant(ConstantInt::get(IntType, LikleyWeight)),
+-      createConstant(ConstantInt::get(IntType, UnlikleyWeight)),
+-  };
+-  return MDNode::get(Context, Vals);
+-}
+diff --git a/llvm/lib/Transforms/IPO/SampleProfile.cpp b/llvm/lib/Transforms/IPO/SampleProfile.cpp
+index dbcf58f6daa7..4fe71a152302 100644
+--- a/llvm/lib/Transforms/IPO/SampleProfile.cpp
++++ b/llvm/lib/Transforms/IPO/SampleProfile.cpp
+@@ -79,7 +79,6 @@
+ #include "llvm/Transforms/Instrumentation.h"
+ #include "llvm/Transforms/Utils/CallPromotionUtils.h"
+ #include "llvm/Transforms/Utils/Cloning.h"
+-#include "llvm/Transforms/Utils/MisExpect.h"
+ #include <algorithm>
+ #include <cassert>
+ #include <cstdint>
+@@ -1626,8 +1625,6 @@ void SampleProfileLoader::propagateWeights(Function &F) {
+       }
+     }
+ 
+-    misexpect::verifyMisExpect(TI, Weights, TI->getContext());
+-
+     uint64_t TempWeight;
+     // Only set weights if there is at least one non-zero weight.
+     // In any other case, let the analyzer set weights.
+diff --git a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
+index dd70c1f77d9c..0228c8a8ef14 100644
+--- a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
++++ b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
+@@ -110,7 +110,6 @@
+ #include "llvm/Support/raw_ostream.h"
+ #include "llvm/Transforms/Instrumentation.h"
+ #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+-#include "llvm/Transforms/Utils/MisExpect.h"
+ #include <algorithm>
+ #include <cassert>
+ #include <cstdint>
+@@ -1839,8 +1838,6 @@ void llvm::setProfMetadata(Module *M, Instruction *TI,
+     dbgs() << W << " ";
+   } dbgs() << "\n";);
+ 
+-  misexpect::verifyMisExpect(TI, Weights, TI->getContext());
+-
+   TI->setMetadata(LLVMContext::MD_prof, MDB.createBranchWeights(Weights));
+   if (EmitBranchProbability) {
+     std::string BrCondStr = getBranchCondString(TI);
+diff --git a/llvm/lib/Transforms/Scalar/LowerExpectIntrinsic.cpp b/llvm/lib/Transforms/Scalar/LowerExpectIntrinsic.cpp
+index 33f73f6e163a..da13075dfee2 100644
+--- a/llvm/lib/Transforms/Scalar/LowerExpectIntrinsic.cpp
++++ b/llvm/lib/Transforms/Scalar/LowerExpectIntrinsic.cpp
+@@ -26,7 +26,6 @@
+ #include "llvm/Pass.h"
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Transforms/Scalar.h"
+-#include "llvm/Transforms/Utils/MisExpect.h"
+ 
+ using namespace llvm;
+ 
+@@ -101,13 +100,7 @@ static bool handleSwitchExpect(SwitchInst &SI) {
+   uint64_t Index = (Case == *SI.case_default()) ? 0 : Case.getCaseIndex() + 1;
+   Weights[Index] = LikelyBranchWeightVal;
+ 
+-  SI.setMetadata(LLVMContext::MD_misexpect,
+-                 MDBuilder(CI->getContext())
+-                     .createMisExpect(Index, LikelyBranchWeightVal,
+-                                      UnlikelyBranchWeightVal));
+-
+   SI.setCondition(ArgValue);
+-  misexpect::checkFrontendInstrumentation(SI);
+ 
+   SI.setMetadata(LLVMContext::MD_prof,
+                  MDBuilder(CI->getContext()).createBranchWeights(Weights));
+@@ -316,7 +309,6 @@ template <class BrSelInst> static bool handleBrSelExpect(BrSelInst &BSI) {
+ 
+   MDBuilder MDB(CI->getContext());
+   MDNode *Node;
+-  MDNode *ExpNode;
+ 
+   uint32_t LikelyBranchWeightVal, UnlikelyBranchWeightVal;
+   std::tie(LikelyBranchWeightVal, UnlikelyBranchWeightVal) =
+@@ -326,24 +318,16 @@ template <class BrSelInst> static bool handleBrSelExpect(BrSelInst &BSI) {
+       (Predicate == CmpInst::ICMP_EQ)) {
+     Node =
+         MDB.createBranchWeights(LikelyBranchWeightVal, UnlikelyBranchWeightVal);
+-    ExpNode =
+-        MDB.createMisExpect(0, LikelyBranchWeightVal, UnlikelyBranchWeightVal);
+   } else {
+     Node =
+         MDB.createBranchWeights(UnlikelyBranchWeightVal, LikelyBranchWeightVal);
+-    ExpNode =
+-        MDB.createMisExpect(1, LikelyBranchWeightVal, UnlikelyBranchWeightVal);
+   }
+ 
+-  BSI.setMetadata(LLVMContext::MD_misexpect, ExpNode);
+-
+   if (CmpI)
+     CmpI->setOperand(0, ArgValue);
+   else
+     BSI.setCondition(ArgValue);
+ 
+-  misexpect::checkFrontendInstrumentation(BSI);
+-
+   BSI.setMetadata(LLVMContext::MD_prof, Node);
+ 
+   return true;
+diff --git a/llvm/lib/Transforms/Utils/CMakeLists.txt b/llvm/lib/Transforms/Utils/CMakeLists.txt
+index cfa177a74626..a68ba40c2bd5 100644
+--- a/llvm/lib/Transforms/Utils/CMakeLists.txt
++++ b/llvm/lib/Transforms/Utils/CMakeLists.txt
+@@ -49,7 +49,6 @@ add_llvm_component_library(LLVMTransformUtils
+   MatrixUtils.cpp
+   Mem2Reg.cpp
+   MetaRenamer.cpp
+-  MisExpect.cpp
+   ModuleUtils.cpp
+   NameAnonGlobals.cpp
+   PredicateInfo.cpp
+diff --git a/llvm/lib/Transforms/Utils/MisExpect.cpp b/llvm/lib/Transforms/Utils/MisExpect.cpp
+deleted file mode 100644
+index a16ca1fb8efa..000000000000
+--- a/llvm/lib/Transforms/Utils/MisExpect.cpp
++++ /dev/null
+@@ -1,178 +0,0 @@
+-//===--- MisExpect.cpp - Check the use of llvm.expect with PGO data -------===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-//
+-// This contains code to emit warnings for potentially incorrect usage of the
+-// llvm.expect intrinsic. This utility extracts the threshold values from
+-// metadata associated with the instrumented Branch or Switch instruction. The
+-// threshold values are then used to determine if a warning should be emmited.
+-//
+-// MisExpect metadata is generated when llvm.expect intrinsics are lowered see
+-// LowerExpectIntrinsic.cpp
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#include "llvm/Transforms/Utils/MisExpect.h"
+-#include "llvm/ADT/Twine.h"
+-#include "llvm/Analysis/OptimizationRemarkEmitter.h"
+-#include "llvm/IR/Constants.h"
+-#include "llvm/IR/DiagnosticInfo.h"
+-#include "llvm/IR/Instruction.h"
+-#include "llvm/IR/Instructions.h"
+-#include "llvm/IR/LLVMContext.h"
+-#include "llvm/Support/BranchProbability.h"
+-#include "llvm/Support/CommandLine.h"
+-#include "llvm/Support/Debug.h"
+-#include "llvm/Support/FormatVariadic.h"
+-#include <cstdint>
+-#include <functional>
+-#include <numeric>
+-
+-#define DEBUG_TYPE "misexpect"
+-
+-using namespace llvm;
+-using namespace misexpect;
+-
+-namespace llvm {
+-
+-// Command line option to enable/disable the warning when profile data suggests
+-// a mismatch with the use of the llvm.expect intrinsic
+-static cl::opt<bool> PGOWarnMisExpect(
+-    "pgo-warn-misexpect", cl::init(false), cl::Hidden,
+-    cl::desc("Use this option to turn on/off "
+-             "warnings about incorrect usage of llvm.expect intrinsics."));
+-
+-} // namespace llvm
+-
+-namespace {
+-
+-Instruction *getOprndOrInst(Instruction *I) {
+-  assert(I != nullptr && "MisExpect target Instruction cannot be nullptr");
+-  Instruction *Ret = nullptr;
+-  if (auto *B = dyn_cast<BranchInst>(I)) {
+-    Ret = dyn_cast<Instruction>(B->getCondition());
+-  }
+-  // TODO: Find a way to resolve condition location for switches
+-  // Using the condition of the switch seems to often resolve to an earlier
+-  // point in the program, i.e. the calculation of the switch condition, rather
+-  // than the switches location in the source code. Thus, we should use the
+-  // instruction to get source code locations rather than the condition to
+-  // improve diagnostic output, such as the caret. If the same problem exists
+-  // for branch instructions, then we should remove this function and directly
+-  // use the instruction
+-  //
+-  // else if (auto S = dyn_cast<SwitchInst>(I)) {
+-  // Ret = I;
+-  //}
+-  return Ret ? Ret : I;
+-}
+-
+-void emitMisexpectDiagnostic(Instruction *I, LLVMContext &Ctx,
+-                             uint64_t ProfCount, uint64_t TotalCount) {
+-  double PercentageCorrect = (double)ProfCount / TotalCount;
+-  auto PerString =
+-      formatv("{0:P} ({1} / {2})", PercentageCorrect, ProfCount, TotalCount);
+-  auto RemStr = formatv(
+-      "Potential performance regression from use of the llvm.expect intrinsic: "
+-      "Annotation was correct on {0} of profiled executions.",
+-      PerString);
+-  Twine Msg(PerString);
+-  Instruction *Cond = getOprndOrInst(I);
+-  if (PGOWarnMisExpect)
+-    Ctx.diagnose(DiagnosticInfoMisExpect(Cond, Msg));
+-  OptimizationRemarkEmitter ORE(I->getParent()->getParent());
+-  ORE.emit(OptimizationRemark(DEBUG_TYPE, "misexpect", Cond) << RemStr.str());
+-}
+-
+-} // namespace
+-
+-namespace llvm {
+-namespace misexpect {
+-
+-void verifyMisExpect(Instruction *I, const SmallVector<uint32_t, 4> &Weights,
+-                     LLVMContext &Ctx) {
+-  if (auto *MisExpectData = I->getMetadata(LLVMContext::MD_misexpect)) {
+-    auto *MisExpectDataName = dyn_cast<MDString>(MisExpectData->getOperand(0));
+-    if (MisExpectDataName &&
+-        MisExpectDataName->getString().equals("misexpect")) {
+-      LLVM_DEBUG(llvm::dbgs() << "------------------\n");
+-      LLVM_DEBUG(llvm::dbgs()
+-                 << "Function: " << I->getFunction()->getName() << "\n");
+-      LLVM_DEBUG(llvm::dbgs() << "Instruction: " << *I << ":\n");
+-      LLVM_DEBUG(for (int Idx = 0, Size = Weights.size(); Idx < Size; ++Idx) {
+-        llvm::dbgs() << "Weights[" << Idx << "] = " << Weights[Idx] << "\n";
+-      });
+-
+-      // extract values from misexpect metadata
+-      const auto *IndexCint =
+-          mdconst::dyn_extract<ConstantInt>(MisExpectData->getOperand(1));
+-      const auto *LikelyCInt =
+-          mdconst::dyn_extract<ConstantInt>(MisExpectData->getOperand(2));
+-      const auto *UnlikelyCInt =
+-          mdconst::dyn_extract<ConstantInt>(MisExpectData->getOperand(3));
+-
+-      if (!IndexCint || !LikelyCInt || !UnlikelyCInt)
+-        return;
+-
+-      const uint64_t Index = IndexCint->getZExtValue();
+-      const uint64_t LikelyBranchWeight = LikelyCInt->getZExtValue();
+-      const uint64_t UnlikelyBranchWeight = UnlikelyCInt->getZExtValue();
+-      const uint64_t ProfileCount = Weights[Index];
+-      const uint64_t CaseTotal = std::accumulate(
+-          Weights.begin(), Weights.end(), (uint64_t)0, std::plus<uint64_t>());
+-      const uint64_t NumUnlikelyTargets = Weights.size() - 1;
+-
+-      const uint64_t TotalBranchWeight =
+-          LikelyBranchWeight + (UnlikelyBranchWeight * NumUnlikelyTargets);
+-
+-      const llvm::BranchProbability LikelyThreshold(LikelyBranchWeight,
+-                                                    TotalBranchWeight);
+-      uint64_t ScaledThreshold = LikelyThreshold.scale(CaseTotal);
+-
+-      LLVM_DEBUG(llvm::dbgs()
+-                 << "Unlikely Targets: " << NumUnlikelyTargets << ":\n");
+-      LLVM_DEBUG(llvm::dbgs() << "Profile Count: " << ProfileCount << ":\n");
+-      LLVM_DEBUG(llvm::dbgs()
+-                 << "Scaled Threshold: " << ScaledThreshold << ":\n");
+-      LLVM_DEBUG(llvm::dbgs() << "------------------\n");
+-      if (ProfileCount < ScaledThreshold)
+-        emitMisexpectDiagnostic(I, Ctx, ProfileCount, CaseTotal);
+-    }
+-  }
+-}
+-
+-void checkFrontendInstrumentation(Instruction &I) {
+-  if (auto *MD = I.getMetadata(LLVMContext::MD_prof)) {
+-    unsigned NOps = MD->getNumOperands();
+-
+-    // Only emit misexpect diagnostics if at least 2 branch weights are present.
+-    // Less than 2 branch weights means that the profiling metadata is:
+-    //    1) incorrect/corrupted
+-    //    2) not branch weight metadata
+-    //    3) completely deterministic
+-    // In these cases we should not emit any diagnostic related to misexpect.
+-    if (NOps < 3)
+-      return;
+-
+-    // Operand 0 is a string tag "branch_weights"
+-    if (MDString *Tag = cast<MDString>(MD->getOperand(0))) {
+-      if (Tag->getString().equals("branch_weights")) {
+-        SmallVector<uint32_t, 4> RealWeights(NOps - 1);
+-        for (unsigned i = 1; i < NOps; i++) {
+-          ConstantInt *Value =
+-              mdconst::dyn_extract<ConstantInt>(MD->getOperand(i));
+-          RealWeights[i - 1] = Value->getZExtValue();
+-        }
+-        verifyMisExpect(&I, RealWeights, I.getContext());
+-      }
+-    }
+-  }
+-}
+-
+-} // namespace misexpect
+-} // namespace llvm
+-#undef DEBUG_TYPE
+diff --git a/llvm/test/Transforms/LowerExpectIntrinsic/basic.ll b/llvm/test/Transforms/LowerExpectIntrinsic/basic.ll
+index 4324b7bd32bc..94ecbcf750a2 100644
+--- a/llvm/test/Transforms/LowerExpectIntrinsic/basic.ll
++++ b/llvm/test/Transforms/LowerExpectIntrinsic/basic.ll
+@@ -13,7 +13,7 @@ entry:
+   %conv1 = sext i32 %conv to i64
+   %expval = call i64 @llvm.expect.i64(i64 %conv1, i64 1)
+   %tobool = icmp ne i64 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect
+   br i1 %tobool, label %if.then, label %if.end
+ 
+@@ -45,7 +45,7 @@ entry:
+   %conv = sext i32 %tmp to i64
+   %expval = call i64 @llvm.expect.i64(i64 %conv, i64 1)
+   %tobool = icmp ne i64 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect
+   br i1 %tobool, label %if.then, label %if.end
+ 
+@@ -76,7 +76,7 @@ entry:
+   %conv = sext i32 %lnot.ext to i64
+   %expval = call i64 @llvm.expect.i64(i64 %conv, i64 1)
+   %tobool1 = icmp ne i64 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect
+   br i1 %tobool1, label %if.then, label %if.end
+ 
+@@ -108,7 +108,7 @@ entry:
+   %conv = sext i32 %lnot.ext to i64
+   %expval = call i64 @llvm.expect.i64(i64 %conv, i64 1)
+   %tobool2 = icmp ne i64 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect
+   br i1 %tobool2, label %if.then, label %if.end
+ 
+@@ -138,7 +138,7 @@ entry:
+   %conv1 = sext i32 %conv to i64
+   %expval = call i64 @llvm.expect.i64(i64 %conv1, i64 0)
+   %tobool = icmp ne i64 %expval, 0
+-; CHECK: !prof !2, !misexpect !3
++; CHECK: !prof !1
+ ; CHECK-NOT: @llvm.expect
+   br i1 %tobool, label %if.then, label %if.end
+ 
+@@ -165,7 +165,7 @@ entry:
+   %tmp = load i32, i32* %x.addr, align 4
+   %conv = sext i32 %tmp to i64
+   %expval = call i64 @llvm.expect.i64(i64 %conv, i64 2)
+-; CHECK: !prof !4, !misexpect !5
++; CHECK: !prof !2
+ ; CHECK-NOT: @llvm.expect
+   switch i64 %expval, label %sw.epilog [
+     i64 1, label %sw.bb
+@@ -194,7 +194,7 @@ entry:
+   %tmp = load i32, i32* %x.addr, align 4
+   %conv = sext i32 %tmp to i64
+   %expval = call i64 @llvm.expect.i64(i64 %conv, i64 1)
+-; CHECK: !prof !6, !misexpect !1
++; CHECK: !prof !3
+ ; CHECK-NOT: @llvm.expect
+   switch i64 %expval, label %sw.epilog [
+     i64 2, label %sw.bb
+@@ -226,7 +226,7 @@ entry:
+   %conv = zext i1 %cmp to i32
+   %expval = call i32 @llvm.expect.i32(i32 %conv, i32 1)
+   %tobool = icmp ne i32 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect
+   br i1 %tobool, label %if.then, label %if.end
+ 
+@@ -255,7 +255,7 @@ entry:
+   %tmp = load i32, i32* %x.addr, align 4
+   %cmp = icmp sgt i32 %tmp, 1
+   %expval = call i1 @llvm.expect.i1(i1 %cmp, i1 1)
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect
+   br i1 %expval, label %if.then, label %if.end
+ 
+@@ -278,7 +278,7 @@ define i32 @test10(i64 %t6) {
+   %t7 = call i64 @llvm.expect.i64(i64 %t6, i64 0)
+   %t8 = icmp ne i64 %t7, 0
+   %t9 = select i1 %t8, i32 1, i32 2
+-; CHECK: select{{.*}}, !prof !2, !misexpect !3
++; CHECK: select{{.*}}, !prof !1
+   ret i32 %t9
+ }
+ 
+@@ -286,9 +286,6 @@ define i32 @test10(i64 %t6) {
+ declare i1 @llvm.expect.i1(i1, i1) nounwind readnone
+ 
+ ; CHECK: !0 = !{!"branch_weights", i32 2000, i32 1}
+-; CHECK: !1 = !{!"misexpect", i64 0, i64 2000, i64 1}
+-; CHECK: !2 = !{!"branch_weights", i32 1, i32 2000}
+-; CHECK: !3 = !{!"misexpect", i64 1, i64 2000, i64 1}
+-; CHECK: !4 = !{!"branch_weights", i32 1, i32 1, i32 2000}
+-; CHECK: !5 = !{!"misexpect", i64 2, i64 2000, i64 1}
+-; CHECK: !6 = !{!"branch_weights", i32 2000, i32 1, i32 1}
++; CHECK: !1 = !{!"branch_weights", i32 1, i32 2000}
++; CHECK: !2 = !{!"branch_weights", i32 1, i32 1, i32 2000}
++; CHECK: !3 = !{!"branch_weights", i32 2000, i32 1, i32 1}
+diff --git a/llvm/test/Transforms/LowerExpectIntrinsic/expect-with-probability.ll b/llvm/test/Transforms/LowerExpectIntrinsic/expect-with-probability.ll
+index 8972ee01c12d..5f6c672df4eb 100644
+--- a/llvm/test/Transforms/LowerExpectIntrinsic/expect-with-probability.ll
++++ b/llvm/test/Transforms/LowerExpectIntrinsic/expect-with-probability.ll
+@@ -13,7 +13,7 @@ entry:
+   %conv1 = sext i32 %conv to i64
+   %expval = call i64 @llvm.expect.with.probability.i64(i64 %conv1, i64 1, double 8.000000e-01)
+   %tobool = icmp ne i64 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect.with.probability
+   br i1 %tobool, label %if.then, label %if.end
+ 
+@@ -45,7 +45,7 @@ entry:
+   %conv = sext i32 %tmp to i64
+   %expval = call i64 @llvm.expect.with.probability.i64(i64 %conv, i64 1, double 8.000000e-01)
+   %tobool = icmp ne i64 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect.with.probability
+   br i1 %tobool, label %if.then, label %if.end
+ 
+@@ -76,7 +76,7 @@ entry:
+   %conv = sext i32 %lnot.ext to i64
+   %expval = call i64 @llvm.expect.with.probability.i64(i64 %conv, i64 1, double 8.000000e-01)
+   %tobool1 = icmp ne i64 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect.with.probability
+   br i1 %tobool1, label %if.then, label %if.end
+ 
+@@ -108,7 +108,7 @@ entry:
+   %conv = sext i32 %lnot.ext to i64
+   %expval = call i64 @llvm.expect.with.probability.i64(i64 %conv, i64 1, double 8.000000e-01)
+   %tobool2 = icmp ne i64 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect.with.probability
+   br i1 %tobool2, label %if.then, label %if.end
+ 
+@@ -138,7 +138,7 @@ entry:
+   %conv1 = sext i32 %conv to i64
+   %expval = call i64 @llvm.expect.with.probability.i64(i64 %conv1, i64 0, double 8.000000e-01)
+   %tobool = icmp ne i64 %expval, 0
+-; CHECK: !prof !2, !misexpect !3
++; CHECK: !prof !1
+ ; CHECK-NOT: @llvm.expect.with.probability
+   br i1 %tobool, label %if.then, label %if.end
+ 
+@@ -165,7 +165,7 @@ entry:
+   %tmp = load i32, i32* %x.addr, align 4
+   %conv = sext i32 %tmp to i64
+   %expval = call i64 @llvm.expect.with.probability.i64(i64 %conv, i64 2, double 8.000000e-01)
+-; CHECK: !prof !4, !misexpect !5
++; CHECK: !prof !2
+ ; CHECK-NOT: @llvm.expect.with.probability
+   switch i64 %expval, label %sw.epilog [
+     i64 1, label %sw.bb
+@@ -194,7 +194,7 @@ entry:
+   %tmp = load i32, i32* %x.addr, align 4
+   %conv = sext i32 %tmp to i64
+   %expval = call i64 @llvm.expect.with.probability.i64(i64 %conv, i64 1, double 8.000000e-01)
+-; CHECK: !prof !6, !misexpect !7
++; CHECK: !prof !3
+ ; CHECK-NOT: @llvm.expect.with.probability
+   switch i64 %expval, label %sw.epilog [
+     i64 2, label %sw.bb
+@@ -226,7 +226,7 @@ entry:
+   %conv = zext i1 %cmp to i32
+   %expval = call i32 @llvm.expect.with.probability.i32(i32 %conv, i32 1, double 8.000000e-01)
+   %tobool = icmp ne i32 %expval, 0
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect.with.probability
+   br i1 %tobool, label %if.then, label %if.end
+ 
+@@ -255,7 +255,7 @@ entry:
+   %tmp = load i32, i32* %x.addr, align 4
+   %cmp = icmp sgt i32 %tmp, 1
+   %expval = call i1 @llvm.expect.with.probability.i1(i1 %cmp, i1 1, double 8.000000e-01)
+-; CHECK: !prof !0, !misexpect !1
++; CHECK: !prof !0
+ ; CHECK-NOT: @llvm.expect.with.probability
+   br i1 %expval, label %if.then, label %if.end
+ 
+@@ -278,7 +278,7 @@ define i32 @test10(i64 %t6) {
+   %t7 = call i64 @llvm.expect.with.probability.i64(i64 %t6, i64 0, double 8.000000e-01)
+   %t8 = icmp ne i64 %t7, 0
+   %t9 = select i1 %t8, i32 1, i32 2
+-; CHECK: select{{.*}}, !prof !2, !misexpect !3
++; CHECK: select{{.*}}, !prof !1
+   ret i32 %t9
+ }
+ 
+@@ -286,10 +286,6 @@ define i32 @test10(i64 %t6) {
+ declare i1 @llvm.expect.with.probability.i1(i1, i1, double) nounwind readnone
+ 
+ ; CHECK: !0 = !{!"branch_weights", i32 1717986918, i32 429496731}
+-; CHECK: !1 = !{!"misexpect", i64 0, i64 1717986918, i64 429496731}
+-; CHECK: !2 = !{!"branch_weights", i32 429496731, i32 1717986918}
+-; CHECK: !3 = !{!"misexpect", i64 1, i64 1717986918, i64 429496731}
+-; CHECK: !4 = !{!"branch_weights", i32 214748366, i32 214748366, i32 1717986918}
+-; CHECK: !5 = !{!"misexpect", i64 2, i64 1717986918, i64 214748366}
+-; CHECK: !6 = !{!"branch_weights", i32 1717986918, i32 214748366, i32 214748366}
+-; CHECK: !7 = !{!"misexpect", i64 0, i64 1717986918, i64 214748366}
++; CHECK: !1 = !{!"branch_weights", i32 429496731, i32 1717986918}
++; CHECK: !2 = !{!"branch_weights", i32 214748366, i32 214748366, i32 1717986918}
++; CHECK: !3 = !{!"branch_weights", i32 1717986918, i32 214748366, i32 214748366}
+diff --git a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch-correct.proftext b/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch-correct.proftext
+deleted file mode 100644
+index 24c9746262bd..000000000000
+--- a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch-correct.proftext
++++ /dev/null
+@@ -1,38 +0,0 @@
+-# IR level Instrumentation Flag
+-:ir
+-bar
+-# Func Hash:
+-146835647075900052
+-# Num Counters:
+-2
+-# Counter Values:
+-200000
+-0
+-
+-baz
+-# Func Hash:
+-12884901887
+-# Num Counters:
+-1
+-# Counter Values:
+-399668
+-
+-foo
+-# Func Hash:
+-29212902728
+-# Num Counters:
+-2
+-# Counter Values:
+-40803991
+-1600332
+-
+-main
+-# Func Hash:
+-41605652536
+-# Num Counters:
+-3
+-# Counter Values:
+-2000000
+-2000
+-1
+-
+diff --git a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch.proftext b/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch.proftext
+deleted file mode 100644
+index 5505df737527..000000000000
+--- a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch.proftext
++++ /dev/null
+@@ -1,38 +0,0 @@
+-# IR level Instrumentation Flag
+-:ir
+-bar
+-# Func Hash:
+-146835647075900052
+-# Num Counters:
+-2
+-# Counter Values:
+-399668
+-1600332
+-
+-baz
+-# Func Hash:
+-12884901887
+-# Num Counters:
+-1
+-# Counter Values:
+-399668
+-
+-foo
+-# Func Hash:
+-29212902728
+-# Num Counters:
+-2
+-# Counter Values:
+-40803991
+-1600332
+-
+-main
+-# Func Hash:
+-41605652536
+-# Num Counters:
+-3
+-# Counter Values:
+-2000000
+-2000
+-1
+-
+diff --git a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch_entry.proftext b/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch_entry.proftext
+deleted file mode 100644
+index 752b885ad2b2..000000000000
+--- a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-branch_entry.proftext
++++ /dev/null
+@@ -1,39 +0,0 @@
+-# IR level Instrumentation Flag
+-:ir
+-:entry_first
+-bar
+-# Func Hash:
+-146835647075900052
+-# Num Counters:
+-2
+-# Counter Values:
+-2000000
+-1600332
+-
+-baz
+-# Func Hash:
+-12884901887
+-# Num Counters:
+-1
+-# Counter Values:
+-399668
+-
+-foo
+-# Func Hash:
+-29212902728
+-# Num Counters:
+-2
+-# Counter Values:
+-40803991
+-1600332
+-
+-main
+-# Func Hash:
+-41605652536
+-# Num Counters:
+-3
+-# Counter Values:
+-2000000
+-2000
+-1
+-
+diff --git a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch-correct.proftext b/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch-correct.proftext
+deleted file mode 100644
+index 39864486bb96..000000000000
+--- a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch-correct.proftext
++++ /dev/null
+@@ -1,16 +0,0 @@
+-# IR level Instrumentation Flag
+-:ir
+-main
+-# Func Hash:
+-391331300939170156
+-# Num Counters:
+-7
+-# Counter Values:
+-0
+-0
+-20000
+-0
+-0
+-1
+-0
+-
+diff --git a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch-correct_entry.proftext b/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch-correct_entry.proftext
+deleted file mode 100644
+index c74f3230939e..000000000000
+--- a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch-correct_entry.proftext
++++ /dev/null
+@@ -1,17 +0,0 @@
+-# IR level Instrumentation Flag
+-:ir
+-:entry_first
+-main
+-# Func Hash:
+-391331300939170156
+-# Num Counters:
+-7
+-# Counter Values:
+-1
+-0
+-0
+-20000
+-0
+-0
+-0
+-
+diff --git a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch.proftext b/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch.proftext
+deleted file mode 100644
+index ea50f6b6043f..000000000000
+--- a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch.proftext
++++ /dev/null
+@@ -1,16 +0,0 @@
+-# IR level Instrumentation Flag
+-:ir
+-main
+-# Func Hash:
+-391331300939170156
+-# Num Counters:
+-7
+-# Counter Values:
+-3973
+-3970
+-0
+-11889
+-8111
+-1
+-0
+-
+diff --git a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch_entry.proftext b/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch_entry.proftext
+deleted file mode 100644
+index 6afb6c9019f2..000000000000
+--- a/llvm/test/Transforms/PGOProfile/Inputs/misexpect-switch_entry.proftext
++++ /dev/null
+@@ -1,17 +0,0 @@
+-# IR level Instrumentation Flag
+-:ir
+-:entry_first
+-main
+-# Func Hash:
+-391331300939170156
+-# Num Counters:
+-7
+-# Counter Values:
+-11889
+-3973
+-3970
+-0
+-8111
+-1
+-0
+-
+diff --git a/llvm/test/Transforms/PGOProfile/misexpect-branch-correct.ll b/llvm/test/Transforms/PGOProfile/misexpect-branch-correct.ll
+deleted file mode 100644
+index 90fd4bd4fd4b..000000000000
+--- a/llvm/test/Transforms/PGOProfile/misexpect-branch-correct.ll
++++ /dev/null
+@@ -1,94 +0,0 @@
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-branch-correct.proftext -o %t.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S  2>&1 | FileCheck %s
+-
+-; CHECK-NOT: warning: {{.*}}
+-; CHECK-NOT: remark: {{.*}}
+-; CHECK: !{!"misexpect", i64 1, i64 2000, i64 1}
+-
+-
+-; ModuleID = 'misexpect-branch-correct.c'
+-source_filename = "misexpect-branch-correct.c"
+-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+-target triple = "x86_64-unknown-linux-gnu"
+-
+-@inner_loop = constant i32 100, align 4
+-@outer_loop = constant i32 2000, align 4
+-
+-; Function Attrs: nounwind
+-define i32 @bar() #0 {
+-entry:
+-  %rando = alloca i32, align 4
+-  %x = alloca i32, align 4
+-  %0 = bitcast i32* %rando to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %0) #4
+-  %call = call i32 (...) @buzz()
+-  store i32 %call, i32* %rando, align 4, !tbaa !3
+-  %1 = bitcast i32* %x to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %1) #4
+-  store i32 0, i32* %x, align 4, !tbaa !3
+-  %2 = load i32, i32* %rando, align 4, !tbaa !3
+-  %rem = srem i32 %2, 200000
+-  %cmp = icmp eq i32 %rem, 0
+-  %lnot = xor i1 %cmp, true
+-  %lnot1 = xor i1 %lnot, true
+-  %lnot.ext = zext i1 %lnot1 to i32
+-  %conv = sext i32 %lnot.ext to i64
+-  %expval = call i64 @llvm.expect.i64(i64 %conv, i64 0)
+-  %tobool = icmp ne i64 %expval, 0
+-  br i1 %tobool, label %if.then, label %if.else
+-
+-if.then:                                          ; preds = %entry
+-  %3 = load i32, i32* %rando, align 4, !tbaa !3
+-  %call2 = call i32 @baz(i32 %3)
+-  store i32 %call2, i32* %x, align 4, !tbaa !3
+-  br label %if.end
+-
+-if.else:                                          ; preds = %entry
+-  %call3 = call i32 @foo(i32 50)
+-  store i32 %call3, i32* %x, align 4, !tbaa !3
+-  br label %if.end
+-
+-if.end:                                           ; preds = %if.else, %if.then
+-  %4 = load i32, i32* %x, align 4, !tbaa !3
+-  %5 = bitcast i32* %x to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %5) #4
+-  %6 = bitcast i32* %rando to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %6) #4
+-  ret i32 %4
+-}
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.start.p0i8(i64 immarg, i8* nocapture) #1
+-
+-declare i32 @buzz(...) #2
+-
+-; Function Attrs: nounwind readnone willreturn
+-declare i64 @llvm.expect.i64(i64, i64) #3
+-
+-declare i32 @baz(i32) #2
+-
+-declare i32 @foo(i32) #2
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.end.p0i8(i64 immarg, i8* nocapture) #1
+-
+-attributes #0 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-features"="+cx8,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #1 = { argmemonly nounwind willreturn }
+-attributes #2 = { "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-features"="+cx8,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #3 = { nounwind readnone willreturn }
+-attributes #4 = { nounwind }
+-
+-!llvm.module.flags = !{!0, !1}
+-!llvm.ident = !{!2}
+-
+-!0 = !{i32 2, !"Debug Info Version", i32 3}
+-!1 = !{i32 1, !"wchar_size", i32 4}
+-!2 = !{!"clang version 10.0.0 (c20270bfffc9d6965219de339d66c61e9fe7d82d)"}
+-!3 = !{!4, !4, i64 0}
+-!4 = !{!"int", !5, i64 0}
+-!5 = !{!"omnipotent char", !6, i64 0}
+-!6 = !{!"Simple C/C++ TBAA"}
+diff --git a/llvm/test/Transforms/PGOProfile/misexpect-branch-stripped.ll b/llvm/test/Transforms/PGOProfile/misexpect-branch-stripped.ll
+deleted file mode 100644
+index e21950abc0ec..000000000000
+--- a/llvm/test/Transforms/PGOProfile/misexpect-branch-stripped.ll
++++ /dev/null
+@@ -1,123 +0,0 @@
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-branch.proftext -o %t.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -S 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-branch_entry.proftext -o %t2.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pgo-warn-misexpect 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pgo-warn-misexpect -S 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-; WARNING-DAG: warning: <unknown>:0:0: 19.98%
+-; WARNING-NOT: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 19.98% (399668 / 2000000) of profiled executions.
+-
+-; REMARK-NOT: warning: <unknown>:0:0: 19.98%
+-; REMARK-DAG: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 19.98% (399668 / 2000000) of profiled executions.
+-
+-; BOTH-DAG: warning: <unknown>:0:0: 19.98%
+-; BOTH-DAG: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 19.98% (399668 / 2000000) of profiled executions.
+-
+-; DISABLED-NOT: warning: <unknown>:0:0: 19.98%
+-; DISABLED-NOT: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 19.98% (399668 / 2000000) of profiled executions.
+-
+-; CHECK-DAG: !{!"misexpect", i64 1, i64 2000, i64 1}
+-
+-
+-
+-; ModuleID = 'misexpect-branch.c'
+-source_filename = "misexpect-branch.c"
+-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+-target triple = "x86_64-unknown-linux-gnu"
+-
+-@inner_loop = constant i32 100, align 4
+-@outer_loop = constant i32 2000, align 4
+-
+-; Function Attrs: nounwind
+-define i32 @bar() #0 {
+-entry:
+-  %rando = alloca i32, align 4
+-  %x = alloca i32, align 4
+-  %0 = bitcast i32* %rando to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %0) #4
+-  %call = call i32 (...) @buzz()
+-  store i32 %call, i32* %rando, align 4, !tbaa !3
+-  %1 = bitcast i32* %x to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %1) #4
+-  store i32 0, i32* %x, align 4, !tbaa !3
+-  %2 = load i32, i32* %rando, align 4, !tbaa !3
+-  %rem = srem i32 %2, 200000
+-  %cmp = icmp eq i32 %rem, 0
+-  %lnot = xor i1 %cmp, true
+-  %lnot1 = xor i1 %lnot, true
+-  %lnot.ext = zext i1 %lnot1 to i32
+-  %conv = sext i32 %lnot.ext to i64
+-  %expval = call i64 @llvm.expect.i64(i64 %conv, i64 1)
+-  %tobool = icmp ne i64 %expval, 0
+-  br i1 %tobool, label %if.then, label %if.else
+-
+-if.then:                                          ; preds = %entry
+-  %3 = load i32, i32* %rando, align 4, !tbaa !3
+-  %call2 = call i32 @baz(i32 %3)
+-  store i32 %call2, i32* %x, align 4, !tbaa !3
+-  br label %if.end
+-
+-if.else:                                          ; preds = %entry
+-  %call3 = call i32 @foo(i32 50)
+-  store i32 %call3, i32* %x, align 4, !tbaa !3
+-  br label %if.end
+-
+-if.end:                                           ; preds = %if.else, %if.then
+-  %4 = load i32, i32* %x, align 4, !tbaa !3
+-  %5 = bitcast i32* %x to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %5) #4
+-  %6 = bitcast i32* %rando to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %6) #4
+-  ret i32 %4
+-}
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.start.p0i8(i64 immarg, i8* nocapture) #1
+-
+-declare i32 @buzz(...) #2
+-
+-; Function Attrs: nounwind readnone willreturn
+-declare i64 @llvm.expect.i64(i64, i64) #3
+-
+-declare i32 @baz(i32) #2
+-
+-declare i32 @foo(i32) #2
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.end.p0i8(i64 immarg, i8* nocapture) #1
+-
+-attributes #0 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-features"="+cx8,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #1 = { argmemonly nounwind willreturn }
+-attributes #2 = { "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-features"="+cx8,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #3 = { nounwind readnone willreturn }
+-attributes #4 = { nounwind }
+-
+-!llvm.module.flags = !{!0, !1}
+-!llvm.ident = !{!2}
+-
+-!0 = !{i32 2, !"Debug Info Version", i32 3}
+-!1 = !{i32 1, !"wchar_size", i32 4}
+-!2 = !{!"clang version 10.0.0 (trunk c20270bfffc9d6965219de339d66c61e9fe7d82d)"}
+-!3 = !{!4, !4, i64 0}
+-!4 = !{!"int", !5, i64 0}
+-!5 = !{!"omnipotent char", !6, i64 0}
+-!6 = !{!"Simple C/C++ TBAA"}
+diff --git a/llvm/test/Transforms/PGOProfile/misexpect-branch-unpredictable.ll b/llvm/test/Transforms/PGOProfile/misexpect-branch-unpredictable.ll
+deleted file mode 100644
+index be62746daba8..000000000000
+--- a/llvm/test/Transforms/PGOProfile/misexpect-branch-unpredictable.ll
++++ /dev/null
+@@ -1,89 +0,0 @@
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-branch-correct.proftext -o %t.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S  2>&1 | FileCheck %s
+-
+-; CHECK-NOT: warning: {{.*}}
+-; CHECK-NOT: remark: {{.*}}
+-; CHECK-NOT: !"misexpect"
+-
+-
+-; ModuleID = 'misexpect-branch-unpredictable.c'
+-source_filename = "clang/test/Profile/misexpect-branch-unpredictable.c"
+-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+-target triple = "x86_64-unknown-linux-gnu"
+-
+-@inner_loop = constant i32 100, align 4
+-@outer_loop = constant i32 2000, align 4
+-
+-; Function Attrs: nounwind
+-define i32 @bar() #0 {
+-entry:
+-  %rando = alloca i32, align 4
+-  %x = alloca i32, align 4
+-  %0 = bitcast i32* %rando to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %0) #3
+-  %call = call i32 (...) @buzz()
+-  store i32 %call, i32* %rando, align 4, !tbaa !2
+-  %1 = bitcast i32* %x to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %1) #3
+-  store i32 0, i32* %x, align 4, !tbaa !2
+-  %2 = load i32, i32* %rando, align 4, !tbaa !2
+-  %rem = srem i32 %2, 200000
+-  %cmp = icmp eq i32 %rem, 0
+-  %lnot = xor i1 %cmp, true
+-  %lnot1 = xor i1 %lnot, true
+-  %lnot.ext = zext i1 %lnot1 to i32
+-  %conv = sext i32 %lnot.ext to i64
+-  %tobool = icmp ne i64 %conv, 0
+-  br i1 %tobool, label %if.then, label %if.else, !unpredictable !6
+-
+-if.then:                                          ; preds = %entry
+-  %3 = load i32, i32* %rando, align 4, !tbaa !2
+-  %call2 = call i32 @baz(i32 %3)
+-  store i32 %call2, i32* %x, align 4, !tbaa !2
+-  br label %if.end
+-
+-if.else:                                          ; preds = %entry
+-  %call3 = call i32 @foo(i32 50)
+-  store i32 %call3, i32* %x, align 4, !tbaa !2
+-  br label %if.end
+-
+-if.end:                                           ; preds = %if.else, %if.then
+-  %4 = load i32, i32* %x, align 4, !tbaa !2
+-  %5 = bitcast i32* %x to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %5) #3
+-  %6 = bitcast i32* %rando to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %6) #3
+-  ret i32 %4
+-}
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.start.p0i8(i64 immarg, i8* nocapture) #1
+-
+-declare i32 @buzz(...) #2
+-
+-declare i32 @baz(i32) #2
+-
+-declare i32 @foo(i32) #2
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.end.p0i8(i64 immarg, i8* nocapture) #1
+-
+-attributes #0 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-features"="+cx8,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #1 = { argmemonly nounwind willreturn }
+-attributes #2 = { "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-features"="+cx8,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #3 = { nounwind }
+-
+-!llvm.module.flags = !{!0}
+-!llvm.ident = !{!1}
+-
+-!0 = !{i32 1, !"wchar_size", i32 4}
+-!1 = !{!"Fuchsia clang version 10.0.0 (153b453014c94291c8c6cf6320b2f46df40f26f3) (based on LLVM 10.0.0svn)"}
+-!2 = !{!3, !3, i64 0}
+-!3 = !{!"int", !4, i64 0}
+-!4 = !{!"omnipotent char", !5, i64 0}
+-!5 = !{!"Simple C/C++ TBAA"}
+-!6 = !{}
+diff --git a/llvm/test/Transforms/PGOProfile/misexpect-branch.ll b/llvm/test/Transforms/PGOProfile/misexpect-branch.ll
+deleted file mode 100644
+index 726d13b0084a..000000000000
+--- a/llvm/test/Transforms/PGOProfile/misexpect-branch.ll
++++ /dev/null
+@@ -1,139 +0,0 @@
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-branch.proftext -o %t.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -S 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-branch_entry.proftext -o %t2.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pgo-warn-misexpect 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pgo-warn-misexpect -S 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; WARNING-DAG: warning: misexpect-branch.c:22:0: 19.98%
+-; WARNING-NOT: remark: misexpect-branch.c:22:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 19.98% (399668 / 2000000) of profiled executions.
+-
+-; REMARK-NOT: warning: misexpect-branch.c:22:0: 19.98%
+-; REMARK-DAG: remark: misexpect-branch.c:22:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 19.98% (399668 / 2000000) of profiled executions.
+-
+-; BOTH-DAG: warning: misexpect-branch.c:22:0: 19.98%
+-; BOTH-DAG: remark: misexpect-branch.c:22:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 19.98% (399668 / 2000000) of profiled executions.
+-
+-; DISABLED-NOT: warning: misexpect-branch.c:22:0: 19.98%
+-; DISABLED-NOT: remark: misexpect-branch.c:22:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 19.98% (399668 / 2000000) of profiled executions.
+-
+-; CHECK-DAG: !{!"misexpect", i64 1, i64 2000, i64 1}
+-
+-
+-
+-; ModuleID = 'misexpect-branch.c'
+-source_filename = "misexpect-branch.c"
+-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+-target triple = "x86_64-unknown-linux-gnu"
+-
+-@inner_loop = constant i32 100, align 4
+-@outer_loop = constant i32 2000, align 4
+-
+-; Function Attrs: nounwind
+-define i32 @bar() #0 !dbg !6 {
+-entry:
+-  %rando = alloca i32, align 4
+-  %x = alloca i32, align 4
+-  %0 = bitcast i32* %rando to i8*, !dbg !9
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %0) #4, !dbg !9
+-  %call = call i32 (...) @buzz(), !dbg !9
+-  store i32 %call, i32* %rando, align 4, !dbg !9, !tbaa !10
+-  %1 = bitcast i32* %x to i8*, !dbg !14
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %1) #4, !dbg !14
+-  store i32 0, i32* %x, align 4, !dbg !14, !tbaa !10
+-  %2 = load i32, i32* %rando, align 4, !dbg !15, !tbaa !10
+-  %rem = srem i32 %2, 200000, !dbg !15
+-  %cmp = icmp eq i32 %rem, 0, !dbg !15
+-  %lnot = xor i1 %cmp, true, !dbg !15
+-  %lnot1 = xor i1 %lnot, true, !dbg !15
+-  %lnot.ext = zext i1 %lnot1 to i32, !dbg !15
+-  %conv = sext i32 %lnot.ext to i64, !dbg !15
+-  %expval = call i64 @llvm.expect.i64(i64 %conv, i64 1), !dbg !15
+-  %tobool = icmp ne i64 %expval, 0, !dbg !15
+-  br i1 %tobool, label %if.then, label %if.else, !dbg !15
+-
+-if.then:                                          ; preds = %entry
+-  %3 = load i32, i32* %rando, align 4, !dbg !16, !tbaa !10
+-  %call2 = call i32 @baz(i32 %3), !dbg !16
+-  store i32 %call2, i32* %x, align 4, !dbg !16, !tbaa !10
+-  br label %if.end, !dbg !17
+-
+-if.else:                                          ; preds = %entry
+-  %call3 = call i32 @foo(i32 50), !dbg !18
+-  store i32 %call3, i32* %x, align 4, !dbg !18, !tbaa !10
+-  br label %if.end
+-
+-if.end:                                           ; preds = %if.else, %if.then
+-  %4 = load i32, i32* %x, align 4, !dbg !19, !tbaa !10
+-  %5 = bitcast i32* %x to i8*, !dbg !20
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %5) #4, !dbg !20
+-  %6 = bitcast i32* %rando to i8*, !dbg !20
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %6) #4, !dbg !20
+-  ret i32 %4, !dbg !19
+-}
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.start.p0i8(i64 immarg, i8* nocapture) #1
+-
+-declare i32 @buzz(...) #2
+-
+-; Function Attrs: nounwind readnone willreturn
+-declare i64 @llvm.expect.i64(i64, i64) #3
+-
+-declare i32 @baz(i32) #2
+-
+-declare i32 @foo(i32) #2
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.end.p0i8(i64 immarg, i8* nocapture) #1
+-
+-attributes #0 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-features"="+cx8,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #1 = { argmemonly nounwind willreturn }
+-attributes #2 = { "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-features"="+cx8,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #3 = { nounwind readnone willreturn }
+-attributes #4 = { nounwind }
+-
+-!llvm.dbg.cu = !{!0}
+-!llvm.module.flags = !{!3, !4}
+-!llvm.ident = !{!5}
+-
+-!0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "clang version 10.0.0 (trunk c20270bfffc9d6965219de339d66c61e9fe7d82d)", isOptimized: true, runtimeVersion: 0, emissionKind: LineTablesOnly, enums: !2, nameTableKind: None)
+-!1 = !DIFile(filename: "<stdin>", directory: ".")
+-!2 = !{}
+-!3 = !{i32 2, !"Debug Info Version", i32 3}
+-!4 = !{i32 1, !"wchar_size", i32 4}
+-!5 = !{!"clang version 10.0.0 (trunk c20270bfffc9d6965219de339d66c61e9fe7d82d)"}
+-!6 = distinct !DISubprogram(name: "bar", scope: !7, file: !7, line: 19, type: !8, scopeLine: 19, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, retainedNodes: !2)
+-!7 = !DIFile(filename: "misexpect-branch.c", directory: ".")
+-!8 = !DISubroutineType(types: !2)
+-!9 = !DILocation(line: 20, scope: !6)
+-!10 = !{!11, !11, i64 0}
+-!11 = !{!"int", !12, i64 0}
+-!12 = !{!"omnipotent char", !13, i64 0}
+-!13 = !{!"Simple C/C++ TBAA"}
+-!14 = !DILocation(line: 21, scope: !6)
+-!15 = !DILocation(line: 22, scope: !6)
+-!16 = !DILocation(line: 23, scope: !6)
+-!17 = !DILocation(line: 24, scope: !6)
+-!18 = !DILocation(line: 25, scope: !6)
+-!19 = !DILocation(line: 27, scope: !6)
+-!20 = !DILocation(line: 28, scope: !6)
+diff --git a/llvm/test/Transforms/PGOProfile/misexpect-switch-default.ll b/llvm/test/Transforms/PGOProfile/misexpect-switch-default.ll
+deleted file mode 100644
+index 1fcac0eabf8d..000000000000
+--- a/llvm/test/Transforms/PGOProfile/misexpect-switch-default.ll
++++ /dev/null
+@@ -1,194 +0,0 @@
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-switch.proftext -o %t.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instrument-entry=false -pgo-instr-use -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -lower-expect -pgo-instrument-entry=false -pgo-instr-use -pgo-test-profile-file=%t.profdata -S -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -lower-expect -pgo-instrument-entry=false -pgo-instr-use -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -lower-expect -pgo-instrument-entry=false -pgo-instr-use -pgo-test-profile-file=%t.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -S 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; WARNING-DAG: warning: <unknown>:0:0: 0.00%
+-; WARNING-NOT: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 27943) of profiled executions.
+-
+-; REMARK-NOT: warning: <unknown>:0:0: 0.00%
+-; REMARK-DAG: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 27943) of profiled executions.
+-
+-; BOTH-DAG: warning: <unknown>:0:0: 0.00%
+-; BOTH-DAG: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 27943) of profiled executions.
+-
+-; DISABLED-NOT: warning: <unknown>:0:0: 0.00%
+-; DISABLED-NOT: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 27943) of profiled executions.
+-
+-; DISABLED-NOT: warning: <unknown>:0:0: 0.00%
+-; DISABLED-NOT: remark: <unknown>:0:0: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 27943) of profiled executions.
+-
+-; CORRECT-NOT: warning: {{.*}}
+-; CORRECT-NOT: remark: {{.*}}
+-; CHECK-DAG: !{!"misexpect", i64 0, i64 2000, i64 1}
+-
+-
+-; ModuleID = 'misexpect-switch.c'
+-source_filename = "misexpect-switch.c"
+-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+-target triple = "x86_64-unknown-linux-gnu"
+-
+-@inner_loop = dso_local constant i32 1000, align 4
+-@outer_loop = dso_local constant i32 20, align 4
+-@arry_size = dso_local constant i32 25, align 4
+-@arry = dso_local global [25 x i32] zeroinitializer, align 16
+-
+-; Function Attrs: nounwind uwtable
+-define dso_local void @init_arry() #0 {
+-entry:
+-  %i = alloca i32, align 4
+-  %0 = bitcast i32* %i to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %0) #6
+-  store i32 0, i32* %i, align 4, !tbaa !4
+-  br label %for.cond
+-
+-for.cond:                                         ; preds = %for.inc, %entry
+-  %1 = load i32, i32* %i, align 4, !tbaa !4
+-  %cmp = icmp slt i32 %1, 25
+-  br i1 %cmp, label %for.body, label %for.end
+-
+-for.body:                                         ; preds = %for.cond
+-  %call = call i32 @rand() #6
+-  %rem = srem i32 %call, 10
+-  %2 = load i32, i32* %i, align 4, !tbaa !4
+-  %idxprom = sext i32 %2 to i64
+-  %arrayidx = getelementptr inbounds [25 x i32], [25 x i32]* @arry, i64 0, i64 %idxprom
+-  store i32 %rem, i32* %arrayidx, align 4, !tbaa !4
+-  br label %for.inc
+-
+-for.inc:                                          ; preds = %for.body
+-  %3 = load i32, i32* %i, align 4, !tbaa !4
+-  %inc = add nsw i32 %3, 1
+-  store i32 %inc, i32* %i, align 4, !tbaa !4
+-  br label %for.cond
+-
+-for.end:                                          ; preds = %for.cond
+-  %4 = bitcast i32* %i to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %4) #6
+-  ret void
+-}
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.start.p0i8(i64 immarg, i8* nocapture) #1
+-
+-; Function Attrs: nounwind readnone speculatable willreturn
+-declare void @llvm.dbg.declare(metadata, metadata, metadata) #2
+-
+-; Function Attrs: nounwind
+-declare dso_local i32 @rand() #3
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.end.p0i8(i64 immarg, i8* nocapture) #1
+-
+-; Function Attrs: nounwind uwtable
+-define dso_local i32 @main() #0 {
+-entry:
+-  %retval = alloca i32, align 4
+-  %val = alloca i32, align 4
+-  %j = alloca i32, align 4
+-  %condition = alloca i32, align 4
+-  store i32 0, i32* %retval, align 4
+-  call void @init_arry()
+-  %0 = bitcast i32* %val to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %0) #6
+-  store i32 0, i32* %val, align 4, !tbaa !4
+-  %1 = bitcast i32* %j to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %1) #6
+-  store i32 0, i32* %j, align 4, !tbaa !4
+-  br label %for.cond
+-
+-for.cond:                                         ; preds = %for.inc, %entry
+-  %2 = load i32, i32* %j, align 4, !tbaa !4
+-  %cmp = icmp slt i32 %2, 20000
+-  br i1 %cmp, label %for.body, label %for.end
+-
+-for.body:                                         ; preds = %for.cond
+-  %3 = bitcast i32* %condition to i8*
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %3) #6
+-  %call = call i32 @rand() #6
+-  %rem = srem i32 %call, 5
+-  store i32 %rem, i32* %condition, align 4, !tbaa !4
+-  %4 = load i32, i32* %condition, align 4, !tbaa !4
+-  %conv = zext i32 %4 to i64
+-  %expval = call i64 @llvm.expect.i64(i64 %conv, i64 6)
+-  switch i64 %expval, label %sw.default [
+-    i64 0, label %sw.bb
+-    i64 1, label %sw.bb2
+-    i64 2, label %sw.bb2
+-    i64 3, label %sw.bb2
+-    i64 4, label %sw.bb3
+-  ]
+-
+-sw.bb:                                            ; preds = %for.body
+-  %call1 = call i32 @sum(i32* getelementptr inbounds ([25 x i32], [25 x i32]* @arry, i64 0, i64 0), i32 25)
+-  %5 = load i32, i32* %val, align 4, !tbaa !4
+-  %add = add nsw i32 %5, %call1
+-  store i32 %add, i32* %val, align 4, !tbaa !4
+-  br label %sw.epilog
+-
+-sw.bb2:                                           ; preds = %for.body, %for.body, %for.body
+-  br label %sw.epilog
+-
+-sw.bb3:                                           ; preds = %for.body
+-  %call4 = call i32 @random_sample(i32* getelementptr inbounds ([25 x i32], [25 x i32]* @arry, i64 0, i64 0), i32 25)
+-  %6 = load i32, i32* %val, align 4, !tbaa !4
+-  %add5 = add nsw i32 %6, %call4
+-  store i32 %add5, i32* %val, align 4, !tbaa !4
+-  br label %sw.epilog
+-
+-sw.default:                                       ; preds = %for.body
+-  unreachable
+-
+-sw.epilog:                                        ; preds = %sw.bb3, %sw.bb2, %sw.bb
+-  %7 = bitcast i32* %condition to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %7) #6
+-  br label %for.inc
+-
+-for.inc:                                          ; preds = %sw.epilog
+-  %8 = load i32, i32* %j, align 4, !tbaa !4
+-  %inc = add nsw i32 %8, 1
+-  store i32 %inc, i32* %j, align 4, !tbaa !4
+-  br label %for.cond
+-
+-for.end:                                          ; preds = %for.cond
+-  %9 = bitcast i32* %j to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %9) #6
+-  %10 = bitcast i32* %val to i8*
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %10) #6
+-  ret i32 0
+-}
+-
+-; Function Attrs: nounwind readnone willreturn
+-declare i64 @llvm.expect.i64(i64, i64) #4
+-
+-declare dso_local i32 @sum(i32*, i32) #5
+-
+-declare dso_local i32 @random_sample(i32*, i32) #5
+-
+-attributes #0 = { nounwind uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #1 = { argmemonly nounwind willreturn }
+-attributes #2 = { nounwind readnone speculatable willreturn }
+-attributes #3 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #4 = { nounwind readnone willreturn }
+-attributes #5 = { "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #6 = { nounwind }
+-
+-!llvm.module.flags = !{!0, !1, !2}
+-!llvm.ident = !{!3}
+-
+-!0 = !{i32 2, !"Dwarf Version", i32 4}
+-!1 = !{i32 2, !"Debug Info Version", i32 3}
+-!2 = !{i32 1, !"wchar_size", i32 4}
+-!3 = !{!"clang version 10.0.0 (60b79b85b1763d3d25630261e5cd1adb7f0835bc)"}
+-!4 = !{!5, !5, i64 0}
+-!5 = !{!"int", !6, i64 0}
+-!6 = !{!"omnipotent char", !7, i64 0}
+-!7 = !{!"Simple C/C++ TBAA"}
+diff --git a/llvm/test/Transforms/PGOProfile/misexpect-switch.ll b/llvm/test/Transforms/PGOProfile/misexpect-switch.ll
+deleted file mode 100644
+index dd8c7c70ec20..000000000000
+--- a/llvm/test/Transforms/PGOProfile/misexpect-switch.ll
++++ /dev/null
+@@ -1,306 +0,0 @@
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-switch.proftext -o %t.profdata
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-switch-correct.proftext -o %t.c.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -S 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=false -pgo-test-profile-file=%t.c.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=CORRECT
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=false -pgo-test-profile-file=%t.c.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=CORRECT
+-
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-switch_entry.proftext -o %t2.profdata
+-; RUN: llvm-profdata merge %S/Inputs/misexpect-switch-correct_entry.proftext -o %t2.c.profdata
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pgo-warn-misexpect 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; New PM
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pgo-warn-misexpect -S 2>&1 | FileCheck %s --check-prefix=WARNING
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=REMARK
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=BOTH
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.profdata -S 2>&1 | FileCheck %s --check-prefix=DISABLED
+-
+-; RUN: opt < %s -lower-expect -pgo-instr-use -pgo-instrument-entry=true -pgo-test-profile-file=%t2.c.profdata -S -pgo-warn-misexpect -pass-remarks=misexpect 2>&1 | FileCheck %s --check-prefix=CORRECT
+-; RUN: opt < %s -passes="function(lower-expect),pgo-instr-use" -pgo-instrument-entry=true -pgo-test-profile-file=%t2.c.profdata -pgo-warn-misexpect -pass-remarks=misexpect -S 2>&1 | FileCheck %s --check-prefix=CORRECT
+-; WARNING-DAG: warning: misexpect-switch.c:26:5: 0.00%
+-; WARNING-NOT: remark: misexpect-switch.c:26:5: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 8112) of profiled executions.
+-
+-; REMARK-NOT: warning: misexpect-switch.c:26:5: 0.00%
+-; REMARK-DAG: remark: misexpect-switch.c:26:5: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 8112) of profiled executions.
+-
+-; BOTH-DAG: warning: misexpect-switch.c:26:5: 0.00%
+-; BOTH-DAG: remark: misexpect-switch.c:26:5: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 8112) of profiled executions.
+-
+-; DISABLED-NOT: warning: misexpect-switch.c:26:5: 0.00%
+-; DISABLED-NOT: remark: misexpect-switch.c:26:5: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 8112) of profiled executions.
+-
+-; DISABLED-NOT: warning: misexpect-switch.c:26:5: 0.00%
+-; DISABLED-NOT: remark: misexpect-switch.c:26:5: Potential performance regression from use of the llvm.expect intrinsic: Annotation was correct on 0.00% (0 / 8112) of profiled executions.
+-
+-; CORRECT-NOT: warning: {{.*}}
+-; CORRECT-NOT: remark: {{.*}}
+-; CHECK-DAG: !{!"misexpect", i64 0, i64 2000, i64 1}
+-
+-; ModuleID = 'misexpect-switch.c'
+-source_filename = "misexpect-switch.c"
+-target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
+-target triple = "x86_64-unknown-linux-gnu"
+-
+-@inner_loop = dso_local constant i32 1000, align 4, !dbg !0
+-@outer_loop = dso_local constant i32 20, align 4, !dbg !6
+-@arry_size = dso_local constant i32 25, align 4, !dbg !10
+-@arry = dso_local global [25 x i32] zeroinitializer, align 16, !dbg !12
+-
+-; Function Attrs: nounwind uwtable
+-define dso_local void @init_arry() #0 !dbg !21 {
+-entry:
+-  %i = alloca i32, align 4
+-  %0 = bitcast i32* %i to i8*, !dbg !26
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %0) #6, !dbg !26
+-  call void @llvm.dbg.declare(metadata i32* %i, metadata !25, metadata !DIExpression()), !dbg !27
+-  store i32 0, i32* %i, align 4, !dbg !28, !tbaa !30
+-  br label %for.cond, !dbg !34
+-
+-for.cond:                                         ; preds = %for.inc, %entry
+-  %1 = load i32, i32* %i, align 4, !dbg !35, !tbaa !30
+-  %cmp = icmp slt i32 %1, 25, !dbg !37
+-  br i1 %cmp, label %for.body, label %for.end, !dbg !38
+-
+-for.body:                                         ; preds = %for.cond
+-  %call = call i32 @rand() #6, !dbg !39
+-  %rem = srem i32 %call, 10, !dbg !41
+-  %2 = load i32, i32* %i, align 4, !dbg !42, !tbaa !30
+-  %idxprom = sext i32 %2 to i64, !dbg !43
+-  %arrayidx = getelementptr inbounds [25 x i32], [25 x i32]* @arry, i64 0, i64 %idxprom, !dbg !43
+-  store i32 %rem, i32* %arrayidx, align 4, !dbg !44, !tbaa !30
+-  br label %for.inc, !dbg !45
+-
+-for.inc:                                          ; preds = %for.body
+-  %3 = load i32, i32* %i, align 4, !dbg !46, !tbaa !30
+-  %inc = add nsw i32 %3, 1, !dbg !46
+-  store i32 %inc, i32* %i, align 4, !dbg !46, !tbaa !30
+-  br label %for.cond, !dbg !47, !llvm.loop !48
+-
+-for.end:                                          ; preds = %for.cond
+-  %4 = bitcast i32* %i to i8*, !dbg !50
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %4) #6, !dbg !50
+-  ret void, !dbg !50
+-}
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.start.p0i8(i64 immarg, i8* nocapture) #1
+-
+-; Function Attrs: nounwind readnone speculatable willreturn
+-declare void @llvm.dbg.declare(metadata, metadata, metadata) #2
+-
+-; Function Attrs: nounwind
+-declare dso_local i32 @rand() #3
+-
+-; Function Attrs: argmemonly nounwind willreturn
+-declare void @llvm.lifetime.end.p0i8(i64 immarg, i8* nocapture) #1
+-
+-; Function Attrs: nounwind uwtable
+-define dso_local i32 @main() #0 !dbg !51 {
+-entry:
+-  %retval = alloca i32, align 4
+-  %val = alloca i32, align 4
+-  %j = alloca i32, align 4
+-  %condition = alloca i32, align 4
+-  store i32 0, i32* %retval, align 4
+-  call void @init_arry(), !dbg !62
+-  %0 = bitcast i32* %val to i8*, !dbg !63
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %0) #6, !dbg !63
+-  call void @llvm.dbg.declare(metadata i32* %val, metadata !55, metadata !DIExpression()), !dbg !64
+-  store i32 0, i32* %val, align 4, !dbg !64, !tbaa !30
+-  %1 = bitcast i32* %j to i8*, !dbg !65
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %1) #6, !dbg !65
+-  call void @llvm.dbg.declare(metadata i32* %j, metadata !56, metadata !DIExpression()), !dbg !66
+-  store i32 0, i32* %j, align 4, !dbg !67, !tbaa !30
+-  br label %for.cond, !dbg !68
+-
+-for.cond:                                         ; preds = %for.inc, %entry
+-  %2 = load i32, i32* %j, align 4, !dbg !69, !tbaa !30
+-  %cmp = icmp slt i32 %2, 20000, !dbg !70
+-  br i1 %cmp, label %for.body, label %for.end, !dbg !71
+-
+-for.body:                                         ; preds = %for.cond
+-  %3 = bitcast i32* %condition to i8*, !dbg !72
+-  call void @llvm.lifetime.start.p0i8(i64 4, i8* %3) #6, !dbg !72
+-  call void @llvm.dbg.declare(metadata i32* %condition, metadata !57, metadata !DIExpression()), !dbg !73
+-  %call = call i32 @rand() #6, !dbg !74
+-  %rem = srem i32 %call, 5, !dbg !75
+-  store i32 %rem, i32* %condition, align 4, !dbg !73, !tbaa !30
+-  %4 = load i32, i32* %condition, align 4, !dbg !76, !tbaa !30
+-  %conv = zext i32 %4 to i64, !dbg !76
+-  %expval = call i64 @llvm.expect.i64(i64 %conv, i64 0), !dbg !77
+-  switch i64 %expval, label %sw.default [
+-    i64 0, label %sw.bb
+-    i64 1, label %sw.bb2
+-    i64 2, label %sw.bb2
+-    i64 3, label %sw.bb2
+-    i64 4, label %sw.bb3
+-  ], !dbg !78
+-
+-sw.bb:                                            ; preds = %for.body
+-  %call1 = call i32 @sum(i32* getelementptr inbounds ([25 x i32], [25 x i32]* @arry, i64 0, i64 0), i32 25), !dbg !79
+-  %5 = load i32, i32* %val, align 4, !dbg !81, !tbaa !30
+-  %add = add nsw i32 %5, %call1, !dbg !81
+-  store i32 %add, i32* %val, align 4, !dbg !81, !tbaa !30
+-  br label %sw.epilog, !dbg !82
+-
+-sw.bb2:                                           ; preds = %for.body, %for.body, %for.body
+-  br label %sw.epilog, !dbg !83
+-
+-sw.bb3:                                           ; preds = %for.body
+-  %call4 = call i32 @random_sample(i32* getelementptr inbounds ([25 x i32], [25 x i32]* @arry, i64 0, i64 0), i32 25), !dbg !84
+-  %6 = load i32, i32* %val, align 4, !dbg !85, !tbaa !30
+-  %add5 = add nsw i32 %6, %call4, !dbg !85
+-  store i32 %add5, i32* %val, align 4, !dbg !85, !tbaa !30
+-  br label %sw.epilog, !dbg !86
+-
+-sw.default:                                       ; preds = %for.body
+-  unreachable, !dbg !87
+-
+-sw.epilog:                                        ; preds = %sw.bb3, %sw.bb2, %sw.bb
+-  %7 = bitcast i32* %condition to i8*, !dbg !88
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %7) #6, !dbg !88
+-  br label %for.inc, !dbg !89
+-
+-for.inc:                                          ; preds = %sw.epilog
+-  %8 = load i32, i32* %j, align 4, !dbg !90, !tbaa !30
+-  %inc = add nsw i32 %8, 1, !dbg !90
+-  store i32 %inc, i32* %j, align 4, !dbg !90, !tbaa !30
+-  br label %for.cond, !dbg !91, !llvm.loop !92
+-
+-for.end:                                          ; preds = %for.cond
+-  %9 = bitcast i32* %j to i8*, !dbg !94
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %9) #6, !dbg !94
+-  %10 = bitcast i32* %val to i8*, !dbg !94
+-  call void @llvm.lifetime.end.p0i8(i64 4, i8* %10) #6, !dbg !94
+-  ret i32 0, !dbg !95
+-}
+-
+-; Function Attrs: nounwind readnone willreturn
+-declare i64 @llvm.expect.i64(i64, i64) #4
+-
+-declare dso_local i32 @sum(i32*, i32) #5
+-
+-declare dso_local i32 @random_sample(i32*, i32) #5
+-
+-attributes #0 = { nounwind uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #1 = { argmemonly nounwind willreturn }
+-attributes #2 = { nounwind readnone speculatable willreturn }
+-attributes #3 = { nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #4 = { nounwind readnone willreturn }
+-attributes #5 = { "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-attributes #6 = { nounwind }
+-
+-!llvm.dbg.cu = !{!2}
+-!llvm.module.flags = !{!17, !18, !19}
+-!llvm.ident = !{!20}
+-
+-!0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
+-!1 = distinct !DIGlobalVariable(name: "inner_loop", scope: !2, file: !3, line: 7, type: !8, isLocal: false, isDefinition: true)
+-!2 = distinct !DICompileUnit(language: DW_LANG_C99, file: !3, producer: "clang version 10.0.0", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, enums: !4, globals: !5, nameTableKind: None)
+-!3 = !DIFile(filename: "misexpect-switch.c", directory: ".")
+-!4 = !{}
+-!5 = !{!0, !6, !10, !12}
+-!6 = !DIGlobalVariableExpression(var: !7, expr: !DIExpression())
+-!7 = distinct !DIGlobalVariable(name: "outer_loop", scope: !2, file: !3, line: 8, type: !8, isLocal: false, isDefinition: true)
+-!8 = !DIDerivedType(tag: DW_TAG_const_type, baseType: !9)
+-!9 = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
+-!10 = !DIGlobalVariableExpression(var: !11, expr: !DIExpression())
+-!11 = distinct !DIGlobalVariable(name: "arry_size", scope: !2, file: !3, line: 9, type: !8, isLocal: false, isDefinition: true)
+-!12 = !DIGlobalVariableExpression(var: !13, expr: !DIExpression())
+-!13 = distinct !DIGlobalVariable(name: "arry", scope: !2, file: !3, line: 11, type: !14, isLocal: false, isDefinition: true)
+-!14 = !DICompositeType(tag: DW_TAG_array_type, baseType: !9, size: 800, elements: !15)
+-!15 = !{!16}
+-!16 = !DISubrange(count: 25)
+-!17 = !{i32 2, !"Dwarf Version", i32 4}
+-!18 = !{i32 2, !"Debug Info Version", i32 3}
+-!19 = !{i32 1, !"wchar_size", i32 4}
+-!20 = !{!"clang version 10.0.0"}
+-!21 = distinct !DISubprogram(name: "init_arry", scope: !3, file: !3, line: 13, type: !22, scopeLine: 13, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !2, retainedNodes: !24)
+-!22 = !DISubroutineType(types: !23)
+-!23 = !{null}
+-!24 = !{!25}
+-!25 = !DILocalVariable(name: "i", scope: !21, file: !3, line: 14, type: !9)
+-!26 = !DILocation(line: 14, column: 3, scope: !21)
+-!27 = !DILocation(line: 14, column: 7, scope: !21)
+-!28 = !DILocation(line: 15, column: 10, scope: !29)
+-!29 = distinct !DILexicalBlock(scope: !21, file: !3, line: 15, column: 3)
+-!30 = !{!31, !31, i64 0}
+-!31 = !{!"int", !32, i64 0}
+-!32 = !{!"omnipotent char", !33, i64 0}
+-!33 = !{!"Simple C/C++ TBAA"}
+-!34 = !DILocation(line: 15, column: 8, scope: !29)
+-!35 = !DILocation(line: 15, column: 15, scope: !36)
+-!36 = distinct !DILexicalBlock(scope: !29, file: !3, line: 15, column: 3)
+-!37 = !DILocation(line: 15, column: 17, scope: !36)
+-!38 = !DILocation(line: 15, column: 3, scope: !29)
+-!39 = !DILocation(line: 16, column: 15, scope: !40)
+-!40 = distinct !DILexicalBlock(scope: !36, file: !3, line: 15, column: 35)
+-!41 = !DILocation(line: 16, column: 22, scope: !40)
+-!42 = !DILocation(line: 16, column: 10, scope: !40)
+-!43 = !DILocation(line: 16, column: 5, scope: !40)
+-!44 = !DILocation(line: 16, column: 13, scope: !40)
+-!45 = !DILocation(line: 17, column: 3, scope: !40)
+-!46 = !DILocation(line: 15, column: 30, scope: !36)
+-!47 = !DILocation(line: 15, column: 3, scope: !36)
+-!48 = distinct !{!48, !38, !49}
+-!49 = !DILocation(line: 17, column: 3, scope: !29)
+-!50 = !DILocation(line: 18, column: 1, scope: !21)
+-!51 = distinct !DISubprogram(name: "main", scope: !3, file: !3, line: 20, type: !52, scopeLine: 20, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !2, retainedNodes: !54)
+-!52 = !DISubroutineType(types: !53)
+-!53 = !{!9}
+-!54 = !{!55, !56, !57}
+-!55 = !DILocalVariable(name: "val", scope: !51, file: !3, line: 22, type: !9)
+-!56 = !DILocalVariable(name: "j", scope: !51, file: !3, line: 23, type: !9)
+-!57 = !DILocalVariable(name: "condition", scope: !58, file: !3, line: 25, type: !61)
+-!58 = distinct !DILexicalBlock(scope: !59, file: !3, line: 24, column: 49)
+-!59 = distinct !DILexicalBlock(scope: !60, file: !3, line: 24, column: 3)
+-!60 = distinct !DILexicalBlock(scope: !51, file: !3, line: 24, column: 3)
+-!61 = !DIBasicType(name: "unsigned int", size: 32, encoding: DW_ATE_unsigned)
+-!62 = !DILocation(line: 21, column: 3, scope: !51)
+-!63 = !DILocation(line: 22, column: 3, scope: !51)
+-!64 = !DILocation(line: 22, column: 7, scope: !51)
+-!65 = !DILocation(line: 23, column: 3, scope: !51)
+-!66 = !DILocation(line: 23, column: 7, scope: !51)
+-!67 = !DILocation(line: 24, column: 10, scope: !60)
+-!68 = !DILocation(line: 24, column: 8, scope: !60)
+-!69 = !DILocation(line: 24, column: 15, scope: !59)
+-!70 = !DILocation(line: 24, column: 17, scope: !59)
+-!71 = !DILocation(line: 24, column: 3, scope: !60)
+-!72 = !DILocation(line: 25, column: 5, scope: !58)
+-!73 = !DILocation(line: 25, column: 14, scope: !58)
+-!74 = !DILocation(line: 25, column: 26, scope: !58)
+-!75 = !DILocation(line: 25, column: 33, scope: !58)
+-!76 = !DILocation(line: 26, column: 30, scope: !58)
+-!77 = !DILocation(line: 26, column: 13, scope: !58)
+-!78 = !DILocation(line: 26, column: 5, scope: !58)
+-!79 = !DILocation(line: 28, column: 14, scope: !80)
+-!80 = distinct !DILexicalBlock(scope: !58, file: !3, line: 26, column: 45)
+-!81 = !DILocation(line: 28, column: 11, scope: !80)
+-!82 = !DILocation(line: 29, column: 7, scope: !80)
+-!83 = !DILocation(line: 33, column: 7, scope: !80)
+-!84 = !DILocation(line: 35, column: 14, scope: !80)
+-!85 = !DILocation(line: 35, column: 11, scope: !80)
+-!86 = !DILocation(line: 36, column: 7, scope: !80)
+-!87 = !DILocation(line: 38, column: 7, scope: !80)
+-!88 = !DILocation(line: 40, column: 3, scope: !59)
+-!89 = !DILocation(line: 40, column: 3, scope: !58)
+-!90 = !DILocation(line: 24, column: 44, scope: !59)
+-!91 = !DILocation(line: 24, column: 3, scope: !59)
+-!92 = distinct !{!92, !71, !93}
+-!93 = !DILocation(line: 40, column: 3, scope: !60)
+-!94 = !DILocation(line: 43, column: 1, scope: !51)
+-!95 = !DILocation(line: 42, column: 3, scope: !51)
+diff --git a/llvm/utils/gn/secondary/llvm/lib/Transforms/Utils/BUILD.gn b/llvm/utils/gn/secondary/llvm/lib/Transforms/Utils/BUILD.gn
+index a0de4e4980b1..ccb05f0ec472 100644
+--- a/llvm/utils/gn/secondary/llvm/lib/Transforms/Utils/BUILD.gn
++++ b/llvm/utils/gn/secondary/llvm/lib/Transforms/Utils/BUILD.gn
+@@ -56,7 +56,6 @@ static_library("Utils") {
+     "MatrixUtils.cpp",
+     "Mem2Reg.cpp",
+     "MetaRenamer.cpp",
+-    "MisExpect.cpp",
+     "ModuleUtils.cpp",
+     "NameAnonGlobals.cpp",
+     "PredicateInfo.cpp",
+-- 
+2.17.1
+
