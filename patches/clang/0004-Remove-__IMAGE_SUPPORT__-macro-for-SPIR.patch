@@ -1,0 +1,44 @@
+From effb6d2f7668209bc7fc699f8f9ddd10dc26d985 Mon Sep 17 00:00:00 2001
+From: haonanya <haonan.yang@intel.com>
+Date: Tue, 11 May 2021 10:21:22 +0800
+Subject: [PATCH] Remove __IMAGE_SUPPORT__ macro for SPIR since SPIR doesn't
+ require image support
+
+Signed-off-by: haonanya <haonan.yang@intel.com>
+---
+ clang/lib/Frontend/InitPreprocessor.cpp     | 3 ---
+ clang/test/Preprocessor/predefined-macros.c | 4 ----
+ 2 files changed, 7 deletions(-)
+
+diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
+index 6feb7bcbd4b7..564c7fab2b1d 100644
+--- a/clang/lib/Frontend/InitPreprocessor.cpp
++++ b/clang/lib/Frontend/InitPreprocessor.cpp
+@@ -1070,9 +1070,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
+   if (TI.getSupportedOpenCLOpts().isSupported(#Ext, LangOpts))                 \
+     Builder.defineMacro(#Ext);
+ #include "clang/Basic/OpenCLExtensions.def"
+-
+-    if (TI.getTriple().isSPIR())
+-      Builder.defineMacro("__IMAGE_SUPPORT__");
+   }
+ 
+   if (TI.hasInt128Type() && LangOpts.CPlusPlus && LangOpts.GNUMode) {
+diff --git a/clang/test/Preprocessor/predefined-macros.c b/clang/test/Preprocessor/predefined-macros.c
+index def105f4c52e..de6c3fcc48b1 100644
+--- a/clang/test/Preprocessor/predefined-macros.c
++++ b/clang/test/Preprocessor/predefined-macros.c
+@@ -171,10 +171,6 @@
+ // MSCOPE:#define __OPENCL_MEMORY_SCOPE_WORK_GROUP 1
+ // MSCOPE:#define __OPENCL_MEMORY_SCOPE_WORK_ITEM 0
+ 
+-// RUN: %clang_cc1 %s -E -dM -o - -x cl -triple spir-unknown-unknown \
+-// RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-SPIR
+-// CHECK-SPIR: #define __IMAGE_SUPPORT__ 1
+-
+ // RUN: %clang_cc1 %s -E -dM -o - -x hip -triple amdgcn-amd-amdhsa \
+ // RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-HIP
+ // CHECK-HIP-NOT: #define __CUDA_ARCH__
+-- 
+2.17.1
+
