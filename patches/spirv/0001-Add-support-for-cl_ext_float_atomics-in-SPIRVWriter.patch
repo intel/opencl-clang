@@ -1,0 +1,455 @@
+From 6898afe19bec29dcc26bcde117e8927f3462af19 Mon Sep 17 00:00:00 2001
+From: Haonan Yang <haonan.yang@intel.com>
+Date: Mon, 12 Jul 2021 21:01:39 +0800
+Subject: [PATCH] Add support for cl_ext_float_atomics in SPIRVWriter
+
+Signed-off-by: Haonan Yang <haonan.yang@intel.com>
+---
+ lib/SPIRV/OCLToSPIRV.cpp                | 82 +++++++++++++++++++++++--
+ lib/SPIRV/libSPIRV/SPIRVInstruction.h   |  4 +-
+ lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h   |  1 +
+ test/negative/InvalidAtomicBuiltins.cl  | 12 +---
+ test/transcoding/AtomicFAddEXTForOCL.ll | 81 ++++++++++++++++++++++++
+ test/transcoding/AtomicFMaxEXTForOCL.ll | 82 +++++++++++++++++++++++++
+ test/transcoding/AtomicFMinEXTForOCL.ll | 81 ++++++++++++++++++++++++
+ 7 files changed, 328 insertions(+), 15 deletions(-)
+ create mode 100644 test/transcoding/AtomicFAddEXTForOCL.ll
+ create mode 100644 test/transcoding/AtomicFMaxEXTForOCL.ll
+ create mode 100644 test/transcoding/AtomicFMinEXTForOCL.ll
+
+diff --git a/lib/SPIRV/OCLToSPIRV.cpp b/lib/SPIRV/OCLToSPIRV.cpp
+index 3e7f1492..8c94f398 100644
+--- a/lib/SPIRV/OCLToSPIRV.cpp
++++ b/lib/SPIRV/OCLToSPIRV.cpp
+@@ -421,10 +421,63 @@ void OCLToSPIRVBase::visitCallInst(CallInst &CI) {
+   if (DemangledName.find(kOCLBuiltinName::AtomicPrefix) == 0 ||
+       DemangledName.find(kOCLBuiltinName::AtomPrefix) == 0) {
+ 
+-    // Compute atomic builtins do not support floating types.
+-    if (CI.getType()->isFloatingPointTy() &&
+-        isComputeAtomicOCLBuiltin(DemangledName))
+-      return;
++    // Compute "atom" prefixed builtins do not support floating types.
++    if (CI.getType()->isFloatingPointTy()) {
++      if (DemangledName.find(kOCLBuiltinName::AtomPrefix) == 0)
++        return;
++      // handle functions which are "atomic_" prefixed.
++      StringRef Stem = DemangledName;
++      Stem = Stem.drop_front(strlen("atomic_"));
++      // FP-typed atomic_{add, sub, inc, dec, exchange, min, max, or, and, xor,
++      // fetch_or, fetch_xor, fetch_and, fetch_or_explicit, fetch_xor_explicit,
++      // fetch_and_explicit} should be identified as function call
++      bool IsFunctionCall = llvm::StringSwitch<bool>(Stem)
++                                .Case("add", true)
++                                .Case("sub", true)
++                                .Case("inc", true)
++                                .Case("dec", true)
++                                .Case("cmpxchg", true)
++                                .Case("min", true)
++                                .Case("max", true)
++                                .Case("or", true)
++                                .Case("xor", true)
++                                .Case("and", true)
++                                .Case("fetch_or", true)
++                                .Case("fetch_and", true)
++                                .Case("fetch_xor", true)
++                                .Case("fetch_or_explicit", true)
++                                .Case("fetch_xor_explicit", true)
++                                .Case("fetch_and_explicit", true)
++                                .Default(false);
++      if (IsFunctionCall)
++        return;
++      if (F->arg_size() != 2) {
++        IsFunctionCall = llvm::StringSwitch<bool>(Stem)
++                             .Case("exchange", true)
++                             .Case("fetch_add", true)
++                             .Case("fetch_sub", true)
++                             .Case("fetch_min", true)
++                             .Case("fetch_max", true)
++                             .Case("load", true)
++                             .Case("store", true)
++                             .Default(false);
++        if (IsFunctionCall)
++          return;
++      }
++      if (F->arg_size() != 3 && F->arg_size() != 4) {
++        IsFunctionCall = llvm::StringSwitch<bool>(Stem)
++                             .Case("exchange_explicit", true)
++                             .Case("fetch_add_explicit", true)
++                             .Case("fetch_sub_explicit", true)
++                             .Case("fetch_min_explicit", true)
++                             .Case("fetch_max_explicit", true)
++                             .Case("load_explicit", true)
++                             .Case("store_explicit", true)
++                             .Default(false);
++        if (IsFunctionCall)
++          return;
++      }
++    }
+ 
+     auto PCI = &CI;
+     if (DemangledName == kOCLBuiltinName::AtomicInit) {
+@@ -868,7 +921,26 @@ void OCLToSPIRVBase::transAtomicBuiltin(CallInst *CI,
+           std::rotate(Args.begin() + 2, Args.begin() + OrderIdx,
+                       Args.end() - Offset);
+         }
+-        return getSPIRVFuncName(OCLSPIRVBuiltinMap::map(Info.UniqName));
++        auto AtomicBuiltinsReturnType =
++            CI->getCalledFunction()->getReturnType();
++        // Translate FP-typed atomic builtins.
++        auto SPIRVFunctionName =
++            getSPIRVFuncName(OCLSPIRVBuiltinMap::map(Info.UniqName));
++        auto IsFPType = [](llvm::Type *ReturnType) {
++          return ReturnType->isHalfTy() || ReturnType->isFloatTy() ||
++                 ReturnType->isDoubleTy();
++        };
++        if (IsFPType(AtomicBuiltinsReturnType)) {
++          if (SPIRVFunctionName == "__spirv_AtomicIAdd") {
++            SPIRVFunctionName = "__spirv_AtomicFAddEXT";
++          } else if (SPIRVFunctionName == "__spirv_AtomicSMin") {
++            SPIRVFunctionName = "__spirv_AtomicFMinEXT";
++          } else if (SPIRVFunctionName == "__spirv_AtomicSMax") {
++            SPIRVFunctionName = "__spirv_AtomicFMaxEXT";
++          }
++        }
++        return SPIRVFunctionName;
++
+       },
+       &Attrs);
+ }
+diff --git a/lib/SPIRV/libSPIRV/SPIRVInstruction.h b/lib/SPIRV/libSPIRV/SPIRVInstruction.h
+index 5ef6e8dc..41e9e4f1 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVInstruction.h
++++ b/lib/SPIRV/libSPIRV/SPIRVInstruction.h
+@@ -2673,10 +2673,12 @@ public:
+ 
+   SPIRVCapVec getRequiredCapability() const override {
+     assert(hasType());
++    if (getType()->isTypeFloat(16))
++      return {CapabilityAtomicFloat16AddEXT};
+     if (getType()->isTypeFloat(32))
+       return {CapabilityAtomicFloat32AddEXT};
+     assert(getType()->isTypeFloat(64) &&
+-           "AtomicFAddEXT can only be generated for f32 or f64 types");
++           "AtomicFAddEXT can only be generated for f16, f32 or f64 types");
+     return {CapabilityAtomicFloat64AddEXT};
+   }
+ };
+diff --git a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+index 3883b6bc..f2d2c046 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+@@ -559,6 +559,7 @@ template <> inline void SPIRVMap<Capability, std::string>::init() {
+       "DotProductInput4x8BitPackedKHR");
+   add(CapabilityDotProductKHR, "DotProductKHR");
+   add(CapabilityBitInstructions, "BitInstructions");
++  add(CapabilityAtomicFloat16AddEXT, "AtomicFloat16AddEXT");
+   add(CapabilityAtomicFloat32AddEXT, "AtomicFloat32AddEXT");
+   add(CapabilityAtomicFloat64AddEXT, "AtomicFloat64AddEXT");
+   add(CapabilityLongConstantCompositeINTEL, "LongConstantCompositeINTEL");
+diff --git a/test/negative/InvalidAtomicBuiltins.cl b/test/negative/InvalidAtomicBuiltins.cl
+index b8ec5b89..23dcc4e3 100644
+--- a/test/negative/InvalidAtomicBuiltins.cl
++++ b/test/negative/InvalidAtomicBuiltins.cl
+@@ -1,7 +1,9 @@
+ // Check that translator doesn't generate atomic instructions for atomic builtins
+ // which are not defined in the spec.
+ 
+-// RUN: %clang_cc1 -triple spir -O1 -cl-std=cl2.0 -fdeclare-opencl-builtins -finclude-default-header %s -emit-llvm-bc -o %t.bc
++// To drop `fdeclare-opencl-builtins` option, since FP-typed atomic function
++// TableGen definitions have not been introduced.
++// RUN: %clang_cc1 -triple spir -O1 -cl-std=cl2.0 -finclude-default-header %s -emit-llvm-bc -o %t.bc
+ // RUN: llvm-spirv %t.bc -spirv-text -o - | FileCheck %s
+ // RUN: llvm-spirv %t.bc -o %t.spv
+ // RUN: spirv-val %t.spv
+@@ -41,13 +43,9 @@ float __attribute__((overloadable)) atomic_fetch_xor(volatile generic atomic_flo
+ double __attribute__((overloadable)) atomic_fetch_and(volatile generic atomic_double *object, double operand, memory_order order);
+ double __attribute__((overloadable)) atomic_fetch_max(volatile generic atomic_double *object, double operand, memory_order order);
+ double __attribute__((overloadable)) atomic_fetch_min(volatile generic atomic_double *object, double operand, memory_order order);
+-float __attribute__((overloadable)) atomic_fetch_add_explicit(volatile generic atomic_float *object, float operand, memory_order order);
+-float __attribute__((overloadable)) atomic_fetch_sub_explicit(volatile generic atomic_float *object, float operand, memory_order order);
+ float __attribute__((overloadable)) atomic_fetch_or_explicit(volatile generic atomic_float *object, float operand, memory_order order);
+ float __attribute__((overloadable)) atomic_fetch_xor_explicit(volatile generic atomic_float *object, float operand, memory_order order);
+ double __attribute__((overloadable)) atomic_fetch_and_explicit(volatile generic atomic_double *object, double operand, memory_order order);
+-double __attribute__((overloadable)) atomic_fetch_max_explicit(volatile generic atomic_double *object, double operand, memory_order order);
+-double __attribute__((overloadable)) atomic_fetch_min_explicit(volatile generic atomic_double *object, double operand, memory_order order);
+ 
+ __kernel void test_atomic_fn(volatile __global float *p,
+                              volatile __global double *pp,
+@@ -86,11 +84,7 @@ __kernel void test_atomic_fn(volatile __global float *p,
+     d = atomic_fetch_and(pp, val, order);
+     d = atomic_fetch_min(pp, val, order);
+     d = atomic_fetch_max(pp, val, order);
+-    f = atomic_fetch_add_explicit(p, val, order);
+-    f = atomic_fetch_sub_explicit(p, val, order);
+     f = atomic_fetch_or_explicit(p, val, order);
+     f = atomic_fetch_xor_explicit(p, val, order);
+     d = atomic_fetch_and_explicit(pp, val, order);
+-    d = atomic_fetch_min_explicit(pp, val, order);
+-    d = atomic_fetch_max_explicit(pp, val, order);
+ }
+diff --git a/test/transcoding/AtomicFAddEXTForOCL.ll b/test/transcoding/AtomicFAddEXTForOCL.ll
+new file mode 100644
+index 00000000..3b43dc45
+--- /dev/null
++++ b/test/transcoding/AtomicFAddEXTForOCL.ll
+@@ -0,0 +1,81 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc --spirv-ext=+SPV_EXT_shader_atomic_float_add -o %t.spv
++; RUN: spirv-val %t.spv
++; RUN: llvm-spirv -to-text %t.spv -o %t.spt
++; RUN: FileCheck < %t.spt %s --check-prefix=CHECK-SPIRV
++
++; RUN: llvm-spirv --spirv-target-env=CL2.0 -r %t.spv -o %t.rev.bc
++; RUN: llvm-dis %t.rev.bc -o - | FileCheck %s --check-prefixes=CHECK-LLVM-CL,CHECK-LLVM-CL20
++
++; RUN: llvm-spirv --spirv-target-env=SPV-IR -r %t.spv -o %t.rev.bc
++; RUN: llvm-dis %t.rev.bc -o - | FileCheck %s --check-prefixes=CHECK-LLVM-SPV
++
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir-unknown-unknown"
++
++; CHECK-SPIRV: Capability AtomicFloat32AddEXT
++; CHECK-SPIRV: Capability AtomicFloat64AddEXT
++; CHECK-SPIRV: Capability AtomicFloat16AddEXT
++; CHECK-SPIRV: Extension "SPV_EXT_shader_atomic_float_add"
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_32:[0-9]+]] 32
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_64:[0-9]+]] 64
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_16:[0-9]+]] 16
++
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_atomic_float(float addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFAddEXT [[TYPE_FLOAT_32]]
++  ; CHECK-LLVM-CL20: call spir_func float @[[FLOAT_FUNC_NAME:_Z25atomic_fetch_add_explicit[[:alnum:]]+_Atomicff[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func float @[[FLOAT_FUNC_NAME:_Z21__spirv_AtomicFAddEXT[[:alnum:]]+fiif]]({{.*}})
++  %call = tail call spir_func float @_Z25atomic_fetch_add_explicitPU3AS1VU7_Atomicff12memory_order(float addrspace(1)* %a, float 0.000000e+00, i32 0) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func float @_Z25atomic_fetch_add_explicitPU3AS1VU7_Atomicff12memory_order(float addrspace(1)*, float, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func float @[[FLOAT_FUNC_NAME]](float
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_atomic_double(double addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFAddEXT [[TYPE_FLOAT_64]]
++  ; CHECK-LLVM-CL20: call spir_func double @[[DOUBLE_FUNC_NAME:_Z25atomic_fetch_add_explicit[[:alnum:]]+_Atomicdd[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func double @[[DOUBLE_FUNC_NAME:_Z21__spirv_AtomicFAddEXT[[:alnum:]]+diid]]({{.*}})
++  %call = tail call spir_func double @_Z25atomic_fetch_add_explicitPU3AS1VU7_Atomicdd12memory_order(double addrspace(1)* %a, double 0.000000e+00, i32 0) #2
++  ret void
++}
++; Function Attrs: convergent
++declare spir_func double @_Z25atomic_fetch_add_explicitPU3AS1VU7_Atomicdd12memory_order(double addrspace(1)*, double, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func double @[[DOUBLE_FUNC_NAME]](double
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_atomic_half(half addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFAddEXT [[TYPE_FLOAT_16]]
++  ; CHECK-LLVM-CL20: call spir_func half @[[HALF_FUNC_NAME:_Z25atomic_fetch_add_explicit[[:alnum:]]+_AtomicDhDh[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func half @[[HALF_FUNC_NAME:_Z21__spirv_AtomicFAddEXT[[:alnum:]]+DhiiDh]]({{.*}})
++  %call = tail call spir_func half @_Z25atomic_fetch_add_explicitPU3AS1VU7_AtomicDhDh12memory_order(half addrspace(1)* %a, half 0xH0000, i32 0) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func half @_Z25atomic_fetch_add_explicitPU3AS1VU7_AtomicDhDh12memory_order(half addrspace(1)*, half, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func half @[[HALF_FUNC_NAME]](half
++
++; CHECK-LLVM-CL: declare {{.*}}spir_func float @[[FLOAT_FUNC_NAME]](float
++; CHECK-LLVM-CL: declare {{.*}}spir_func double @[[DOUBLE_FUNC_NAME]](double
++; CHECK-LLVM-CL: declare {{.*}}spir_func half @[[HALF_FUNC_NAME]](half
++
++attributes #0 = { convergent norecurse nounwind "frame-pointer"="none" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++attributes #1 = { convergent "frame-pointer"="none" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++attributes #2 = { convergent nounwind }
++
++!llvm.module.flags = !{!0}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 2, i32 0}
++!2 = !{!"clang version 13.0.0 (https://github.com/llvm/llvm-project.git 94aa388f0ce0723bb15503cf41c2c15b288375b9)"}
+diff --git a/test/transcoding/AtomicFMaxEXTForOCL.ll b/test/transcoding/AtomicFMaxEXTForOCL.ll
+new file mode 100644
+index 00000000..8e489b0b
+--- /dev/null
++++ b/test/transcoding/AtomicFMaxEXTForOCL.ll
+@@ -0,0 +1,82 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc --spirv-ext=+SPV_EXT_shader_atomic_float_min_max -o %t.spv
++; RUN: spirv-val %t.spv
++; RUN: llvm-spirv -to-text %t.spv -o %t.spt
++; RUN: FileCheck < %t.spt %s --check-prefix=CHECK-SPIRV
++
++; RUN: llvm-spirv --spirv-target-env=CL2.0 -r %t.spv -o %t.rev.bc
++; RUN: llvm-dis %t.rev.bc -o - | FileCheck %s --check-prefixes=CHECK-LLVM-CL,CHECK-LLVM-CL20
++
++; RUN: llvm-spirv --spirv-target-env=SPV-IR -r %t.spv -o %t.rev.bc
++; RUN: llvm-dis %t.rev.bc -o - | FileCheck %s --check-prefixes=CHECK-LLVM-SPV
++
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir-unknown-unknown"
++
++; CHECK-SPIRV: Capability AtomicFloat32MinMaxEXT
++; CHECK-SPIRV: Capability AtomicFloat64MinMaxEXT
++; CHECK-SPIRV: Capability AtomicFloat16MinMaxEXT
++; CHECK-SPIRV: Extension "SPV_EXT_shader_atomic_float_min_max"
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_16:[0-9]+]] 16
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_32:[0-9]+]] 32
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_64:[0-9]+]] 64
++
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_half(half addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFMaxEXT [[TYPE_FLOAT_16]]
++  ; CHECK-LLVM-CL20: call spir_func half @[[HALF_FUNC_NAME:_Z25atomic_fetch_max_explicit[[:alnum:]]+_AtomicDhDh[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func half @[[HALF_FUNC_NAME:_Z21__spirv_AtomicFMaxEXT[[:alnum:]]+DhiiDh]]({{.*}})
++  %call = tail call spir_func half @_Z25atomic_fetch_max_explicitPU3AS1VU7_AtomicDhDh12memory_order(half addrspace(1)* %a, half 0xH0000, i32 0) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func half @_Z25atomic_fetch_max_explicitPU3AS1VU7_AtomicDhDh12memory_order(half addrspace(1)*, half, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func half @[[HALF_FUNC_NAME]](half
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_float(float addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFMaxEXT [[TYPE_FLOAT_32]]
++  ; CHECK-LLVM-CL20: call spir_func float @[[FLOAT_FUNC_NAME:_Z25atomic_fetch_max_explicit[[:alnum:]]+_Atomicff[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func float @[[FLOAT_FUNC_NAME:_Z21__spirv_AtomicFMaxEXT[[:alnum:]]+fiif]]({{.*}})
++  %call = tail call spir_func float @_Z25atomic_fetch_max_explicitPU3AS1VU7_Atomicff12memory_order(float addrspace(1)* %a, float 0.000000e+00, i32 0) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func float @_Z25atomic_fetch_max_explicitPU3AS1VU7_Atomicff12memory_order(float addrspace(1)*, float, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func float @[[FLOAT_FUNC_NAME]](float
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_double(double addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFMaxEXT [[TYPE_FLOAT_64]]
++  ; CHECK-LLVM-CL20: call spir_func double @[[DOUBLE_FUNC_NAME:_Z25atomic_fetch_max_explicit[[:alnum:]]+_Atomicdd[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func double @[[DOUBLE_FUNC_NAME:_Z21__spirv_AtomicFMaxEXT[[:alnum:]]+diid]]({{.*}})
++  %call = tail call spir_func double @_Z25atomic_fetch_max_explicitPU3AS1VU7_Atomicdd12memory_order(double addrspace(1)* %a, double 0.000000e+00, i32 0) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func double @_Z25atomic_fetch_max_explicitPU3AS1VU7_Atomicdd12memory_order(double addrspace(1)*, double, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func double @[[DOUBLE_FUNC_NAME]](double
++
++; CHECK-LLVM-CL: declare {{.*}}spir_func half @[[HALF_FUNC_NAME]](half
++; CHECK-LLVM-CL: declare {{.*}}spir_func float @[[FLOAT_FUNC_NAME]](float
++; CHECK-LLVM-CL: declare {{.*}}spir_func double @[[DOUBLE_FUNC_NAME]](double
++
++attributes #0 = { convergent norecurse nounwind "frame-pointer"="none" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++attributes #1 = { convergent "frame-pointer"="none" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++attributes #2 = { convergent nounwind }
++
++!llvm.module.flags = !{!0}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 2, i32 0}
++!2 = !{!"clang version 13.0.0 (https://github.com/llvm/llvm-project.git 94aa388f0ce0723bb15503cf41c2c15b288375b9)"}
+diff --git a/test/transcoding/AtomicFMinEXTForOCL.ll b/test/transcoding/AtomicFMinEXTForOCL.ll
+new file mode 100644
+index 00000000..fcb9a632
+--- /dev/null
++++ b/test/transcoding/AtomicFMinEXTForOCL.ll
+@@ -0,0 +1,81 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc --spirv-ext=+SPV_EXT_shader_atomic_float_min_max -o %t.spv
++; RUN: spirv-val %t.spv
++; RUN: llvm-spirv -to-text %t.spv -o %t.spt
++; RUN: FileCheck < %t.spt %s --check-prefix=CHECK-SPIRV
++
++; RUN: llvm-spirv --spirv-target-env=CL2.0 -r %t.spv -o %t.rev.bc
++; RUN: llvm-dis %t.rev.bc -o - | FileCheck %s --check-prefixes=CHECK-LLVM-CL,CHECK-LLVM-CL20
++
++; RUN: llvm-spirv --spirv-target-env=SPV-IR -r %t.spv -o %t.rev.bc
++; RUN: llvm-dis %t.rev.bc -o - | FileCheck %s --check-prefixes=CHECK-LLVM-SPV
++
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
++target triple = "spir-unknown-unknown"
++
++; CHECK-SPIRV: Capability AtomicFloat32MinMaxEXT
++; CHECK-SPIRV: Capability AtomicFloat64MinMaxEXT
++; CHECK-SPIRV: Capability AtomicFloat16MinMaxEXT
++; CHECK-SPIRV: Extension "SPV_EXT_shader_atomic_float_min_max"
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_16:[0-9]+]] 16
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_32:[0-9]+]] 32
++; CHECK-SPIRV: TypeFloat [[TYPE_FLOAT_64:[0-9]+]] 64
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_half(half addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFMinEXT [[TYPE_FLOAT_16]]
++  ; CHECK-LLVM-CL20: call spir_func half @[[HALF_FUNC_NAME:_Z25atomic_fetch_min_explicit[[:alnum:]]+_AtomicDhDh[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func half @[[HALF_FUNC_NAME:_Z21__spirv_AtomicFMinEXT[[:alnum:]]+DhiiDh]]({{.*}})
++  %call = tail call spir_func half @_Z25atomic_fetch_min_explicitPU3AS1VU7_AtomicDhDh12memory_order(half addrspace(1)* %a, half 0xH0000, i32 0) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func half @_Z25atomic_fetch_min_explicitPU3AS1VU7_AtomicDhDh12memory_order(half addrspace(1)*, half, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func half @[[HALF_FUNC_NAME]](half
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_float(float addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFMinEXT [[TYPE_FLOAT_32]]
++  ; CHECK-LLVM-CL20: call spir_func float @[[FLOAT_FUNC_NAME:_Z25atomic_fetch_min_explicit[[:alnum:]]+_Atomicff[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func float @[[FLOAT_FUNC_NAME:_Z21__spirv_AtomicFMinEXT[[:alnum:]]+fiif]]({{.*}})
++  %call = tail call spir_func float @_Z25atomic_fetch_min_explicitPU3AS1VU7_Atomicff12memory_order(float addrspace(1)* %a, float 0.000000e+00, i32 0) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func float @_Z25atomic_fetch_min_explicitPU3AS1VU7_Atomicff12memory_order(float addrspace(1)*, float, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func float @[[FLOAT_FUNC_NAME]](float
++
++; Function Attrs: convergent norecurse nounwind
++define dso_local spir_func void @test_double(double addrspace(1)* %a) local_unnamed_addr #0 {
++entry:
++  ; CHECK-SPIRV: 7 AtomicFMinEXT [[TYPE_FLOAT_64]]
++  ; CHECK-LLVM-CL20: call spir_func double @[[DOUBLE_FUNC_NAME:_Z25atomic_fetch_min_explicit[[:alnum:]]+_Atomicdd[a-zA-Z0-9_]+]]({{.*}})
++  ; CHECK-LLVM-SPV: call spir_func double @[[DOUBLE_FUNC_NAME:_Z21__spirv_AtomicFMinEXT[[:alnum:]]+diid]]({{.*}})
++  %call = tail call spir_func double @_Z25atomic_fetch_min_explicitPU3AS1VU7_Atomicdd12memory_order(double addrspace(1)* %a, double 0.000000e+00, i32 0) #2
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func double @_Z25atomic_fetch_min_explicitPU3AS1VU7_Atomicdd12memory_order(double addrspace(1)*, double, i32) local_unnamed_addr #1
++; CHECK-LLVM-SPV: declare {{.*}}spir_func double @[[DOUBLE_FUNC_NAME]](double
++
++; CHECK-LLVM-CL: declare {{.*}}spir_func half @[[HALF_FUNC_NAME]](half
++; CHECK-LLVM-CL: declare {{.*}}spir_func float @[[FLOAT_FUNC_NAME]](float
++; CHECK-LLVM-CL: declare {{.*}}spir_func double @[[DOUBLE_FUNC_NAME]](double
++
++attributes #0 = { convergent norecurse nounwind "frame-pointer"="none" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++attributes #1 = { convergent "frame-pointer"="none" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++attributes #2 = { convergent nounwind }
++
++!llvm.module.flags = !{!0}
++!opencl.ocl.version = !{!1}
++!opencl.spir.version = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, !"wchar_size", i32 4}
++!1 = !{i32 2, i32 0}
++!2 = !{!"clang version 13.0.0 (https://github.com/llvm/llvm-project.git 94aa388f0ce0723bb15503cf41c2c15b288375b9)"}
+-- 
+2.18.1
+
