@@ -330,6 +330,12 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       std::string Err;
       SPIRV::TranslatorOpts SPIRVOpts;
       SPIRVOpts.enableAllExtensions();
+
+      // Enable a workaround for this issue:
+      // KhronosGroup/SPIRV-LLVM-Translator/issues/1109
+      // To be disabled when implemeted without the workaround.
+      SPIRVOpts.setPreserveOCLKernelArgTypeMetadataThroughString(true);
+
       if (!optionsParser.hasOptDisable()) {
         SPIRVOpts.setMemToRegEnabled(true);
       }
