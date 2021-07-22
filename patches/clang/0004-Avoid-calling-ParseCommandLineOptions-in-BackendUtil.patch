@@ -1,0 +1,48 @@
+From 60854c328d8729b2ef10b9bb4dcbcc282f43c5e7 Mon Sep 17 00:00:00 2001
+From: Raphael Isemann <teemperor@gmail.com>
+Date: Thu, 1 Apr 2021 18:41:44 +0200
+Subject: [PATCH] Avoid calling ParseCommandLineOptions in BackendUtil if
+ possible
+
+Calling `ParseCommandLineOptions` should only be called from `main` as the
+CommandLine setup code isn't thread-safe. As BackendUtil is part of the
+generic Clang FrontendAction logic, a process which has several threads executing
+Clang FrontendActions will randomly crash in the unsafe setup code.
+
+This patch avoids calling the function unless either the debug-pass option or
+limit-float-precision option is set. Without these two options set the
+`ParseCommandLineOptions` call doesn't do anything beside parsing
+the command line `clang` which doesn't set any options.
+
+See also D99652 where LLDB received a workaround for this crash.
+
+Reviewed By: JDevlieghere
+
+Differential Revision: https://reviews.llvm.org/D99740
+---
+ clang/lib/CodeGen/BackendUtil.cpp | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/clang/lib/CodeGen/BackendUtil.cpp b/clang/lib/CodeGen/BackendUtil.cpp
+index 41eafd13d97c..00d92e7beadd 100644
+--- a/clang/lib/CodeGen/BackendUtil.cpp
++++ b/clang/lib/CodeGen/BackendUtil.cpp
+@@ -871,7 +871,15 @@ static void setCommandLineOpts(const CodeGenOptions &CodeGenOpts) {
+     BackendArgs.push_back("-limit-float-precision");
+     BackendArgs.push_back(CodeGenOpts.LimitFloatPrecision.c_str());
+   }
++  // Check for the default "clang" invocation that won't set any cl::opt values.
++  // Skip trying to parse the command line invocation to avoid the issues
++  // described below.
++  if (BackendArgs.size() == 1)
++    return;
+   BackendArgs.push_back(nullptr);
++  // FIXME: The command line parser below is not thread-safe and shares a global
++  // state, so this call might crash or overwrite the options of another Clang
++  // instance in the same process.
+   llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1,
+                                     BackendArgs.data());
+ }
+-- 
+2.29.2
+
