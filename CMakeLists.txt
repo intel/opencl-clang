@@ -14,6 +14,11 @@ set(CMAKE_MODULE_PATH
 
 include(CMakeFunctions)
 
+if(LLVM_USE_HOST_TOOLS)
+  include(CrossCompile)
+  llvm_create_cross_target(${PROJECT_NAME} NATIVE "" Release)
+endif()
+
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(USE_PREBUILT_LLVM ON)
 
@@ -55,7 +60,7 @@ include(AddLLVM)
 include(TableGen)
 
 if (NOT WIN32)
-    add_subdirectory( linux_linker )
+    add_subdirectory( linux_linker bin )
 endif()
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
