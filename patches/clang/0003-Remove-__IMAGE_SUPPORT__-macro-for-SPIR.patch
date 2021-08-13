@@ -1,6 +1,6 @@
-From 3a7c4aa89b33a165c63f2507a39445b1d29f152a Mon Sep 17 00:00:00 2001
+From 6a0779ecbb7204065c05eaf2037b40541603a524 Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
-Date: Tue, 11 May 2021 11:20:48 +0800
+Date: Thu, 12 Aug 2021 15:48:34 +0800
 Subject: [PATCH] Remove __IMAGE_SUPPORT__ macro for SPIR since SPIR doesn't
  require image support
 
@@ -11,11 +11,11 @@ Signed-off-by: haonanya <haonan.yang@intel.com>
  2 files changed, 7 deletions(-)
 
 diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
-index c273cb96d9b9..1c0bf2aeb488 100644
+index aefd208e6cd3..b4a84636673a 100644
 --- a/clang/lib/Frontend/InitPreprocessor.cpp
 +++ b/clang/lib/Frontend/InitPreprocessor.cpp
-@@ -1104,9 +1104,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
-   if (TI.getSupportedOpenCLOpts().isSupported(#Ext, LangOpts))                 \
+@@ -1108,9 +1108,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
+   if (TI.getSupportedOpenCLOpts().isSupported(#Ext))                           \
      Builder.defineMacro(#Ext);
  #include "clang/Basic/OpenCLExtensions.def"
 -
@@ -25,10 +25,10 @@ index c273cb96d9b9..1c0bf2aeb488 100644
  
    if (TI.hasInt128Type() && LangOpts.CPlusPlus && LangOpts.GNUMode) {
 diff --git a/clang/test/Preprocessor/predefined-macros.c b/clang/test/Preprocessor/predefined-macros.c
-index def105f4c52e..de6c3fcc48b1 100644
+index b088a37ba665..39a222d02faf 100644
 --- a/clang/test/Preprocessor/predefined-macros.c
 +++ b/clang/test/Preprocessor/predefined-macros.c
-@@ -171,10 +171,6 @@
+@@ -184,10 +184,6 @@
  // MSCOPE:#define __OPENCL_MEMORY_SCOPE_WORK_GROUP 1
  // MSCOPE:#define __OPENCL_MEMORY_SCOPE_WORK_ITEM 0
  
