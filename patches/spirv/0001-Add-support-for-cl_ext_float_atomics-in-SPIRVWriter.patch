@@ -1,11 +1,12 @@
-From 3f41fcc74ab5f8a153bd04850b7001aadc10be62 Mon Sep 17 00:00:00 2001
+From 5b21454c542aea71a447afb5a652a713cf53b111 Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
 Date: Mon, 19 Jul 2021 10:14:20 +0800
 Subject: [PATCH] Add support for cl_ext_float_atomics in SPIRVWriter
 
 Signed-off-by: haonanya <haonan.yang@intel.com>
 ---
- lib/SPIRV/OCL20ToSPIRV.cpp            |  79 ++++++++++++++++--
+ lib/SPIRV/OCL20ToSPIRV.cpp            |  25 +++++-
+ lib/SPIRV/OCLUtil.cpp                 |   4 -
  lib/SPIRV/SPIRVToOCL.h                |   3 +
  lib/SPIRV/SPIRVToOCL12.cpp            |  21 +++++
  lib/SPIRV/SPIRVToOCL20.cpp            |  28 ++++++-
@@ -18,84 +19,24 @@ Signed-off-by: haonanya <haonan.yang@intel.com>
  test/AtomicFMinEXT.ll                 | 113 +++++++-------------------
  test/AtomicFMinEXTForOCL.ll           |  64 +++++++++++++++
  test/InvalidAtomicBuiltins.cl         |   8 --
- 13 files changed, 417 insertions(+), 260 deletions(-)
+ 14 files changed, 366 insertions(+), 261 deletions(-)
  create mode 100644 test/AtomicFAddEXTForOCL.ll
  create mode 100644 test/AtomicFMaxEXTForOCL.ll
  create mode 100644 test/AtomicFMinEXTForOCL.ll
 
 diff --git a/lib/SPIRV/OCL20ToSPIRV.cpp b/lib/SPIRV/OCL20ToSPIRV.cpp
-index e30aa5be..b676a009 100644
+index e30aa5be..faa5be2b 100644
 --- a/lib/SPIRV/OCL20ToSPIRV.cpp
 +++ b/lib/SPIRV/OCL20ToSPIRV.cpp
-@@ -408,10 +408,63 @@ void OCL20ToSPIRV::visitCallInst(CallInst &CI) {
+@@ -407,7 +407,6 @@ void OCL20ToSPIRV::visitCallInst(CallInst &CI) {
+   }
    if (DemangledName.find(kOCLBuiltinName::AtomicPrefix) == 0 ||
        DemangledName.find(kOCLBuiltinName::AtomPrefix) == 0) {
- 
--    // Compute atomic builtins do not support floating types.
--    if (CI.getType()->isFloatingPointTy() &&
--        isComputeAtomicOCLBuiltin(DemangledName))
--      return;
-+    // Compute "atom" prefixed builtins do not support floating types.
-+    if (CI.getType()->isFloatingPointTy()) {
-+      if (DemangledName.find(kOCLBuiltinName::AtomPrefix) == 0)
-+        return;
-+      // handle functions which are "atomic_" prefixed.
-+      StringRef Stem = DemangledName;
-+      Stem = Stem.drop_front(strlen("atomic_"));
-+      // FP-typed atomic_{add, sub, inc, dec, exchange, min, max, or, and, xor,
-+      // fetch_or, fetch_xor, fetch_and, fetch_or_explicit, fetch_xor_explicit,
-+      // fetch_and_explicit} should be identified as function call
-+      bool IsFunctionCall = llvm::StringSwitch<bool>(Stem)
-+                                .Case("add", true)
-+                                .Case("sub", true)
-+                                .Case("inc", true)
-+                                .Case("dec", true)
-+                                .Case("cmpxchg", true)
-+                                .Case("min", true)
-+                                .Case("max", true)
-+                                .Case("or", true)
-+                                .Case("xor", true)
-+                                .Case("and", true)
-+                                .Case("fetch_or", true)
-+                                .Case("fetch_and", true)
-+                                .Case("fetch_xor", true)
-+                                .Case("fetch_or_explicit", true)
-+                                .Case("fetch_xor_explicit", true)
-+                                .Case("fetch_and_explicit", true)
-+                                .Default(false);
-+      if (IsFunctionCall)
-+        return;
-+      if (F->arg_size() != 2) {
-+        IsFunctionCall = llvm::StringSwitch<bool>(Stem)
-+                             .Case("exchange", true)
-+                             .Case("fetch_add", true)
-+                             .Case("fetch_sub", true)
-+                             .Case("fetch_min", true)
-+                             .Case("fetch_max", true)
-+                             .Case("load", true)
-+                             .Case("store", true)
-+                             .Default(false);
-+        if (IsFunctionCall)
-+          return;
-+      }
-+      if (F->arg_size() != 3 && F->arg_size() != 4) {
-+        IsFunctionCall = llvm::StringSwitch<bool>(Stem)
-+                             .Case("exchange_explicit", true)
-+                             .Case("fetch_add_explicit", true)
-+                             .Case("fetch_sub_explicit", true)
-+                             .Case("fetch_min_explicit", true)
-+                             .Case("fetch_max_explicit", true)
-+                             .Case("load_explicit", true)
-+                             .Case("store_explicit", true)
-+                             .Default(false);
-+        if (IsFunctionCall)
-+          return;
-+      }
-+    }
- 
-     auto PCI = &CI;
-     if (DemangledName == kOCLBuiltinName::AtomicInit) {
-@@ -819,7 +872,7 @@ void OCL20ToSPIRV::transAtomicBuiltin(CallInst *CI, OCLBuiltinTransInfo &Info) {
+-
+     // Compute atomic builtins do not support floating types.
+     if (CI.getType()->isFloatingPointTy() &&
+         isComputeAtomicOCLBuiltin(DemangledName))
+@@ -819,7 +818,7 @@ void OCL20ToSPIRV::transAtomicBuiltin(CallInst *CI, OCLBuiltinTransInfo &Info) {
    AttributeList Attrs = CI->getCalledFunction()->getAttributes();
    mutateCallInstSPIRV(
        M, CI,
@@ -104,7 +45,7 @@ index e30aa5be..b676a009 100644
          Info.PostProc(Args);
          // Order of args in OCL20:
          // object, 0-2 other args, 1-2 order, scope
-@@ -864,7 +917,21 @@ void OCL20ToSPIRV::transAtomicBuiltin(CallInst *CI, OCLBuiltinTransInfo &Info) {
+@@ -864,7 +863,27 @@ void OCL20ToSPIRV::transAtomicBuiltin(CallInst *CI, OCLBuiltinTransInfo &Info) {
            std::rotate(Args.begin() + 2, Args.begin() + OrderIdx,
                        Args.end() - Offset);
          }
@@ -119,19 +60,43 @@ index e30aa5be..b676a009 100644
 +            getSPIRVFuncName(OCLSPIRVBuiltinMap::map(Info.UniqName));
 +        if (!IsFPType(AtomicBuiltinsReturnType))
 +          return SPIRVFunctionName;
-+        // Translate FP-typed atomic builtins.
-+        return llvm::StringSwitch<std::string>(SPIRVFunctionName)
-+            .Case("__spirv_AtomicIAdd", "__spirv_AtomicFAddEXT")
-+            .Case("__spirv_AtomicSMax", "__spirv_AtomicFMaxEXT")
-+            .Case("__spirv_AtomicSMin", "__spirv_AtomicFMinEXT");
++        // Translate FP-typed atomic builtins. Currently we only need to
++        // translate atomic_fetch_[add, max, min]* to related float instructions
++        auto SPIRFunctionNameForFloatAtomics =
++            llvm::StringSwitch<std::string>(SPIRVFunctionName)
++                .Case("__spirv_AtomicIAdd", "__spirv_AtomicFAddEXT")
++                .Case("__spirv_AtomicSMax", "__spirv_AtomicFMaxEXT")
++                .Case("__spirv_AtomicSMin", "__spirv_AtomicFMinEXT")
++                .Default("others");
++        return SPIRFunctionNameForFloatAtomics == "others"
++                   ? SPIRVFunctionName
++                   : SPIRFunctionNameForFloatAtomics;
        },
        &Attrs);
  }
+diff --git a/lib/SPIRV/OCLUtil.cpp b/lib/SPIRV/OCLUtil.cpp
+index c7232623..9a4c8ab9 100644
+--- a/lib/SPIRV/OCLUtil.cpp
++++ b/lib/SPIRV/OCLUtil.cpp
+@@ -136,13 +136,9 @@ bool isComputeAtomicOCLBuiltin(StringRef DemangledName) {
+       .EndsWith("and", true)
+       .EndsWith("or", true)
+       .EndsWith("xor", true)
+-      .EndsWith("add_explicit", true)
+-      .EndsWith("sub_explicit", true)
+       .EndsWith("or_explicit", true)
+       .EndsWith("xor_explicit", true)
+       .EndsWith("and_explicit", true)
+-      .EndsWith("min_explicit", true)
+-      .EndsWith("max_explicit", true)
+       .Default(false);
+ }
+ 
 diff --git a/lib/SPIRV/SPIRVToOCL.h b/lib/SPIRV/SPIRVToOCL.h
-index f75195d4..64bf0f84 100644
+index ddeec0b6..006fb0b1 100644
 --- a/lib/SPIRV/SPIRVToOCL.h
 +++ b/lib/SPIRV/SPIRVToOCL.h
-@@ -171,6 +171,9 @@ public:
+@@ -178,6 +178,9 @@ public:
    /// using separate maps for OpenCL 1.2 and OpenCL 2.0
    virtual Instruction *mutateAtomicName(CallInst *CI, Op OC) = 0;
  
@@ -246,7 +211,7 @@ index d829ff42..01d088e9 100644
          auto ScopeIdx = Ptr + 1;
          auto OrderIdx = Ptr + 2;
 diff --git a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
-index cc1dd1ab..63180888 100644
+index 13f93fbe..7b707993 100644
 --- a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
 +++ b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
 @@ -521,7 +521,6 @@ template <> inline void SPIRVMap<Capability, std::string>::init() {
@@ -258,7 +223,7 @@ index cc1dd1ab..63180888 100644
    add(CapabilitySubgroupBufferBlockIOINTEL, "SubgroupBufferBlockIOINTEL");
    add(CapabilitySubgroupImageBlockIOINTEL, "SubgroupImageBlockIOINTEL");
 diff --git a/lib/SPIRV/libSPIRV/SPIRVOpCode.h b/lib/SPIRV/libSPIRV/SPIRVOpCode.h
-index 9e520512..cc2ad200 100644
+index feec70f6..8e595e83 100644
 --- a/lib/SPIRV/libSPIRV/SPIRVOpCode.h
 +++ b/lib/SPIRV/libSPIRV/SPIRVOpCode.h
 @@ -54,11 +54,17 @@ template <> inline void SPIRVMap<Op, std::string>::init() {

@@ -1,26 +1,25 @@
-From baa0fc843cd55f9da25afbc576c5ae56c0b20536 Mon Sep 17 00:00:00 2001
+From 9b48f70bae77fdc752ee5e98949a7ed2c9373037 Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
 Date: Fri, 13 Aug 2021 10:00:02 +0800
 Subject: [PATCH] [OpenCL] support cl_ext_float_atomics
 
 Signed-off-by: haonanya <haonan.yang@intel.com>
+Signed-off-by: Haonan Yang <haonan.yang@intel.com>
 ---
- clang/lib/Headers/opencl-c-base.h     |  25 ++++
+ clang/lib/Headers/opencl-c-base.h     |  22 +++
  clang/lib/Headers/opencl-c.h          | 208 ++++++++++++++++++++++++++
  clang/test/Headers/opencl-c-header.cl |  96 ++++++++++++
- 3 files changed, 329 insertions(+)
+ 3 files changed, 326 insertions(+)
 
 diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
-index 2cc688ccc3da..86bbee12fdf8 100644
+index 2cc688ccc3da..18d367de68ec 100644
 --- a/clang/lib/Headers/opencl-c-base.h
 +++ b/clang/lib/Headers/opencl-c-base.h
-@@ -14,6 +14,31 @@
+@@ -14,6 +14,28 @@
    #define CL_VERSION_3_0 300
  #endif
  
 +#if (defined(__OPENCL_CPP_VERSION__) || __OPENCL_C_VERSION__ >= 200)
-+// For SPIR all extensions are supported.
-+#if defined(__SPIR__)
 +#define cl_ext_float_atomics 1
 +#ifdef cl_khr_fp16
 +#define __opencl_c_ext_fp16_global_atomic_load_store 1
@@ -30,7 +29,7 @@ index 2cc688ccc3da..86bbee12fdf8 100644
 +#define __opencl_c_ext_fp16_global_atomic_min_max 1
 +#define __opencl_c_ext_fp16_local_atomic_min_max 1
 +#endif
-+#ifdef __opencl_c_fp64
++#ifdef cl_khr_fp64
 +#define __opencl_c_ext_fp64_global_atomic_add 1
 +#define __opencl_c_ext_fp64_local_atomic_add 1
 +#define __opencl_c_ext_fp64_global_atomic_min_max 1
@@ -40,14 +39,13 @@ index 2cc688ccc3da..86bbee12fdf8 100644
 +#define __opencl_c_ext_fp32_local_atomic_add 1
 +#define __opencl_c_ext_fp32_global_atomic_min_max 1
 +#define __opencl_c_ext_fp32_local_atomic_min_max 1
-+#endif // defined(__SPIR__)
 +#endif // (defined(__OPENCL_CPP_VERSION__) || __OPENCL_C_VERSION__ >= 200)
 +
  // Define features for 2.0 for header backward compatibility
  #ifndef __opencl_c_int64
    #define __opencl_c_int64 1
 diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
-index d8173f0aa843..90944fe2d7e6 100644
+index d8173f0aa843..50515ac17a0c 100644
 --- a/clang/lib/Headers/opencl-c.h
 +++ b/clang/lib/Headers/opencl-c.h
 @@ -14354,6 +14354,214 @@ intptr_t __ovld atomic_fetch_max_explicit(
@@ -90,7 +88,7 @@ index d8173f0aa843..90944fe2d7e6 100644
 +                                       memory_scope scope);
 +#endif // defined(__opencl_c_ext_fp32_local_atomic_min_max)
 +
-+#if defined(__opencl_c_ext_fp32_global_atomic_min_max) ||                      \
++#if defined(__opencl_c_ext_fp32_global_atomic_min_max) &&                      \
 +    defined(__opencl_c_ext_fp32_local_atomic_min_max)
 +float __ovld atomic_fetch_min(volatile atomic_float *object, float operand);
 +float __ovld atomic_fetch_max(volatile atomic_float *object, float operand);
@@ -104,7 +102,7 @@ index d8173f0aa843..90944fe2d7e6 100644
 +float __ovld atomic_fetch_max_explicit(volatile atomic_float *object,
 +                                       float operand, memory_order order,
 +                                       memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp32_global_atomic_min_max) ||                      \
++#endif // defined(__opencl_c_ext_fp32_global_atomic_min_max) &&                      \
 +    defined(__opencl_c_ext_fp32_local_atomic_min_max)
 +
 +#if defined(__opencl_c_ext_fp64_global_atomic_min_max)
@@ -141,7 +139,7 @@ index d8173f0aa843..90944fe2d7e6 100644
 +                                        memory_scope scope);
 +#endif // defined(__opencl_c_ext_fp64_local_atomic_min_max)
 +
-+#if defined(__opencl_c_ext_fp64_global_atomic_min_max) ||                      \
++#if defined(__opencl_c_ext_fp64_global_atomic_min_max) &&                      \
 +    defined(__opencl_c_ext_fp64_local_atomic_min_max)
 +double __ovld atomic_fetch_min(volatile atomic_double *object, double operand);
 +double __ovld atomic_fetch_max(volatile atomic_double *object, double operand);
@@ -155,7 +153,7 @@ index d8173f0aa843..90944fe2d7e6 100644
 +double __ovld atomic_fetch_max_explicit(volatile atomic_double *object,
 +                                        double operand, memory_order order,
 +                                        memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp64_global_atomic_min_max) ||                      \
++#endif // defined(__opencl_c_ext_fp64_global_atomic_min_max) &&                      \
 +    defined(__opencl_c_ext_fp64_local_atomic_min_max)
 +
 +#if defined(__opencl_c_ext_fp32_global_atomic_add)
@@ -192,7 +190,7 @@ index d8173f0aa843..90944fe2d7e6 100644
 +                                       memory_scope scope);
 +#endif // defined(__opencl_c_ext_fp32_local_atomic_add)
 +
-+#if defined(__opencl_c_ext_fp32_global_atomic_add) ||                          \
++#if defined(__opencl_c_ext_fp32_global_atomic_add) &&                          \
 +    defined(__opencl_c_ext_fp32_local_atomic_add)
 +float __ovld atomic_fetch_add(volatile atomic_float *object, float operand);
 +float __ovld atomic_fetch_sub(volatile atomic_float *object, float operand);
@@ -206,7 +204,7 @@ index d8173f0aa843..90944fe2d7e6 100644
 +float __ovld atomic_fetch_sub_explicit(volatile atomic_float *object,
 +                                       float operand, memory_order order,
 +                                       memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp32_global_atomic_add) ||                          \
++#endif // defined(__opencl_c_ext_fp32_global_atomic_add) &&                          \
 +    defined(__opencl_c_ext_fp32_local_atomic_add)
 +
 +#if defined(__opencl_c_ext_fp64_global_atomic_add)
@@ -243,7 +241,7 @@ index d8173f0aa843..90944fe2d7e6 100644
 +                                        memory_scope scope);
 +#endif // defined(__opencl_c_ext_fp64_local_atomic_add)
 +
-+#if defined(__opencl_c_ext_fp64_global_atomic_add) ||                          \
++#if defined(__opencl_c_ext_fp64_global_atomic_add) &&                          \
 +    defined(__opencl_c_ext_fp64_local_atomic_add)
 +double __ovld atomic_fetch_add(volatile atomic_double *object, double operand);
 +double __ovld atomic_fetch_sub(volatile atomic_double *object, double operand);
@@ -257,7 +255,7 @@ index d8173f0aa843..90944fe2d7e6 100644
 +double __ovld atomic_fetch_sub_explicit(volatile atomic_double *object,
 +                                        double operand, memory_order order,
 +                                        memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp64_global_atomic_add) ||                          \
++#endif // defined(__opencl_c_ext_fp64_global_atomic_add) &&                          \
 +    defined(__opencl_c_ext_fp64_local_atomic_add)
 +
 +#endif // cl_ext_float_atomics
@@ -370,5 +368,5 @@ index 2716076acdcf..7f720cf28142 100644
 +
 +#endif // defined(__SPIR__)
 -- 
-2.17.1
+2.18.1
 
