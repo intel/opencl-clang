@@ -1,10 +1,9 @@
-From fe07183c57ee655eb9641438f840dc3736f52937 Mon Sep 17 00:00:00 2001
-From: Wenju He <wenju.he@intel.com>
-Date: Fri, 9 Oct 2020 15:56:53 +0800
-Subject: [PATCH] Fix debug info of work-item builtin translation (#745)
+From a1029c9c1f768ea3a4ddf13d47fe97e2342cac0e Mon Sep 17 00:00:00 2001
+From: haonanya <haonan.yang@intel.com>
+Date: Wed, 11 Aug 2021 18:47:42 +0800
+Subject: [PATCH] Fix debug info of work-item builtin translation
 
-debug info of work-item builtins are lost in both llvm IR -> spirv and
-spirv -> llvm IR translations. See #744
+Signed-off-by: haonanya <haonan.yang@intel.com>
 ---
  lib/SPIRV/OCL20ToSPIRV.cpp              |  5 ++-
  lib/SPIRV/SPIRVReader.cpp               |  1 +
@@ -13,7 +12,7 @@ spirv -> llvm IR translations. See #744
  create mode 100644 test/DebugInfo/builtin-get-global-id.ll
 
 diff --git a/lib/SPIRV/OCL20ToSPIRV.cpp b/lib/SPIRV/OCL20ToSPIRV.cpp
-index 1262c48..a742c8c 100644
+index 1262c48c..a742c8cf 100644
 --- a/lib/SPIRV/OCL20ToSPIRV.cpp
 +++ b/lib/SPIRV/OCL20ToSPIRV.cpp
 @@ -1297,11 +1297,14 @@ void OCL20ToSPIRV::transWorkItemBuiltinsToVariables() {
@@ -33,11 +32,11 @@ index 1262c48..a742c8c 100644
        }
        NewValue->takeName(CI);
 diff --git a/lib/SPIRV/SPIRVReader.cpp b/lib/SPIRV/SPIRVReader.cpp
-index f6550c0..254f3a8 100644
+index 97cf9410..429d1584 100644
 --- a/lib/SPIRV/SPIRVReader.cpp
 +++ b/lib/SPIRV/SPIRVReader.cpp
-@@ -297,6 +297,7 @@ bool SPIRVToLLVM::transOCLBuiltinFromVariable(GlobalVariable *GV,
-       Arg.push_back(EEI->getIndexOperand());
+@@ -305,6 +305,7 @@ bool SPIRVToLLVM::transOCLBuiltinFromVariable(GlobalVariable *GV,
+   auto Replace = [&](std::vector<Value *> Arg, Instruction *I) {
      auto Call = CallInst::Create(Func, Arg, "", I);
      Call->takeName(I);
 +    Call->setDebugLoc(I->getDebugLoc());
@@ -46,7 +45,7 @@ index f6550c0..254f3a8 100644
                      << '\n';)
 diff --git a/test/DebugInfo/builtin-get-global-id.ll b/test/DebugInfo/builtin-get-global-id.ll
 new file mode 100644
-index 0000000..a4a00e6
+index 00000000..a4a00e63
 --- /dev/null
 +++ b/test/DebugInfo/builtin-get-global-id.ll
 @@ -0,0 +1,60 @@
@@ -111,5 +110,5 @@ index 0000000..a4a00e6
 +!11 = !DILocation(line: 2, column: 10, scope: !7)
 +!12 = !DILocation(line: 3, column: 1, scope: !7)
 -- 
-2.18.1
+2.17.1
 
