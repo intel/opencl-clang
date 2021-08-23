@@ -207,10 +207,10 @@ diff --git a/lib/SPIRV/SPIRVToOCL.h b/lib/SPIRV/SPIRVToOCL.h
 index b59d25e0..b55c9e4f 100644
 --- a/lib/SPIRV/SPIRVToOCL.h
 +++ b/lib/SPIRV/SPIRVToOCL.h
-@@ -170,6 +170,9 @@ public:
-   /// using separate maps for OpenCL 1.2 and OpenCL 2.0
-   virtual Instruction *mutateAtomicName(CallInst *CI, Op OC) = 0;
- 
+@@ -214,6 +214,9 @@ public:
+
+   void translateOpaqueTypes();
+
 +  // Transform FP atomic opcode to corresponding OpenCL function name
 +  virtual std::string mapFPAtomicName(Op OC) = 0;
 +
