@@ -1,4 +1,4 @@
-From edc51a3da117861a7884162ac9646e4b1a9d6a0e Mon Sep 17 00:00:00 2001
+From 794c7d32e521060190bbfca7c52f0bb4fa49f2f2 Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
 Date: Mon, 19 Jul 2021 10:14:20 +0800
 Subject: [PATCH] Add support for cl_ext_float_atomics in SPIRVWriter
@@ -79,7 +79,7 @@ index e30aa5be..98d4289e 100644
        &Attrs);
  }
 diff --git a/lib/SPIRV/OCLUtil.cpp b/lib/SPIRV/OCLUtil.cpp
-index c7232623..ecb97119 100644
+index 992f173f..539c196c 100644
 --- a/lib/SPIRV/OCLUtil.cpp
 +++ b/lib/SPIRV/OCLUtil.cpp
 @@ -120,29 +120,32 @@ size_t getSPIRVAtomicBuiltinNumMemoryOrderArgs(Op OC) {
@@ -124,12 +124,12 @@ index c7232623..ecb97119 100644
  }
  
 diff --git a/lib/SPIRV/SPIRVToOCL.h b/lib/SPIRV/SPIRVToOCL.h
-index ddeec0b6..006fb0b1 100644
+index 746a7acf..af8dade9 100644
 --- a/lib/SPIRV/SPIRVToOCL.h
 +++ b/lib/SPIRV/SPIRVToOCL.h
-@@ -178,6 +178,9 @@ public:
-   /// using separate maps for OpenCL 1.2 and OpenCL 2.0
-   virtual Instruction *mutateAtomicName(CallInst *CI, Op OC) = 0;
+@@ -208,6 +208,9 @@ public:
+ 
+   void translateOpaqueTypes();
  
 +  // Transform FP atomic opcode to corresponding OpenCL function name
 +  virtual std::string mapFPAtomicName(Op OC) = 0;
@@ -138,7 +138,7 @@ index ddeec0b6..006fb0b1 100644
    /// Transform uniform group opcode to corresponding OpenCL function name,
    /// example: GroupIAdd(Reduce) => group_iadd => work_group_reduce_add |
 diff --git a/lib/SPIRV/SPIRVToOCL12.cpp b/lib/SPIRV/SPIRVToOCL12.cpp
-index afddd596..d7f00de3 100644
+index 1a62c6b8..dc0ba9cc 100644
 --- a/lib/SPIRV/SPIRVToOCL12.cpp
 +++ b/lib/SPIRV/SPIRVToOCL12.cpp
 @@ -104,6 +104,9 @@ public:
@@ -151,7 +151,7 @@ index afddd596..d7f00de3 100644
    static char ID;
  };
  
-@@ -338,6 +341,21 @@ Instruction *SPIRVToOCL12::visitCallSPIRVAtomicBuiltin(CallInst *CI, Op OC) {
+@@ -344,6 +347,21 @@ Instruction *SPIRVToOCL12::visitCallSPIRVAtomicBuiltin(CallInst *CI, Op OC) {
    return NewCI;
  }
  
@@ -173,7 +173,7 @@ index afddd596..d7f00de3 100644
  Instruction *SPIRVToOCL12::mutateAtomicName(CallInst *CI, Op OC) {
    AttributeList Attrs = CI->getCalledFunction()->getAttributes();
    return mutateCallInstOCL(
-@@ -351,6 +369,9 @@ Instruction *SPIRVToOCL12::mutateAtomicName(CallInst *CI, Op OC) {
+@@ -357,6 +375,9 @@ Instruction *SPIRVToOCL12::mutateAtomicName(CallInst *CI, Op OC) {
  std::string SPIRVToOCL12::mapAtomicName(Op OC, Type *Ty) {
    std::string Prefix = Ty->isIntegerTy(64) ? kOCLBuiltinName::AtomPrefix
                                             : kOCLBuiltinName::AtomicPrefix;
@@ -184,7 +184,7 @@ index afddd596..d7f00de3 100644
  }
  
 diff --git a/lib/SPIRV/SPIRVToOCL20.cpp b/lib/SPIRV/SPIRVToOCL20.cpp
-index d829ff42..01d088e9 100644
+index 8c437858..0033b853 100644
 --- a/lib/SPIRV/SPIRVToOCL20.cpp
 +++ b/lib/SPIRV/SPIRVToOCL20.cpp
 @@ -82,6 +82,9 @@ public:
@@ -197,7 +197,7 @@ index d829ff42..01d088e9 100644
    static char ID;
  };
  
-@@ -144,11 +147,29 @@ void SPIRVToOCL20::visitCallSPIRVControlBarrier(CallInst *CI) {
+@@ -150,11 +153,29 @@ void SPIRVToOCL20::visitCallSPIRVControlBarrier(CallInst *CI) {
        &Attrs);
  }
  
@@ -227,7 +227,7 @@ index d829ff42..01d088e9 100644
          return OCLSPIRVBuiltinMap::rmap(OC);
        },
        &Attrs);
-@@ -215,7 +236,12 @@ CallInst *SPIRVToOCL20::mutateCommonAtomicArguments(CallInst *CI, Op OC) {
+@@ -221,7 +242,12 @@ CallInst *SPIRVToOCL20::mutateCommonAtomicArguments(CallInst *CI, Op OC) {
            }
          }
          auto Ptr = findFirstPtr(Args);
@@ -1139,5 +1139,5 @@ index b8ec5b89..f8d159fe 100644
 -    d = atomic_fetch_max_explicit(pp, val, order);
  }
 -- 
-2.18.1
+2.17.1
 
