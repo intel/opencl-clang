@@ -1,21 +1,21 @@
-From b94b18c20953638dd3e879b72550227e58a320f8 Mon Sep 17 00:00:00 2001
+From c6d8168c10e50e64e378a5de3a9d6754f0033fa9 Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
-Date: Sat, 8 May 2021 15:14:49 +0800
+Date: Thu, 12 Aug 2021 17:06:56 +0800
 Subject: [PATCH] Remove __IMAGE_SUPPORT__ macro for SPIR since SPIR doesn't
  require image support
 
 Signed-off-by: haonanya <haonan.yang@intel.com>
 ---
  clang/lib/Frontend/InitPreprocessor.cpp     | 3 ---
- clang/test/Preprocessor/predefined-macros.c | 2 --
- 2 files changed, 5 deletions(-)
+ clang/test/Preprocessor/predefined-macros.c | 1 -
+ 2 files changed, 4 deletions(-)
 
 diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
-index 6eef1e2376f6..fe0ba2cbbd69 100644
+index 5bb489c11909..cf3b48cb65d2 100644
 --- a/clang/lib/Frontend/InitPreprocessor.cpp
 +++ b/clang/lib/Frontend/InitPreprocessor.cpp
-@@ -1111,9 +1111,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
-   if (TI.getSupportedOpenCLOpts().isSupported(#Ext, LangOpts))                 \
+@@ -1115,9 +1115,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
+   if (TI.getSupportedOpenCLOpts().isSupported(#Ext))                           \
      Builder.defineMacro(#Ext);
  #include "clang/Basic/OpenCLExtensions.def"
 -
@@ -25,10 +25,10 @@ index 6eef1e2376f6..fe0ba2cbbd69 100644
  
    if (TI.hasInt128Type() && LangOpts.CPlusPlus && LangOpts.GNUMode) {
 diff --git a/clang/test/Preprocessor/predefined-macros.c b/clang/test/Preprocessor/predefined-macros.c
-index 083f0e539d88..b75589ee4fdc 100644
+index 6c80517ec4d4..d82d8b8730c0 100644
 --- a/clang/test/Preprocessor/predefined-macros.c
 +++ b/clang/test/Preprocessor/predefined-macros.c
-@@ -173,14 +173,12 @@
+@@ -186,7 +186,6 @@
  
  // RUN: %clang_cc1 %s -E -dM -o - -x cl -triple spir-unknown-unknown \
  // RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-SPIR
@@ -36,13 +36,6 @@ index 083f0e539d88..b75589ee4fdc 100644
  // CHECK-SPIR-DAG: #define __SPIR__ 1
  // CHECK-SPIR-DAG: #define __SPIR32__ 1
  // CHECK-SPIR-NOT: #define __SPIR64__ 1
- 
- // RUN: %clang_cc1 %s -E -dM -o - -x cl -triple spir64-unknown-unknown \
- // RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-SPIR64
--// CHECK-SPIR64-DAG: #define __IMAGE_SUPPORT__ 1
- // CHECK-SPIR64-DAG: #define __SPIR__ 1
- // CHECK-SPIR64-DAG: #define __SPIR64__ 1
- // CHECK-SPIR64-NOT: #define __SPIR32__ 1
 -- 
 2.17.1
 
