@@ -297,35 +297,39 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   bool useModules = !std::any_of(extMap.begin(), extMap.end(),
       [](const auto& p) {return p.second == false;});
 
-  if (!useFdeclareOpenCLBuiltins && useModules && (iCLStdSet < 300)) {
+  if (!useFdeclareOpenCLBuiltins && useModules) {
     effectiveArgs.push_back("-fmodules");
     if (!fp64Enabled) {
       if (szTriple.find("spir64") != szTriple.npos) {
-        if (iCLStdSet <= 120) {
+        if (iCLStdSet <= 120)
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
-        } else {
+        else if (iCLStdSet == 200)
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
-        }
+        else if (iCLStdSet == 300)
+          effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir64.pcm");
       } else if (szTriple.find("spir") != szTriple.npos) {
-        if (iCLStdSet <= 120) {
+        if (iCLStdSet <= 120)
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
-        } else {
+        else if (iCLStdSet == 200)
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
-        }
+        else if (iCLStdSet == 300)
+          effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir.pcm");
       }
     } else {
       if (szTriple.find("spir64") != szTriple.npos) {
-        if (iCLStdSet <= 120) {
+        if (iCLStdSet <= 120)
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
-        } else {
+        else if (iCLStdSet == 200)
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64-fp64.pcm");
-        }
+        else if (iCLStdSet == 300)
+          effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir64-fp64.pcm");
       } else if (szTriple.find("spir") != szTriple.npos) {
-        if (iCLStdSet <= 120) {
+        if (iCLStdSet <= 120)
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir-fp64.pcm");
-        } else {
+        else if (iCLStdSet == 200)
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir-fp64.pcm");
-        }
+        else if (iCLStdSet == 300)
+          effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir-fp64.pcm");
       }
     }
   }
