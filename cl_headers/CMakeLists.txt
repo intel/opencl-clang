@@ -47,6 +47,9 @@ endfunction(create_pcm)
 
 set(CL12 "-cl-std=CL1.2")
 set(CL20 "-cl-std=CL2.0")
+set(CL30 "-cl-std=CL3.0")
+# Add OpenCL C 3.0 Optional features
+set(OPTS30 "-cl-ext=+__opencl_c_atomic_order_seq_cst,+__opencl_c_atomic_scope_device,+__opencl_c_generic_address_space,+__opencl_c_pipes,+__opencl_c_subgroups,+__opencl_c_work_group_collective_functions")
 
 set(SPIR_TRIPLE "-triple;spir-unknown-unknown")
 set(SPIR64_TRIPLE "-triple;spir64-unknown-unknown")
@@ -59,13 +62,17 @@ endif()
 set(OPTS -cl-ext=+all,-cl_khr_fp64)
 create_pcm(opencl-c-12-spir.pcm cl12spir opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir.pcm cl20spir opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-30-spir.pcm cl30spir opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
 create_pcm(opencl-c-12-spir64.pcm cl12spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir64.pcm cl20spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-30-spir64.pcm cl30spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
 set(OPTS -cl-ext=+all)
 create_pcm(opencl-c-12-spir-fp64.pcm cl12spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir-fp64.pcm cl20spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-30-spir-fp64.pcm cl30spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
 create_pcm(opencl-c-12-spir64-fp64.pcm cl12spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir64-fp64.pcm cl20spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-30-spir64-fp64.pcm cl30spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
 
 add_custom_target (
     opencl.pcm.target
@@ -73,12 +80,16 @@ add_custom_target (
     opencl.headers.target
     opencl-c-12-spir.pcm
     opencl-c-20-spir.pcm
+    opencl-c-30-spir.pcm
     opencl-c-12-spir64.pcm
     opencl-c-20-spir64.pcm
+    opencl-c-30-spir64.pcm
     opencl-c-12-spir-fp64.pcm
     opencl-c-20-spir-fp64.pcm
+    opencl-c-30-spir-fp64.pcm
     opencl-c-12-spir64-fp64.pcm
     opencl-c-20-spir64-fp64.pcm
+    opencl-c-30-spir64-fp64.pcm
 )
 
 function(pack_to_obj SRC DST TAG)
@@ -101,12 +112,16 @@ else()
       opencl-c-base.h.cpp
       opencl-c-12-spir.mod.cpp
       opencl-c-20-spir.mod.cpp
+      opencl-c-30-spir.mod.cpp
       opencl-c-12-spir64.mod.cpp
       opencl-c-20-spir64.mod.cpp
+      opencl-c-30-spir64.mod.cpp
       opencl-c-12-spir-fp64.mod.cpp
       opencl-c-20-spir-fp64.mod.cpp
+      opencl-c-30-spir-fp64.mod.cpp
       opencl-c-12-spir64-fp64.mod.cpp
       opencl-c-20-spir64-fp64.mod.cpp
+      opencl-c-30-spir64-fp64.mod.cpp
       module.modulemap.cpp
     )
     # note the .pcm -> .mod extension change
@@ -114,12 +129,16 @@ else()
     # dependency cycle in generated build rules
     pack_to_obj(opencl-c-12-spir.pcm    opencl-c-12-spir.mod.cpp   "PCM_OPENCL_C_12_SPIR_PCM")
     pack_to_obj(opencl-c-20-spir.pcm    opencl-c-20-spir.mod.cpp   "PCM_OPENCL_C_20_SPIR_PCM")
+    pack_to_obj(opencl-c-30-spir.pcm    opencl-c-30-spir.mod.cpp   "PCM_OPENCL_C_30_SPIR_PCM")
     pack_to_obj(opencl-c-12-spir64.pcm  opencl-c-12-spir64.mod.cpp "PCM_OPENCL_C_12_SPIR64_PCM")
     pack_to_obj(opencl-c-20-spir64.pcm  opencl-c-20-spir64.mod.cpp "PCM_OPENCL_C_20_SPIR64_PCM")
+    pack_to_obj(opencl-c-30-spir64.pcm  opencl-c-30-spir64.mod.cpp "PCM_OPENCL_C_30_SPIR64_PCM")
     pack_to_obj(opencl-c-12-spir-fp64.pcm    opencl-c-12-spir-fp64.mod.cpp   "PCM_OPENCL_C_12_SPIR_FP64_PCM")
     pack_to_obj(opencl-c-20-spir-fp64.pcm    opencl-c-20-spir-fp64.mod.cpp   "PCM_OPENCL_C_20_SPIR_FP64_PCM")
+    pack_to_obj(opencl-c-30-spir-fp64.pcm    opencl-c-30-spir-fp64.mod.cpp   "PCM_OPENCL_C_30_SPIR_FP64_PCM")
     pack_to_obj(opencl-c-12-spir64-fp64.pcm  opencl-c-12-spir64-fp64.mod.cpp "PCM_OPENCL_C_12_SPIR64_FP64_PCM")
     pack_to_obj(opencl-c-20-spir64-fp64.pcm  opencl-c-20-spir64-fp64.mod.cpp "PCM_OPENCL_C_20_SPIR64_FP64_PCM")
+    pack_to_obj(opencl-c-30-spir64-fp64.pcm  opencl-c-30-spir64-fp64.mod.cpp "PCM_OPENCL_C_30_SPIR64_FP64_PCM")
     pack_to_obj(module.modulemap  module.modulemap.cpp  "PCM_OPENCL_C_MODULE_MAP")
 
 endif()
