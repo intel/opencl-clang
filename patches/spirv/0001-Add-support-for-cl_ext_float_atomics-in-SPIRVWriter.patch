@@ -1,19 +1,18 @@
-From 794c7d32e521060190bbfca7c52f0bb4fa49f2f2 Mon Sep 17 00:00:00 2001
+From 89e3be862e9a389ba858faa1270f0f8856b37bcf Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
 Date: Mon, 19 Jul 2021 10:14:20 +0800
 Subject: [PATCH] Add support for cl_ext_float_atomics in SPIRVWriter
 
 Signed-off-by: haonanya <haonan.yang@intel.com>
-Signed-off-by: Haonan Yang <haonan.yang@intel.com>
 ---
  lib/SPIRV/OCL20ToSPIRV.cpp            |  26 +++++-
- lib/SPIRV/OCLUtil.cpp                 |  19 +++--
+ lib/SPIRV/OCLUtil.cpp                 |  15 ++--
  lib/SPIRV/SPIRVToOCL.h                |   3 +
  lib/SPIRV/SPIRVToOCL12.cpp            |  21 +++++
  lib/SPIRV/SPIRVToOCL20.cpp            |  28 ++++++-
  lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h |   1 -
  lib/SPIRV/libSPIRV/SPIRVOpCode.h      |   8 +-
- test/AtomicBuiltinsFloat.ll           |  79 ++++++++++++++++++
+ test/AtomicBuiltinsFloat.ll           |  94 +++++++++++++++++++++
  test/AtomicFAddEXTForOCL.ll           |  88 ++++++++++++++++++++
  test/AtomicFAddExt.ll                 | 111 ++++++++-----------------
  test/AtomicFMaxEXT.ll                 | 113 +++++++-------------------
@@ -21,14 +20,14 @@ Signed-off-by: Haonan Yang <haonan.yang@intel.com>
  test/AtomicFMinEXT.ll                 | 113 +++++++-------------------
  test/AtomicFMinEXTForOCL.ll           |  85 +++++++++++++++++++
  test/InvalidAtomicBuiltins.cl         |  16 ----
- 15 files changed, 526 insertions(+), 273 deletions(-)
+ 15 files changed, 539 insertions(+), 271 deletions(-)
  create mode 100644 test/AtomicBuiltinsFloat.ll
  create mode 100644 test/AtomicFAddEXTForOCL.ll
  create mode 100644 test/AtomicFMaxEXTForOCL.ll
  create mode 100644 test/AtomicFMinEXTForOCL.ll
 
 diff --git a/lib/SPIRV/OCL20ToSPIRV.cpp b/lib/SPIRV/OCL20ToSPIRV.cpp
-index e30aa5be..98d4289e 100644
+index e30aa5be..79323de2 100644
 --- a/lib/SPIRV/OCL20ToSPIRV.cpp
 +++ b/lib/SPIRV/OCL20ToSPIRV.cpp
 @@ -407,7 +407,6 @@ void OCL20ToSPIRV::visitCallInst(CallInst &CI) {
@@ -53,7 +52,7 @@ index e30aa5be..98d4289e 100644
                        Args.end() - Offset);
          }
 -        return getSPIRVFuncName(OCLSPIRVBuiltinMap::map(Info.UniqName));
-+	llvm::Type* AtomicBuiltinsReturnType =
++        llvm::Type* AtomicBuiltinsReturnType =
 +            CI->getCalledFunction()->getReturnType();
 +        auto IsFPType = [](llvm::Type *ReturnType) {
 +          return ReturnType->isHalfTy() || ReturnType->isFloatTy() ||
@@ -79,16 +78,16 @@ index e30aa5be..98d4289e 100644
        &Attrs);
  }
 diff --git a/lib/SPIRV/OCLUtil.cpp b/lib/SPIRV/OCLUtil.cpp
-index 992f173f..539c196c 100644
+index 992f173f..8ae882c6 100644
 --- a/lib/SPIRV/OCLUtil.cpp
 +++ b/lib/SPIRV/OCLUtil.cpp
 @@ -120,29 +120,32 @@ size_t getSPIRVAtomicBuiltinNumMemoryOrderArgs(Op OC) {
    return 1;
  }
  
-+// atomic_fetch_[add, sub, min, max] and atomic_fetch_[add, sub, min,
-+// max]_explicit functions are defined on OpenCL headers, they are not
-+// translated to function call
++// atomic_fetch_[add, min, max] and atomic_fetch_[add, min, max]_explicit
++// functions declared in clang headers should be translated to corresponding
++// FP-typed Atomic Instructions
  bool isComputeAtomicOCLBuiltin(StringRef DemangledName) {
    if (!DemangledName.startswith(kOCLBuiltinName::AtomicPrefix) &&
        !DemangledName.startswith(kOCLBuiltinName::AtomPrefix))
@@ -96,13 +95,11 @@ index 992f173f..539c196c 100644
  
    return llvm::StringSwitch<bool>(DemangledName)
 -      .EndsWith("add", true)
--      .EndsWith("sub", true)
+       .EndsWith("sub", true)
 +      .EndsWith("atomic_add", true)
-+      .EndsWith("atomic_sub", true)
 +      .EndsWith("atomic_min", true)
 +      .EndsWith("atomic_max", true)
 +      .EndsWith("atom_add", true)
-+      .EndsWith("atom_sub", true)
 +      .EndsWith("atom_min", true)
 +      .EndsWith("atom_max", true)
        .EndsWith("inc", true)
@@ -114,7 +111,7 @@ index 992f173f..539c196c 100644
        .EndsWith("or", true)
        .EndsWith("xor", true)
 -      .EndsWith("add_explicit", true)
--      .EndsWith("sub_explicit", true)
+       .EndsWith("sub_explicit", true)
        .EndsWith("or_explicit", true)
        .EndsWith("xor_explicit", true)
        .EndsWith("and_explicit", true)
@@ -184,7 +181,7 @@ index 1a62c6b8..dc0ba9cc 100644
  }
  
 diff --git a/lib/SPIRV/SPIRVToOCL20.cpp b/lib/SPIRV/SPIRVToOCL20.cpp
-index 8c437858..0033b853 100644
+index 8c437858..07612ce6 100644
 --- a/lib/SPIRV/SPIRVToOCL20.cpp
 +++ b/lib/SPIRV/SPIRVToOCL20.cpp
 @@ -82,6 +82,9 @@ public:
@@ -232,8 +229,8 @@ index 8c437858..0033b853 100644
          }
          auto Ptr = findFirstPtr(Args);
 -        auto Name = OCLSPIRVBuiltinMap::rmap(OC);
-+	std::string Name;
-+	// Map fp atomic instructions to regular OpenCL built-ins.
++        std::string Name;
++        // Map fp atomic instructions to regular OpenCL built-ins.
 +        if (isFPAtomicOpCode(OC))
 +          Name = mapFPAtomicName(OC);
 +        else
@@ -278,11 +275,13 @@ index feec70f6..8e595e83 100644
    return ((unsigned)OpCode >= OpIAdd && (unsigned)OpCode <= OpFMod) ||
 diff --git a/test/AtomicBuiltinsFloat.ll b/test/AtomicBuiltinsFloat.ll
 new file mode 100644
-index 00000000..18ee1c86
+index 00000000..b688cb2a
 --- /dev/null
 +++ b/test/AtomicBuiltinsFloat.ll
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,94 @@
 +; Check that translator generate atomic instructions for atomic builtins
++; FP-typed atomic_fetch_sub and atomic_fetch_sub_explicit should be translated
++; to FunctionCall
 +; RUN: llvm-as %s -o %t.bc
 +; RUN: llvm-spirv %t.bc -spirv-text -o - | FileCheck %s
 +; RUN: llvm-spirv %t.bc -o %t.spv
@@ -293,6 +292,7 @@ index 00000000..18ee1c86
 +; CHECK-COUNT-3: AtomicStore
 +; CHECK-COUNT-3: AtomicLoad
 +; CHECK-COUNT-3: AtomicExchange
++; CHECK-COUNT-3: FunctionCall
 +
 +target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
 +target triple = "spir-unknown-unknown"
@@ -311,6 +311,9 @@ index 00000000..18ee1c86
 +  %call3 = tail call spir_func float @_Z15atomic_exchangePU3AS4VU7_Atomicff(float addrspace(4)* %0, float 1.000000e+00) #2
 +  %call4 = tail call spir_func float @_Z24atomic_exchange_explicitPU3AS4VU7_Atomicff12memory_order(float addrspace(4)* %0, float 1.000000e+00, i32 0) #2
 +  %call5 = tail call spir_func float @_Z24atomic_exchange_explicitPU3AS4VU7_Atomicff12memory_order12memory_scope(float addrspace(4)* %0, float 1.000000e+00, i32 0, i32 1) #2
++  %call6 = tail call spir_func float @_Z16atomic_fetch_subPU3AS3VU7_Atomicff(float addrspace(3)* %ff, float 1.000000e+00) #2
++  %call7 = tail call spir_func float @_Z25atomic_fetch_sub_explicitPU3AS3VU7_Atomicff12memory_order(float addrspace(3)* %ff, float 1.000000e+00, i32 0) #2
++  %call8 = tail call spir_func float @_Z25atomic_fetch_sub_explicitPU3AS3VU7_Atomicff12memory_order12memory_scope(float addrspace(3)* %ff, float 1.000000e+00, i32 0, i32 1) #2
 +  ret void
 +}
 +
@@ -344,6 +347,15 @@ index 00000000..18ee1c86
 +; Function Attrs: convergent
 +declare spir_func float @_Z24atomic_exchange_explicitPU3AS4VU7_Atomicff12memory_order12memory_scope(float addrspace(4)*, float, i32, i32) local_unnamed_addr #1
 +
++; Function Attrs: convergent
++declare spir_func float @_Z16atomic_fetch_subPU3AS3VU7_Atomicff(float addrspace(3)*, float) local_unnamed_addr #1
++
++; Function Attrs: convergent
++declare spir_func float @_Z25atomic_fetch_sub_explicitPU3AS3VU7_Atomicff12memory_order(float addrspace(3)*, float, i32) local_unnamed_addr #1
++
++; Function Attrs: convergent
++declare spir_func float @_Z25atomic_fetch_sub_explicitPU3AS3VU7_Atomicff12memory_order12memory_scope(float addrspace(3)*, float, i32, i32) local_unnamed_addr #1
++
 +attributes #0 = { convergent nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "denorms-are-zero"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "uniform-work-group-size"="false" "unsafe-fp-math"="false" "use-soft-float"="false" }
 +attributes #1 = { convergent "correctly-rounded-divide-sqrt-fp-math"="false" "denorms-are-zero"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="false" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
 +attributes #2 = { convergent nounwind }
@@ -355,7 +367,7 @@ index 00000000..18ee1c86
 +
 +!0 = !{i32 1, !"wchar_size", i32 4}
 +!1 = !{i32 2, i32 0}
-+!2 = !{!"clang version 10.0.1 (8560093eba963fba2edd47ca85404cdaff22f174)"}
++!2 = !{!"clang version 10.0.1 (0d3ce3267dd78b77ab8f302347cc547afaf43ede)"}
 +!3 = !{i32 3}
 +!4 = !{!"none"}
 +!5 = !{!"atomic_float*"}
