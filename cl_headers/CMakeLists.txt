@@ -1,5 +1,8 @@
 set(CL_HEADERS_LIB cl_headers)
-set(CLANG_COMMAND clang)
+set(CLANG_COMMAND $<TARGET_FILE:clang> )
+if(LLVM_USE_HOST_TOOLS)
+  build_native_tool(clang CLANG_COMMAND)
+endif()
 
 function(copy_file SRC DST)
 add_custom_command(
@@ -32,7 +35,7 @@ function(create_pcm DST MODULE HEADER OPTS DEPS)
     add_custom_command (
         OUTPUT ${DST}
         MAIN_DEPENDENCY ${MODMAP}
-        DEPENDS ${HEADER} ${DEPS}
+        DEPENDS ${HEADER} ${DEPS} ${CLANG_COMMAND}
         COMMAND
         ${CLANG_COMMAND} -cc1 -x cl
         -I. -O0 ${OPTS}
