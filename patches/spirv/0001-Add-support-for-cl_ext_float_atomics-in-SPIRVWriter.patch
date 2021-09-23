@@ -1,18 +1,18 @@
-From 8ba15d3b243584a005b3016fb4cd02e78a636a10 Mon Sep 17 00:00:00 2001
+From 1a155b4a98bef1ca74cb215db5c16a5259e9492a Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
 Date: Wed, 28 Jul 2021 11:43:20 +0800
 Subject: [PATCH] Add support for cl_ext_float_atomics in SPIRVWriter
 
 Signed-off-by: haonanya <haonan.yang@intel.com>
 ---
- lib/SPIRV/OCLToSPIRV.cpp                | 27 +++++++-
- lib/SPIRV/OCLUtil.cpp                   | 19 +++---
- test/AtomicBuiltinsFloat.ll             | 79 +++++++++++++++++++++++
+ lib/SPIRV/OCLToSPIRV.cpp                | 27 ++++++-
+ lib/SPIRV/OCLUtil.cpp                   | 15 ++--
+ test/AtomicBuiltinsFloat.ll             | 94 +++++++++++++++++++++++++
  test/negative/InvalidAtomicBuiltins.cl  | 20 +-----
- test/transcoding/AtomicFAddEXTForOCL.ll | 84 +++++++++++++++++++++++++
- test/transcoding/AtomicFMaxEXTForOCL.ll | 84 +++++++++++++++++++++++++
- test/transcoding/AtomicFMinEXTForOCL.ll | 83 ++++++++++++++++++++++++
- 7 files changed, 368 insertions(+), 28 deletions(-)
+ test/transcoding/AtomicFAddEXTForOCL.ll | 84 ++++++++++++++++++++++
+ test/transcoding/AtomicFMaxEXTForOCL.ll | 84 ++++++++++++++++++++++
+ test/transcoding/AtomicFMinEXTForOCL.ll | 83 ++++++++++++++++++++++
+ 7 files changed, 381 insertions(+), 26 deletions(-)
  create mode 100644 test/AtomicBuiltinsFloat.ll
  create mode 100644 test/transcoding/AtomicFAddEXTForOCL.ll
  create mode 100644 test/transcoding/AtomicFMaxEXTForOCL.ll
@@ -71,16 +71,16 @@ index d9ed4a7a..cadc2247 100644
        &Attrs);
  }
 diff --git a/lib/SPIRV/OCLUtil.cpp b/lib/SPIRV/OCLUtil.cpp
-index 2de3f152..2150a991 100644
+index 2de3f152..94e248c1 100644
 --- a/lib/SPIRV/OCLUtil.cpp
 +++ b/lib/SPIRV/OCLUtil.cpp
 @@ -662,29 +662,32 @@ size_t getSPIRVAtomicBuiltinNumMemoryOrderArgs(Op OC) {
    return 1;
  }
  
-+// atomic_fetch_[add, sub, min, max] and atomic_fetch_[add, sub, min,
-+// max]_explicit functions are defined on OpenCL headers, they are not
-+// translated to function call
++// atomic_fetch_[add, min, max] and atomic_fetch_[add, min, max]_explicit
++// functions declared in clang headers should be translated to corresponding
++// FP-typed Atomic Instructions
  bool isComputeAtomicOCLBuiltin(StringRef DemangledName) {
    if (!DemangledName.startswith(kOCLBuiltinName::AtomicPrefix) &&
        !DemangledName.startswith(kOCLBuiltinName::AtomPrefix))
@@ -88,13 +88,11 @@ index 2de3f152..2150a991 100644
  
    return llvm::StringSwitch<bool>(DemangledName)
 -      .EndsWith("add", true)
--      .EndsWith("sub", true)
+       .EndsWith("sub", true)
 +      .EndsWith("atomic_add", true)
-+      .EndsWith("atomic_sub", true)
 +      .EndsWith("atomic_min", true)
 +      .EndsWith("atomic_max", true)
 +      .EndsWith("atom_add", true)
-+      .EndsWith("atom_sub", true)
 +      .EndsWith("atom_min", true)
 +      .EndsWith("atom_max", true)
        .EndsWith("inc", true)
@@ -106,7 +104,7 @@ index 2de3f152..2150a991 100644
        .EndsWith("or", true)
        .EndsWith("xor", true)
 -      .EndsWith("add_explicit", true)
--      .EndsWith("sub_explicit", true)
+       .EndsWith("sub_explicit", true)
        .EndsWith("or_explicit", true)
        .EndsWith("xor_explicit", true)
        .EndsWith("and_explicit", true)
@@ -117,11 +115,13 @@ index 2de3f152..2150a991 100644
  
 diff --git a/test/AtomicBuiltinsFloat.ll b/test/AtomicBuiltinsFloat.ll
 new file mode 100644
-index 00000000..d75bd012
+index 00000000..c85dd5b6
 --- /dev/null
 +++ b/test/AtomicBuiltinsFloat.ll
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,94 @@
 +; Check that translator generate atomic instructions for atomic builtins
++; FP-typed atomic_fetch_sub and atomic_fetch_sub_explicit should be translated
++; to FunctionCall
 +; RUN: llvm-as %s -o %t.bc
 +; RUN: llvm-spirv %t.bc -spirv-text -o - | FileCheck %s
 +; RUN: llvm-spirv %t.bc -o %t.spv
@@ -132,12 +132,13 @@ index 00000000..d75bd012
 +; CHECK-COUNT-3: AtomicStore
 +; CHECK-COUNT-3: AtomicLoad
 +; CHECK-COUNT-3: AtomicExchange
++; CHECK-COUNT-3: FunctionCall
 +
 +target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024"
 +target triple = "spir-unknown-unknown"
 +
 +; Function Attrs: convergent norecurse nounwind
-+define spir_kernel void @test_atomic_kernel(float addrspace(3)* %ff, float addrspace(3)* nocapture readnone %a) local_unnamed_addr #0 !kernel_arg_addr_space !3 !kernel_arg_access_qual !4 !kernel_arg_type !5 !kernel_arg_base_type !6 !kernel_arg_type_qual !7 {
++define spir_kernel void @test_atomic_kernel(float addrspace(3)* %ff) local_unnamed_addr #0 !kernel_arg_addr_space !3 !kernel_arg_access_qual !4 !kernel_arg_type !5 !kernel_arg_base_type !6 !kernel_arg_type_qual !7 {
 +entry:
 +  %0 = addrspacecast float addrspace(3)* %ff to float addrspace(4)*
 +  tail call spir_func void @_Z11atomic_initPU3AS4VU7_Atomicff(float addrspace(4)* %0, float 1.000000e+00) #2
@@ -150,6 +151,9 @@ index 00000000..d75bd012
 +  %call3 = tail call spir_func float @_Z15atomic_exchangePU3AS4VU7_Atomicff(float addrspace(4)* %0, float 1.000000e+00) #2
 +  %call4 = tail call spir_func float @_Z24atomic_exchange_explicitPU3AS4VU7_Atomicff12memory_order(float addrspace(4)* %0, float 1.000000e+00, i32 0) #2
 +  %call5 = tail call spir_func float @_Z24atomic_exchange_explicitPU3AS4VU7_Atomicff12memory_order12memory_scope(float addrspace(4)* %0, float 1.000000e+00, i32 0, i32 1) #2
++  %call6 = tail call spir_func float @_Z16atomic_fetch_subPU3AS3VU7_Atomicff(float addrspace(3)* %ff, float 1.000000e+00) #2
++  %call7 = tail call spir_func float @_Z25atomic_fetch_sub_explicitPU3AS3VU7_Atomicff12memory_order(float addrspace(3)* %ff, float 1.000000e+00, i32 0) #2
++  %call8 = tail call spir_func float @_Z25atomic_fetch_sub_explicitPU3AS3VU7_Atomicff12memory_order12memory_scope(float addrspace(3)* %ff, float 1.000000e+00, i32 0, i32 1) #2
 +  ret void
 +}
 +
@@ -183,6 +187,15 @@ index 00000000..d75bd012
 +; Function Attrs: convergent
 +declare spir_func float @_Z24atomic_exchange_explicitPU3AS4VU7_Atomicff12memory_order12memory_scope(float addrspace(4)*, float, i32, i32) local_unnamed_addr #1
 +
++; Function Attrs: convergent
++declare spir_func float @_Z16atomic_fetch_subPU3AS3VU7_Atomicff(float addrspace(3)*, float) local_unnamed_addr #1
++
++; Function Attrs: convergent
++declare spir_func float @_Z25atomic_fetch_sub_explicitPU3AS3VU7_Atomicff12memory_order(float addrspace(3)*, float, i32) local_unnamed_addr #1
++
++; Function Attrs: convergent
++declare spir_func float @_Z25atomic_fetch_sub_explicitPU3AS3VU7_Atomicff12memory_order12memory_scope(float addrspace(3)*, float, i32, i32) local_unnamed_addr #1
++
 +attributes #0 = { convergent norecurse nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "uniform-work-group-size"="false" "unsafe-fp-math"="false" "use-soft-float"="false" }
 +attributes #1 = { convergent "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="none" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
 +attributes #2 = { convergent nounwind }
@@ -194,12 +207,12 @@ index 00000000..d75bd012
 +
 +!0 = !{i32 1, !"wchar_size", i32 4}
 +!1 = !{i32 2, i32 0}
-+!2 = !{!"clang version 11.1.0 (https://github.com/llvm/llvm-project.git 15c8e1468997ba90943155d35475b2aaeea65f19)"}
-+!3 = !{i32 3, i32 3}
-+!4 = !{!"none", !"none"}
-+!5 = !{!"atomic_float*", !"float*"}
-+!6 = !{!"_Atomic(float)*", !"float*"}
-+!7 = !{!"volatile", !""}
++!2 = !{!"clang version 11.1.0 (4989da43e3648ed25a272773165367f195d3b53c)"}
++!3 = !{i32 3}
++!4 = !{!"none"}
++!5 = !{!"atomic_float*"}
++!6 = !{!"_Atomic(float)*"}
++!7 = !{!"volatile"}
 diff --git a/test/negative/InvalidAtomicBuiltins.cl b/test/negative/InvalidAtomicBuiltins.cl
 index b8ec5b89..18d11bf5 100644
 --- a/test/negative/InvalidAtomicBuiltins.cl
