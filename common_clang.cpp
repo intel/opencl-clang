@@ -117,17 +117,31 @@ void CommonClangInitialize() {
 }
 
 static bool GetHeaders(std::vector<Resource> &Result) {
-  struct {const char *ID; const char *Name;} Headers[] = {
-    {OPENCL_C_H,             "opencl-c.h"},
-    {OPENCL_C_BASE_H,        "opencl-c-base.h"},
-  };
+  struct {
+    const char *ID;
+    const char *Name;
+  } Headers[] = {{OPENCL_C_H, "opencl-c.h"},
+                 {OPENCL_C_BASE_H, "opencl-c-base.h"},
+                 {OPENCL_C_12_SPIR_PCM, "opencl-c-12-spir.pcm"},
+                 {OPENCL_C_20_SPIR_PCM, "opencl-c-20-spir.pcm"},
+                 {OPENCL_C_30_SPIR_PCM, "opencl-c-30-spir.pcm"},
+                 {OPENCL_C_12_SPIR64_PCM, "opencl-c-12-spir64.pcm"},
+                 {OPENCL_C_20_SPIR64_PCM, "opencl-c-20-spir64.pcm"},
+                 {OPENCL_C_30_SPIR64_PCM, "opencl-c-30-spir64.pcm"},
+                 {OPENCL_C_12_SPIR_FP64_PCM, "opencl-c-12-spir-fp64.pcm"},
+                 {OPENCL_C_20_SPIR_FP64_PCM, "opencl-c-20-spir-fp64.pcm"},
+                 {OPENCL_C_30_SPIR_FP64_PCM, "opencl-c-30-spir-fp64.pcm"},
+                 {OPENCL_C_12_SPIR64_FP64_PCM, "opencl-c-12-spir64-fp64.pcm"},
+                 {OPENCL_C_20_SPIR64_FP64_PCM, "opencl-c-20-spir64-fp64.pcm"},
+                 {OPENCL_C_30_SPIR64_FP64_PCM, "opencl-c-30-spir64-fp64.pcm"},
+                 {OPENCL_C_MODULE_MAP, "module.modulemap"}};
 
   Result.clear();
   Result.reserve(sizeof(Headers) / sizeof(*Headers));
 
   ResourceManager &RM = ResourceManager::instance();
 
-  for (auto Header:Headers) {
+  for (auto Header : Headers) {
     Resource R = RM.get_resource(Header.Name, Header.ID, "PCM", true);
     if (!R) {
       assert(0 && "Resource not found");
