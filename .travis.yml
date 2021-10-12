@@ -32,8 +32,12 @@ addons:
       - libclang-10-dev
 
 install:
-  - wget https://github.com/KhronosGroup/SPIRV-LLVM-Translator/releases/download/dev-build/SPIRV-LLVM-Translator-dev-build-linux-Release.zip -O /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip
-  - unzip /tmp/SPIRV-LLVM-Translator-dev-build-linux-${BUILD_TYPE}.zip -d spirv-llvm-translator
+  - git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_100 spirv-llvm-translator
+  - mkdir spirv-llvm-translator/build && cd spirv-llvm-translator/build
+  - cmake .. -DCMAKE_INSTALL_PREFIX=./install -DBUILD_SHARED_LIBS=ON -DLLVM_BUILD_TOOLS=ON -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+  - make -j`nproc` && make install
+  - cd ../../
+
 # This is a work-around for a "wrong" dependency between libclang-10-dev and
 # libclang-cpp10-dev packages from apt.llv.org. Normally, we should just
 # install them both, as it is done on the master(ocl-open-110) branch. But for
@@ -48,5 +52,5 @@ compiler:
 
 script:
   - mkdir build && cd build
-  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=./spirv-llvm-translator -DCMAKE_INSTALL_PREFIX=./install ..
-  - make install
+  - cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DLLVM_NO_DEAD_STRIP=ON -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF -DSPIRV_TRANSLATOR_DIR=${TRAVIS_BUILD_DIR}/spirv-llvm-translator/build/install -DCMAKE_INSTALL_PREFIX=./install ..
+  - make -j`nproc` && make install
