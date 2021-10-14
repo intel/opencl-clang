@@ -52,7 +52,7 @@ set(CL12 "-cl-std=CL1.2")
 set(CL20 "-cl-std=CL2.0")
 set(CL30 "-cl-std=CL3.0")
 # Add OpenCL C 3.0 Optional features
-set(OPTS30 "-cl-ext=+__opencl_c_fp64,+__opencl_c_atomic_order_seq_cst,+__opencl_c_atomic_scope_device,+__opencl_c_generic_address_space,+__opencl_c_pipes,+__opencl_c_subgroups,+__opencl_c_work_group_collective_functions")
+set(OPTS30 "-cl-ext=+__opencl_c_fp64,+__opencl_c_read_write_images,+__opencl_c_atomic_order_seq_cst,+__opencl_c_atomic_scope_device,+__opencl_c_generic_address_space,+__opencl_c_pipes,+__opencl_c_subgroups,+__opencl_c_work_group_collective_functions")
 
 set(SPIR_TRIPLE "-triple;spir-unknown-unknown")
 set(SPIR64_TRIPLE "-triple;spir64-unknown-unknown")
