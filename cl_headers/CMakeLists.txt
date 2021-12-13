@@ -52,7 +52,8 @@ set(CL12 "-cl-std=CL1.2")
 set(CL20 "-cl-std=CL2.0")
 set(CL30 "-cl-std=CL3.0")
 # Add OpenCL C 3.0 Optional features
-set(OPTS30 "-cl-ext=+__opencl_c_atomic_order_seq_cst,+__opencl_c_atomic_scope_device,+__opencl_c_generic_address_space,+__opencl_c_pipes,+__opencl_c_subgroups,+__opencl_c_work_group_collective_functions")
+set(OPTS30 "-cl-ext=+__opencl_c_3d_image_writes,+__opencl_c_atomic_order_acq_rel,+__opencl_c_atomic_order_seq_cst,+__opencl_c_atomic_scope_device,+__opencl_c_atomic_scope_all_devices,+__opencl_c_device_enqueue,+__opencl_c_generic_address_space,+__opencl_c_images,+__opencl_c_int64,+__opencl_c_pipes,+__opencl_c_program_scope_global_variables,+__opencl_c_read_write_images,+__opencl_c_subgroups,+__opencl_c_work_group_collective_functions")
+set(OPTS30_FP64 "-cl-ext=+__opencl_c_fp64")
 
 set(SPIR_TRIPLE "-triple;spir-unknown-unknown")
 set(SPIR64_TRIPLE "-triple;spir64-unknown-unknown")
@@ -73,10 +74,10 @@ create_pcm(opencl-c-30-spir64.pcm cl30spir64 opencl-c-base.h "${SPIR64_TRIPLE};$
 set(OPTS -cl-ext=+all)
 create_pcm(opencl-c-12-spir-fp64.pcm cl12spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir-fp64.pcm cl20spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-30-spir-fp64.pcm cl30spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
+create_pcm(opencl-c-30-spir-fp64.pcm cl30spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
 create_pcm(opencl-c-12-spir64-fp64.pcm cl12spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir64-fp64.pcm cl20spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-30-spir64-fp64.pcm cl30spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
+create_pcm(opencl-c-30-spir64-fp64.pcm cl30spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
 
 add_custom_target (
     opencl.pcm.target
