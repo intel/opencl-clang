@@ -1,0 +1,140 @@
+From 9a1886d1b70b4bf452f201ff1268194e21bd686c Mon Sep 17 00:00:00 2001
+From: haonanya <haonan.yang@intel.com>
+Date: Fri, 24 Dec 2021 10:12:19 +0800
+Subject: [PATCH] Add cl_khr_integer_dot_product
+
+This is backporting of https://reviews.llvm.org/D106434
+Add the builtins defined by Section 42 "Integer dot product" in the OpenCL
+Extension Specification.
+
+See https://www.khronos.org/registry/OpenCL/specs/3.0-unified/html/OpenCL_Ext.html#cl_khr_integer_dot_product
+
+Signed-off-by: haonanya <haonan.yang@intel.com>
+---
+ clang/lib/Headers/opencl-c-base.h     |  3 +++
+ clang/lib/Headers/opencl-c.h          | 24 ++++++++++++++++++++++++
+ clang/lib/Sema/OpenCLBuiltins.td      | 25 +++++++++++++++++++++++++
+ clang/test/Headers/opencl-c-header.cl | 18 ++++++++++++++++++
+ 4 files changed, 70 insertions(+)
+
+diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
+index 18d367de68ec..f612e85a1797 100644
+--- a/clang/lib/Headers/opencl-c-base.h
++++ b/clang/lib/Headers/opencl-c-base.h
+@@ -34,6 +34,9 @@
+ #define __opencl_c_ext_fp32_local_atomic_add 1
+ #define __opencl_c_ext_fp32_global_atomic_min_max 1
+ #define __opencl_c_ext_fp32_local_atomic_min_max 1
++#define cl_khr_integer_dot_product 1
++#define __opencl_c_integer_dot_product_input_4x8bit 1
++#define __opencl_c_integer_dot_product_input_4x8bit_packed 1
+ #endif // (defined(__OPENCL_CPP_VERSION__) || __OPENCL_C_VERSION__ >= 200)
+ 
+ // Define features for 2.0 for header backward compatibility
+diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
+index 454469991d59..225d9a47abfe 100644
+--- a/clang/lib/Headers/opencl-c.h
++++ b/clang/lib/Headers/opencl-c.h
+@@ -18428,6 +18428,30 @@ double  __ovld sub_group_clustered_reduce_max( double value, uint clustersize );
+ 
+ #endif // cl_khr_subgroup_clustered_reduce
+ 
++#if defined(__opencl_c_integer_dot_product_input_4x8bit)
++uint __ovld __cnfn dot(uchar4, uchar4);
++int __ovld __cnfn dot(char4, char4);
++int __ovld __cnfn dot(uchar4, char4);
++int __ovld __cnfn dot(char4, uchar4);
++
++uint __ovld __cnfn dot_acc_sat(uchar4, uchar4, uint);
++int __ovld __cnfn dot_acc_sat(char4, char4, int);
++int __ovld __cnfn dot_acc_sat(uchar4, char4, int);
++int __ovld __cnfn dot_acc_sat(char4, uchar4, int);
++#endif // __opencl_c_integer_dot_product_input_4x8bit
++
++#if defined(__opencl_c_integer_dot_product_input_4x8bit_packed)
++uint __ovld __cnfn dot_4x8packed_uu_uint(uint, uint);
++int __ovld __cnfn dot_4x8packed_ss_int(uint, uint);
++int __ovld __cnfn dot_4x8packed_us_int(uint, uint);
++int __ovld __cnfn dot_4x8packed_su_int(uint, uint);
++
++uint __ovld __cnfn dot_acc_sat_4x8packed_uu_uint(uint, uint, uint);
++int __ovld __cnfn dot_acc_sat_4x8packed_ss_int(uint, uint, int);
++int __ovld __cnfn dot_acc_sat_4x8packed_us_int(uint, uint, int);
++int __ovld __cnfn dot_acc_sat_4x8packed_su_int(uint, uint, int);
++#endif // __opencl_c_integer_dot_product_input_4x8bit_packed
++
+ #if defined(cl_intel_subgroups)
+ // Intel-Specific Sub Group Functions
+ float   __ovld __conv intel_sub_group_shuffle( float  x, uint c );
+diff --git a/clang/lib/Sema/OpenCLBuiltins.td b/clang/lib/Sema/OpenCLBuiltins.td
+index d352d35f1e46..d2f8e0a407d4 100644
+--- a/clang/lib/Sema/OpenCLBuiltins.td
++++ b/clang/lib/Sema/OpenCLBuiltins.td
+@@ -1366,3 +1366,28 @@ let Extension = FuncExtKhrGlMsaaSharing in {
+     def : Builtin<"get_image_array_size", [Size, ImageType<Image2dArrayMsaaDepth, aQual>], Attr.Const>;
+   }
+ }
++
++// Section 42.3 - cl_khr_integer_dot_product
++let Extension = FunctionExtension<"__opencl_c_integer_dot_product_input_4x8bit"> in {
++  def : Builtin<"dot", [UInt, VectorType<UChar, 4>, VectorType<UChar, 4>], Attr.Const>;
++  def : Builtin<"dot", [Int, VectorType<Char, 4>, VectorType<Char, 4>], Attr.Const>;
++  def : Builtin<"dot", [Int, VectorType<UChar, 4>, VectorType<Char, 4>], Attr.Const>;
++  def : Builtin<"dot", [Int, VectorType<Char, 4>, VectorType<UChar, 4>], Attr.Const>;
++
++  def : Builtin<"dot_acc_sat", [UInt, VectorType<UChar, 4>, VectorType<UChar, 4>, UInt], Attr.Const>;
++  def : Builtin<"dot_acc_sat", [Int, VectorType<Char, 4>, VectorType<Char, 4>, Int], Attr.Const>;
++  def : Builtin<"dot_acc_sat", [Int, VectorType<UChar, 4>, VectorType<Char, 4>, Int], Attr.Const>;
++  def : Builtin<"dot_acc_sat", [Int, VectorType<Char, 4>, VectorType<UChar, 4>, Int], Attr.Const>;
++}
++
++let Extension = FunctionExtension<"__opencl_c_integer_dot_product_input_4x8bit_packed"> in {
++  def : Builtin<"dot_4x8packed_uu_uint", [UInt, UInt, UInt], Attr.Const>;
++  def : Builtin<"dot_4x8packed_ss_int", [Int, UInt, UInt], Attr.Const>;
++  def : Builtin<"dot_4x8packed_us_int", [Int, UInt, UInt], Attr.Const>;
++  def : Builtin<"dot_4x8packed_su_int", [Int, UInt, UInt], Attr.Const>;
++
++  def : Builtin<"dot_acc_sat_4x8packed_uu_uint", [UInt, UInt, UInt, UInt], Attr.Const>;
++  def : Builtin<"dot_acc_sat_4x8packed_ss_int", [Int, UInt, UInt, Int], Attr.Const>;
++  def : Builtin<"dot_acc_sat_4x8packed_us_int", [Int, UInt, UInt, Int], Attr.Const>;
++  def : Builtin<"dot_acc_sat_4x8packed_su_int", [Int, UInt, UInt, Int], Attr.Const>;
++}
+diff --git a/clang/test/Headers/opencl-c-header.cl b/clang/test/Headers/opencl-c-header.cl
+index 7f720cf28142..f2771cd6c6ca 100644
+--- a/clang/test/Headers/opencl-c-header.cl
++++ b/clang/test/Headers/opencl-c-header.cl
+@@ -146,6 +146,15 @@ global atomic_int z = ATOMIC_VAR_INIT(99);
+ #if __opencl_c_ext_fp64_local_atomic_min_max != 1
+ #error "Incorrectly defined __opencl_c_ext_fp64_local_atomic_min_max"
+ #endif
++#if cl_khr_integer_dot_product != 1
++#error "Incorrectly defined cl_khr_integer_dot_product"
++#endif
++#if __opencl_c_integer_dot_product_input_4x8bit != 1
++#error "Incorrectly defined __opencl_c_integer_dot_product_input_4x8bit"
++#endif
++#if __opencl_c_integer_dot_product_input_4x8bit_packed != 1
++#error "Incorrectly defined __opencl_c_integer_dot_product_input_4x8bit_packed"
++#endif
+ #else
+ 
+ #ifdef __opencl_c_ext_fp16_global_atomic_load_store
+@@ -190,6 +199,15 @@ global atomic_int z = ATOMIC_VAR_INIT(99);
+ #ifdef __opencl_c_ext_fp64_local_atomic_min_max
+ #error "Incorrectly __opencl_c_ext_fp64_local_atomic_min_max defined"
+ #endif
++#ifdef cl_khr_integer_dot_product
++#error "Incorrect cl_khr_integer_dot_product define"
++#endif
++#ifdef __opencl_c_integer_dot_product_input_4x8bit
++#error "Incorrect __opencl_c_integer_dot_product_input_4x8bit define"
++#endif
++#ifdef __opencl_c_integer_dot_product_input_4x8bit_packed
++#error "Incorrect __opencl_c_integer_dot_product_input_4x8bit_packed define"
++#endif
+ 
+ #endif //(defined(__OPENCL_CPP_VERSION__) || __OPENCL_C_VERSION__ >= 200)
+ 
+-- 
+2.17.1
+
