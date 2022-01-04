@@ -1,4 +1,4 @@
-From f1a8eb055bf17e805378dbd5e0e03d4badd16eb1 Mon Sep 17 00:00:00 2001
+From 54802abece1e4742050795162e3a773f0e143aa3 Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
 Date: Fri, 24 Dec 2021 15:27:46 +0800
 Subject: [PATCH] [OpenCL] Add cl_khr_integer_dot_product
@@ -13,8 +13,9 @@ Signed-off-by: haonanya <haonan.yang@intel.com>
 ---
  clang/lib/Headers/opencl-c-base.h     |  3 +++
  clang/lib/Headers/opencl-c.h          | 24 ++++++++++++++++++++++++
+ clang/lib/Sema/OpenCLBuiltins.td      | 25 +++++++++++++++++++++++++
  clang/test/Headers/opencl-c-header.cl | 18 ++++++++++++++++++
- 3 files changed, 45 insertions(+)
+ 4 files changed, 70 insertions(+)
 
 diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
 index d94d64372dbb..b55d9601a452 100644
@@ -65,6 +66,42 @@ index 501a04f6e82b..50dcc03955cb 100644
  #if defined(cl_intel_subgroups)
  // Intel-Specific Sub Group Functions
  float   __ovld __conv intel_sub_group_shuffle( float  x, uint c );
+diff --git a/clang/lib/Sema/OpenCLBuiltins.td b/clang/lib/Sema/OpenCLBuiltins.td
+index 745363a6b43f..3c5f8821063d 100644
+--- a/clang/lib/Sema/OpenCLBuiltins.td
++++ b/clang/lib/Sema/OpenCLBuiltins.td
+@@ -1482,6 +1482,31 @@ let Extension = FuncExtKhrSubgroups in {
+   }
+ }
+ 
++// Section 42.3 - cl_khr_integer_dot_product
++let Extension = FunctionExtension<"__opencl_c_integer_dot_product_input_4x8bit"> in {
++  def : Builtin<"dot", [UInt, VectorType<UChar, 4>, VectorType<UChar, 4>], Attr.Const>;
++  def : Builtin<"dot", [Int, VectorType<Char, 4>, VectorType<Char, 4>], Attr.Const>;
++  def : Builtin<"dot", [Int, VectorType<UChar, 4>, VectorType<Char, 4>], Attr.Const>;
++  def : Builtin<"dot", [Int, VectorType<Char, 4>, VectorType<UChar, 4>], Attr.Const>;
++
++  def : Builtin<"dot_acc_sat", [UInt, VectorType<UChar, 4>, VectorType<UChar, 4>, UInt], Attr.Const>;
++  def : Builtin<"dot_acc_sat", [Int, VectorType<Char, 4>, VectorType<Char, 4>, Int], Attr.Const>;
++  def : Builtin<"dot_acc_sat", [Int, VectorType<UChar, 4>, VectorType<Char, 4>, Int], Attr.Const>;
++  def : Builtin<"dot_acc_sat", [Int, VectorType<Char, 4>, VectorType<UChar, 4>, Int], Attr.Const>;
++}
++
++let Extension = FunctionExtension<"__opencl_c_integer_dot_product_input_4x8bit_packed"> in {
++  def : Builtin<"dot_4x8packed_uu_uint", [UInt, UInt, UInt], Attr.Const>;
++  def : Builtin<"dot_4x8packed_ss_int", [Int, UInt, UInt], Attr.Const>;
++  def : Builtin<"dot_4x8packed_us_int", [Int, UInt, UInt], Attr.Const>;
++  def : Builtin<"dot_4x8packed_su_int", [Int, UInt, UInt], Attr.Const>;
++
++  def : Builtin<"dot_acc_sat_4x8packed_uu_uint", [UInt, UInt, UInt, UInt], Attr.Const>;
++  def : Builtin<"dot_acc_sat_4x8packed_ss_int", [Int, UInt, UInt, Int], Attr.Const>;
++  def : Builtin<"dot_acc_sat_4x8packed_us_int", [Int, UInt, UInt, Int], Attr.Const>;
++  def : Builtin<"dot_acc_sat_4x8packed_su_int", [Int, UInt, UInt, Int], Attr.Const>;
++}
++
+ //--------------------------------------------------------------------
+ // Arm extensions.
+ let Extension = ArmIntegerDotProductInt8 in {
 diff --git a/clang/test/Headers/opencl-c-header.cl b/clang/test/Headers/opencl-c-header.cl
 index 443f682c711a..184eefd9f9c3 100644
 --- a/clang/test/Headers/opencl-c-header.cl
