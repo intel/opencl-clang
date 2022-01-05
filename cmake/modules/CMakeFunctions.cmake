@@ -149,6 +149,9 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
                     RESULT_VARIABLE ret_apply_patch
                 )
                 message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
+                if (ret_apply_patch)
+                    break()
+                endif()
             endif()
 	    endforeach(patch)
     else() # The target branch already exists
