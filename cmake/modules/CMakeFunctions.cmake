@@ -163,7 +163,7 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
     if (NOT (ret_not_git_repo OR ret_check_out OR ret_apply_patch))
         set(${ret} True PARENT_SCOPE)
     else()
-        message(FATAL_ERROR "apply_patches failed!")
+        message(FATAL_ERROR "[OPENCL-CLANG] Failed to apply patch!")
     endif()
 endfunction()
 
