@@ -1,14 +1,17 @@
-From 15c8e1468997ba90943155d35475b2aaeea65f19 Mon Sep 17 00:00:00 2001
+From b66a2f5bde66c52ed00e30b926904c3bbce896fd Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
 Date: Fri, 13 Aug 2021 10:10:36 +0800
-Subject: [PATCH] [OpenCL] support cl_ext_float_atomics
+Subject: [PATCH] support cl_ext_float_atomics
+
+This backports https://reviews.llvm.org/D106343 and https://reviews.llvm.org/D109740
 
 Signed-off-by: haonanya <haonan.yang@intel.com>
 ---
- clang/lib/Headers/opencl-c-base.h     |  22 +++
- clang/lib/Headers/opencl-c.h          | 236 ++++++++++++++++++++++++++
- clang/test/Headers/opencl-c-header.cl |  85 ++++++++++
- 3 files changed, 343 insertions(+)
+ clang/lib/Headers/opencl-c-base.h     |  22 ++
+ clang/lib/Headers/opencl-c.h          | 372 ++++++++++++++++++++++++++
+ clang/lib/Sema/Sema.cpp               |   3 +
+ clang/test/Headers/opencl-c-header.cl |  85 ++++++
+ 4 files changed, 482 insertions(+)
 
 diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
 index afa900ab24d9..3410fcd05ea0 100644
@@ -44,14 +47,127 @@ index afa900ab24d9..3410fcd05ea0 100644
  #ifndef __opencl_c_int64
    #define __opencl_c_int64 1
 diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
-index 67d900eb1c3d..70264ef80d5e 100644
+index 67d900eb1c3d..c7dbcbf4e924 100644
 --- a/clang/lib/Headers/opencl-c.h
 +++ b/clang/lib/Headers/opencl-c.h
-@@ -14354,6 +14354,242 @@ intptr_t __ovld atomic_fetch_max_explicit(
+@@ -14354,6 +14354,378 @@ intptr_t __ovld atomic_fetch_max_explicit(
         // defined(cl_khr_int64_extended_atomics)
  #endif // (__OPENCL_C_VERSION__ >= CL_VERSION_3_0)
  
++// The functionality added by cl_ext_float_atomics extension
 +#if defined(cl_ext_float_atomics)
++
++#if defined(__opencl_c_ext_fp16_global_atomic_load_store)
++void __ovld atomic_store(volatile __global atomic_half *object, half operand);
++void __ovld atomic_store_explicit(volatile __global atomic_half *object,
++                                  half operand, memory_order order);
++void __ovld atomic_store_explicit(volatile __global atomic_half *object,
++                                  half operand, memory_order order,
++                                  memory_scope scope);
++half __ovld atomic_load(volatile __global atomic_half *object);
++half __ovld atomic_load_explicit(volatile __global atomic_half *object,
++                                 memory_order order);
++half __ovld atomic_load_explicit(volatile __global atomic_half *object,
++                                 memory_order order, memory_scope scope);
++half __ovld atomic_exchange(volatile __global atomic_half *object,
++                            half operand);
++half __ovld atomic_exchange_explicit(volatile __global atomic_half *object,
++                                     half operand, memory_order order);
++half __ovld atomic_exchange_explicit(volatile __global atomic_half *object,
++                                     half operand, memory_order order,
++                                     memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_global_atomic_load_store)
++
++#if defined(__opencl_c_ext_fp16_local_atomic_load_store)
++void __ovld atomic_store(volatile __local atomic_half *object, half operand);
++void __ovld atomic_store_explicit(volatile __local atomic_half *object,
++                                  half operand, memory_order order);
++void __ovld atomic_store_explicit(volatile __local atomic_half *object,
++                                  half operand, memory_order order,
++                                  memory_scope scope);
++half __ovld atomic_load(volatile __local atomic_half *object);
++half __ovld atomic_load_explicit(volatile __local atomic_half *object,
++                                 memory_order order);
++half __ovld atomic_load_explicit(volatile __local atomic_half *object,
++                                 memory_order order, memory_scope scope);
++half __ovld atomic_exchange(volatile __local atomic_half *object, half operand);
++half __ovld atomic_exchange_explicit(volatile __local atomic_half *object,
++                                     half operand, memory_order order);
++half __ovld atomic_exchange_explicit(volatile __local atomic_half *object,
++                                     half operand, memory_order order,
++                                     memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_local_atomic_load_store)
++
++#if defined(__opencl_c_ext_fp16_global_atomic_load_store) &&                   \
++    defined(__opencl_c_ext_fp16_local_atomic_load_store)
++void __ovld atomic_store(volatile atomic_half *object, half operand);
++void __ovld atomic_store_explicit(volatile atomic_half *object, half operand,
++                                  memory_order order);
++void __ovld atomic_store_explicit(volatile atomic_half *object, half operand,
++                                  memory_order order, memory_scope scope);
++half __ovld atomic_load(volatile atomic_half *object);
++half __ovld atomic_load_explicit(volatile atomic_half *object,
++                                 memory_order order);
++half __ovld atomic_load_explicit(volatile atomic_half *object,
++                                 memory_order order, memory_scope scope);
++half __ovld atomic_exchange(volatile atomic_half *object, half operand);
++half __ovld atomic_exchange_explicit(volatile atomic_half *object, half operand,
++                                     memory_order order);
++half __ovld atomic_exchange_explicit(volatile atomic_half *object, half operand,
++                                     memory_order order, memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_global_atomic_load_store) &&
++       // defined(__opencl_c_ext_fp16_local_atomic_load_store)
++
++#if defined(__opencl_c_ext_fp16_global_atomic_min_max)
++half __ovld atomic_fetch_min(volatile __global atomic_half *object,
++                             half operand);
++half __ovld atomic_fetch_max(volatile __global atomic_half *object,
++                             half operand);
++half __ovld atomic_fetch_min_explicit(volatile __global atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_max_explicit(volatile __global atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_min_explicit(volatile __global atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++half __ovld atomic_fetch_max_explicit(volatile __global atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_global_atomic_min_max)
++
++#if defined(__opencl_c_ext_fp16_local_atomic_min_max)
++half __ovld atomic_fetch_min(volatile __local atomic_half *object,
++                             half operand);
++half __ovld atomic_fetch_max(volatile __local atomic_half *object,
++                             half operand);
++half __ovld atomic_fetch_min_explicit(volatile __local atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_max_explicit(volatile __local atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_min_explicit(volatile __local atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++half __ovld atomic_fetch_max_explicit(volatile __local atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_local_atomic_min_max)
++
++#if defined(__opencl_c_ext_fp16_global_atomic_min_max) &&                      \
++    defined(__opencl_c_ext_fp16_local_atomic_min_max)
++half __ovld atomic_fetch_min(volatile atomic_half *object, half operand);
++half __ovld atomic_fetch_max(volatile atomic_half *object, half operand);
++half __ovld atomic_fetch_min_explicit(volatile atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_max_explicit(volatile atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_min_explicit(volatile atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++half __ovld atomic_fetch_max_explicit(volatile atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_global_atomic_min_max) &&                \
++    defined(__opencl_c_ext_fp16_local_atomic_min_max)
 +
 +#if defined(__opencl_c_ext_fp32_global_atomic_min_max)
 +float __ovld atomic_fetch_min(volatile __global atomic_float *object,
@@ -101,12 +217,10 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +float __ovld atomic_fetch_max_explicit(volatile atomic_float *object,
 +                                       float operand, memory_order order,
 +                                       memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp32_global_atomic_min_max) &&                      \
++#endif // defined(__opencl_c_ext_fp32_global_atomic_min_max) &&                \
 +    defined(__opencl_c_ext_fp32_local_atomic_min_max)
 +
-+#if defined(__opencl_c_ext_fp64_global_atomic_min_max) &&                      \
-+    defined(cl_khr_int64_base_atomics) &&                                      \
-+    defined(cl_khr_int64_extended_atomics)
++#if defined(__opencl_c_ext_fp64_global_atomic_min_max)
 +double __ovld atomic_fetch_min(volatile __global atomic_double *object,
 +                               double operand);
 +double __ovld atomic_fetch_max(volatile __global atomic_double *object,
@@ -121,13 +235,9 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +double __ovld atomic_fetch_max_explicit(volatile __global atomic_double *object,
 +                                        double operand, memory_order order,
 +                                        memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp64_global_atomic_min_max) &&
-+       // defined(cl_khr_int64_base_atomics) &&
-+       // defined(cl_khr_int64_extended_atomics)
++#endif // defined(__opencl_c_ext_fp64_global_atomic_min_max)
 +
-+#if defined(__opencl_c_ext_fp64_local_atomic_min_max) &&                       \
-+    defined(cl_khr_int64_base_atomics) &&                                      \
-+    defined(cl_khr_int64_extended_atomics)
++#if defined(__opencl_c_ext_fp64_local_atomic_min_max)
 +double __ovld atomic_fetch_min(volatile __local atomic_double *object,
 +                               double operand);
 +double __ovld atomic_fetch_max(volatile __local atomic_double *object,
@@ -142,14 +252,10 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +double __ovld atomic_fetch_max_explicit(volatile __local atomic_double *object,
 +                                        double operand, memory_order order,
 +                                        memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp64_local_atomic_min_max) &&
-+       // defined(cl_khr_int64_base_atomics) &&
-+       // defined(cl_khr_int64_extended_atomics)
++#endif // defined(__opencl_c_ext_fp64_local_atomic_min_max)
 +
 +#if defined(__opencl_c_ext_fp64_global_atomic_min_max) &&                      \
-+    defined(__opencl_c_ext_fp64_local_atomic_min_max) &&                       \
-+    defined(cl_khr_int64_base_atomics) &&                                      \
-+    defined(cl_khr_int64_extended_atomics)
++    defined(__opencl_c_ext_fp64_local_atomic_min_max)
 +double __ovld atomic_fetch_min(volatile atomic_double *object, double operand);
 +double __ovld atomic_fetch_max(volatile atomic_double *object, double operand);
 +double __ovld atomic_fetch_min_explicit(volatile atomic_double *object,
@@ -162,10 +268,59 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +double __ovld atomic_fetch_max_explicit(volatile atomic_double *object,
 +                                        double operand, memory_order order,
 +                                        memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp64_global_atomic_min_max) &&
-+       // defined(__opencl_c_ext_fp64_local_atomic_min_max) &&
-+       // defined(cl_khr_int64_base_atomics) &&
-+       // defined(cl_khr_int64_extended_atomics)
++#endif // defined(__opencl_c_ext_fp64_global_atomic_min_max) &&                \
++    defined(__opencl_c_ext_fp64_local_atomic_min_max)
++
++#if defined(__opencl_c_ext_fp16_global_atomic_add)
++half __ovld atomic_fetch_add(volatile __global atomic_half *object,
++                             half operand);
++half __ovld atomic_fetch_sub(volatile __global atomic_half *object,
++                             half operand);
++half __ovld atomic_fetch_add_explicit(volatile __global atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_sub_explicit(volatile __global atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_add_explicit(volatile __global atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++half __ovld atomic_fetch_sub_explicit(volatile __global atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_global_atomic_add)
++
++#if defined(__opencl_c_ext_fp16_local_atomic_add)
++half __ovld atomic_fetch_add(volatile __local atomic_half *object,
++                             half operand);
++half __ovld atomic_fetch_sub(volatile __local atomic_half *object,
++                             half operand);
++half __ovld atomic_fetch_add_explicit(volatile __local atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_sub_explicit(volatile __local atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_add_explicit(volatile __local atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++half __ovld atomic_fetch_sub_explicit(volatile __local atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_local_atomic_add)
++
++#if defined(__opencl_c_ext_fp16_global_atomic_add) &&                          \
++    defined(__opencl_c_ext_fp16_local_atomic_add)
++half __ovld atomic_fetch_add(volatile atomic_half *object, half operand);
++half __ovld atomic_fetch_sub(volatile atomic_half *object, half operand);
++half __ovld atomic_fetch_add_explicit(volatile atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_sub_explicit(volatile atomic_half *object,
++                                      half operand, memory_order order);
++half __ovld atomic_fetch_add_explicit(volatile atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++half __ovld atomic_fetch_sub_explicit(volatile atomic_half *object,
++                                      half operand, memory_order order,
++                                      memory_scope scope);
++#endif // defined(__opencl_c_ext_fp16_global_atomic_add) &&                    \
++    defined(__opencl_c_ext_fp16_local_atomic_add)
 +
 +#if defined(__opencl_c_ext_fp32_global_atomic_add)
 +float __ovld atomic_fetch_add(volatile __global atomic_float *object,
@@ -202,9 +357,7 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +#endif // defined(__opencl_c_ext_fp32_local_atomic_add)
 +
 +#if defined(__opencl_c_ext_fp32_global_atomic_add) &&                          \
-+    defined(__opencl_c_ext_fp32_local_atomic_add) &&                           \
-+    defined(cl_khr_int64_base_atomics) &&                                      \
-+    defined(cl_khr_int64_extended_atomics)
++    defined(__opencl_c_ext_fp32_local_atomic_add)
 +float __ovld atomic_fetch_add(volatile atomic_float *object, float operand);
 +float __ovld atomic_fetch_sub(volatile atomic_float *object, float operand);
 +float __ovld atomic_fetch_add_explicit(volatile atomic_float *object,
@@ -217,14 +370,10 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +float __ovld atomic_fetch_sub_explicit(volatile atomic_float *object,
 +                                       float operand, memory_order order,
 +                                       memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp32_global_atomic_add) &&
-+       // defined(__opencl_c_ext_fp32_local_atomic_add) &&
-+       // defined(cl_khr_int64_base_atomics) &&
-+       // defined(cl_khr_int64_extended_atomics)
++#endif // defined(__opencl_c_ext_fp32_global_atomic_add) &&                    \
++    defined(__opencl_c_ext_fp32_local_atomic_add)
 +
-+#if defined(__opencl_c_ext_fp64_global_atomic_add) &&                          \
-+    defined(cl_khr_int64_base_atomics) &&                                      \
-+    defined(cl_khr_int64_extended_atomics)
++#if defined(__opencl_c_ext_fp64_global_atomic_add)
 +double __ovld atomic_fetch_add(volatile __global atomic_double *object,
 +                               double operand);
 +double __ovld atomic_fetch_sub(volatile __global atomic_double *object,
@@ -239,13 +388,9 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +double __ovld atomic_fetch_sub_explicit(volatile __global atomic_double *object,
 +                                        double operand, memory_order order,
 +                                        memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp64_global_atomic_add) &&
-+       // defined(cl_khr_int64_base_atomics) &&
-+       // defined(cl_khr_int64_extended_atomics)
++#endif // defined(__opencl_c_ext_fp64_global_atomic_add)
 +
-+#if defined(__opencl_c_ext_fp64_local_atomic_add) &&                           \
-+    defined(cl_khr_int64_base_atomics) &&                                      \
-+    defined(cl_khr_int64_extended_atomics)
++#if defined(__opencl_c_ext_fp64_local_atomic_add)
 +double __ovld atomic_fetch_add(volatile __local atomic_double *object,
 +                               double operand);
 +double __ovld atomic_fetch_sub(volatile __local atomic_double *object,
@@ -260,14 +405,10 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +double __ovld atomic_fetch_sub_explicit(volatile __local atomic_double *object,
 +                                        double operand, memory_order order,
 +                                        memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp64_local_atomic_add) &&
-+       // defined(cl_khr_int64_base_atomics) &&
-+       // defined(cl_khr_int64_extended_atomics)
++#endif // defined(__opencl_c_ext_fp64_local_atomic_add)
 +
 +#if defined(__opencl_c_ext_fp64_global_atomic_add) &&                          \
-+    defined(__opencl_c_ext_fp64_local_atomic_add) &&                           \
-+    defined(cl_khr_int64_base_atomics) &&                                      \
-+    defined(cl_khr_int64_extended_atomics)
++    defined(__opencl_c_ext_fp64_local_atomic_add)
 +double __ovld atomic_fetch_add(volatile atomic_double *object, double operand);
 +double __ovld atomic_fetch_sub(volatile atomic_double *object, double operand);
 +double __ovld atomic_fetch_add_explicit(volatile atomic_double *object,
@@ -280,16 +421,28 @@ index 67d900eb1c3d..70264ef80d5e 100644
 +double __ovld atomic_fetch_sub_explicit(volatile atomic_double *object,
 +                                        double operand, memory_order order,
 +                                        memory_scope scope);
-+#endif // defined(__opencl_c_ext_fp64_global_atomic_add) &&
-+       // defined(__opencl_c_ext_fp64_local_atomic_add) &&
-+       // defined(cl_khr_int64_base_atomics) &&
-+       // defined(cl_khr_int64_extended_atomics)
++#endif // defined(__opencl_c_ext_fp64_global_atomic_add) &&                    \
++    defined(__opencl_c_ext_fp64_local_atomic_add)
 +
 +#endif // cl_ext_float_atomics
 +
  // atomic_store()
  
  #if defined(__opencl_c_atomic_scope_device) &&                                 \
+diff --git a/clang/lib/Sema/Sema.cpp b/clang/lib/Sema/Sema.cpp
+index 5092a4691b9b..efe8a466e734 100644
+--- a/clang/lib/Sema/Sema.cpp
++++ b/clang/lib/Sema/Sema.cpp
+@@ -308,6 +308,9 @@ void Sema::Initialize() {
+       addImplicitTypedef("atomic_long", AtomicLongT);
+       auto AtomicULongT = Context.getAtomicType(Context.UnsignedLongTy);
+       addImplicitTypedef("atomic_ulong", AtomicULongT);
++      auto AtomicHalfT = Context.getAtomicType(Context.HalfTy);
++      addImplicitTypedef("atomic_half", AtomicHalfT);
++      setOpenCLExtensionForType(AtomicHalfT, "cl_khr_fp16");
+       addImplicitTypedef("atomic_float",
+                          Context.getAtomicType(Context.FloatTy));
+       auto AtomicDoubleT = Context.getAtomicType(Context.DoubleTy);
 diff --git a/clang/test/Headers/opencl-c-header.cl b/clang/test/Headers/opencl-c-header.cl
 index 2716076acdcf..33439f297d26 100644
 --- a/clang/test/Headers/opencl-c-header.cl
