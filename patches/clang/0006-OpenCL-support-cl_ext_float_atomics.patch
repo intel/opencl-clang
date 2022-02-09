@@ -1,6 +1,6 @@
-From 8f96458a1de6a0abe505b5046e67c013944ceefe Mon Sep 17 00:00:00 2001
+From d25354346c7302b8c9a26a39eae7474311dec7ea Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
-Date: Fri, 13 Aug 2021 09:47:24 +0800
+Date: Wed, 9 Feb 2022 09:05:23 +0800
 Subject: [PATCH] support cl_ext_float_atomics
 
 This backports https://reviews.llvm.org/D106343 and https://reviews.llvm.org/D109740
@@ -8,10 +8,10 @@ This backports https://reviews.llvm.org/D106343 and https://reviews.llvm.org/D10
 Signed-off-by: haonanya <haonan.yang@intel.com>
 ---
  clang/lib/Headers/opencl-c-base.h     |  22 ++
- clang/lib/Headers/opencl-c.h          | 372 ++++++++++++++++++++++++++
+ clang/lib/Headers/opencl-c.h          | 378 ++++++++++++++++++++++++++
  clang/lib/Sema/Sema.cpp               |   3 +
- clang/test/Headers/opencl-c-header.cl |  97 +++++++
- 4 files changed, 494 insertions(+)
+ clang/test/Headers/opencl-c-header.cl |  96 +++++++
+ 4 files changed, 499 insertions(+)
 
 diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
 index 0b27e4010eae..5ed94e1b486b 100644
@@ -47,10 +47,10 @@ index 0b27e4010eae..5ed94e1b486b 100644
  #ifndef __opencl_c_int64
    #define __opencl_c_int64 1
 diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
-index 4eea04ef062b..a5bbedc4ecc5 100644
+index 4eea04ef062b..d36231ae33b6 100644
 --- a/clang/lib/Headers/opencl-c.h
 +++ b/clang/lib/Headers/opencl-c.h
-@@ -14354,6 +14354,378 @@ intptr_t __ovld atomic_fetch_max_explicit(
+@@ -14354,6 +14354,384 @@ intptr_t __ovld atomic_fetch_max_explicit(
         // defined(cl_khr_int64_extended_atomics)
  #endif // (__OPENCL_C_VERSION__ >= CL_VERSION_3_0)
  
@@ -220,6 +220,7 @@ index 4eea04ef062b..a5bbedc4ecc5 100644
 +#endif // defined(__opencl_c_ext_fp32_global_atomic_min_max) &&                \
 +    defined(__opencl_c_ext_fp32_local_atomic_min_max)
 +
++#if defined(cl_khr_int64_base_atomics) && defined(cl_khr_int64_extended_atomics)
 +#if defined(__opencl_c_ext_fp64_global_atomic_min_max)
 +double __ovld atomic_fetch_min(volatile __global atomic_double *object,
 +                               double operand);
@@ -270,6 +271,8 @@ index 4eea04ef062b..a5bbedc4ecc5 100644
 +                                        memory_scope scope);
 +#endif // defined(__opencl_c_ext_fp64_global_atomic_min_max) &&                \
 +    defined(__opencl_c_ext_fp64_local_atomic_min_max)
++#endif // defined(cl_khr_int64_base_atomics) &&
++       // defined(cl_khr_int64_extended_atomics)
 +
 +#if defined(__opencl_c_ext_fp16_global_atomic_add)
 +half __ovld atomic_fetch_add(volatile __global atomic_half *object,
@@ -373,6 +376,7 @@ index 4eea04ef062b..a5bbedc4ecc5 100644
 +#endif // defined(__opencl_c_ext_fp32_global_atomic_add) &&                    \
 +    defined(__opencl_c_ext_fp32_local_atomic_add)
 +
++#if defined(cl_khr_int64_base_atomics) && defined(cl_khr_int64_extended_atomics)
 +#if defined(__opencl_c_ext_fp64_global_atomic_add)
 +double __ovld atomic_fetch_add(volatile __global atomic_double *object,
 +                               double operand);
@@ -423,6 +427,8 @@ index 4eea04ef062b..a5bbedc4ecc5 100644
 +                                        memory_scope scope);
 +#endif // defined(__opencl_c_ext_fp64_global_atomic_add) &&                    \
 +    defined(__opencl_c_ext_fp64_local_atomic_add)
++#endif // defined(cl_khr_int64_base_atomics) &&
++       // defined(cl_khr_int64_extended_atomics)
 +
 +#endif // cl_ext_float_atomics
 +
@@ -444,10 +450,10 @@ index f5d193c86f87..92b9f8e16e9a 100644
                           Context.getAtomicType(Context.FloatTy));
        auto AtomicDoubleT = Context.getAtomicType(Context.DoubleTy);
 diff --git a/clang/test/Headers/opencl-c-header.cl b/clang/test/Headers/opencl-c-header.cl
-index 2716076acdcf..ab25574eec8e 100644
+index 2716076acdcf..7f720cf28142 100644
 --- a/clang/test/Headers/opencl-c-header.cl
 +++ b/clang/test/Headers/opencl-c-header.cl
-@@ -98,3 +98,100 @@ global atomic_int z = ATOMIC_VAR_INIT(99);
+@@ -98,3 +98,99 @@ global atomic_int z = ATOMIC_VAR_INIT(99);
  #pragma OPENCL EXTENSION cl_intel_planar_yuv : enable
  
  // CHECK-MOD: Reading modules
@@ -547,7 +553,6 @@ index 2716076acdcf..ab25574eec8e 100644
 +#endif //(defined(__OPENCL_CPP_VERSION__) || __OPENCL_C_VERSION__ >= 200)
 +
 +#endif // defined(__SPIR__)
-+
 -- 
-2.17.1
+2.29.2
 
