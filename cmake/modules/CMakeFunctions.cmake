@@ -145,10 +145,14 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
                     COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patch}
                     WORKING_DIRECTORY ${repo_dir}
                     OUTPUT_VARIABLE patching_log
-                    ERROR_QUIET
                     RESULT_VARIABLE ret_apply_patch
                 )
                 message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
+            if (NOT (ret_not_git_repo OR ret_check_out OR ret_apply_patch))
+              set(${ret} True PARENT_SCOPE)
+            else()
+              message(FATAL_ERROR "[OPENCL-CLANG] Failed to apply patch!")
+            endif()
             endif()
 	    endforeach(patch)
     else() # The target branch already exists
@@ -156,14 +160,8 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
             COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}
             WORKING_DIRECTORY ${repo_dir}
             RESULT_VARIABLE ret_check_out
-            ERROR_QUIET
             OUTPUT_QUIET
         )
-    endif()
-    if (NOT (ret_not_git_repo OR ret_check_out OR ret_apply_patch))
-        set(${ret} True PARENT_SCOPE)
-    else()
-        message(FATAL_ERROR "[OPENCL-CLANG] Failed to apply patch!")
     endif()
 endfunction()
 
