@@ -89,7 +89,7 @@ OpenCLArgList *OpenCLOptTable::ParseArgs(const char *szOptions,
     }
 
     unsigned prev = index;
-    Arg *pArg = ParseOneArg(*pArgs, index);
+    Arg *pArg = ParseOneArg(*pArgs, index).release();
     assert(index > prev && "Parser failed to consume argument.");
 
     // Check for missing argument error.
