@@ -36,13 +36,6 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-18.04
     steps:
-      - name: Install dependencies
-        run: |
-          curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
-          curl -L "https://packages.lunarg.com/lunarg-signing-key-pub.asc" | sudo apt-key add -
-          echo "deb https://apt.llvm.org/bionic/ llvm-toolchain-bionic-${{ env.LLVM_VERSION }} main" | sudo tee -a /etc/apt/sources.list
-          echo "deb https://packages.lunarg.com/vulkan bionic main" | sudo tee -a /etc/apt/sources.list
-          sudo apt-get update
       - name: Checkout LLVM sources
         uses: actions/checkout@v2
         with:
