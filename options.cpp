@@ -89,7 +89,7 @@ OpenCLArgList *OpenCLOptTable::ParseArgs(const char *szOptions,
     }
 
     unsigned prev = index;
-    Arg *pArg = ParseOneArg(*pArgs, index).release();
+    std::unique_ptr<Arg> pArg = ParseOneArg(*pArgs, index);
     assert(index > prev && "Parser failed to consume argument.");
 
     // Check for missing argument error.
@@ -101,8 +101,8 @@ OpenCLArgList *OpenCLOptTable::ParseArgs(const char *szOptions,
       break;
     }
 
-    m_synthesizedArgs.emplace_back(std::unique_ptr<llvm::opt::Arg>(pArg));
-    pArgs->append(pArg);
+    pArgs->append(pArg.get());
+    m_synthesizedArgs.emplace_back(std::move(pArg));
   }
   return pArgs.release();
 }
