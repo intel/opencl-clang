@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.com/intel/opencl-clang.svg?branch=master)](https://travis-ci.com/intel/opencl-clang)
-
 opencl-clang is a thin wrapper library around clang. The library has
 OpenCL-oriented API and is capable to compile OpenCL C kernels to SPIR-V
 modules.
@@ -25,9 +23,9 @@ Before the build all dependencies must be downloaded and laid out as follows:
 This can be done using the following commands:
 ```bash
 cd <workspace>
-git clone https://github.com/llvm/llvm-project.git . -b release/13.x
-git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_130
-git clone https://github.com/intel/opencl-clang.git -b ocl-open-130
+git clone https://github.com/llvm/llvm-project.git . -b release/14.x
+git clone https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git -b llvm_release_140
+git clone https://github.com/intel/opencl-clang.git -b ocl-open-140
 ```
 
 Then we need to create a build directory and run the build:
@@ -58,7 +56,7 @@ documented in [Embedding LLVM in your project](https://llvm.org/docs/CMake.html#
 Commands to checkout sources and build:
 ```bash
 cd <workspace>
-git clone https://github.com/intel/opencl-clang.git -b ocl-open-130
+git clone https://github.com/intel/opencl-clang.git -b ocl-open-140
 mkdir build && cd build
 cmake ../opencl-clang
 make all -j`nproc`
@@ -68,7 +66,7 @@ make all -j`nproc`
 
 ##### Preferred LLVM version
 
-By default, opencl-clang's cmake script is searching for LLVM 13.0.0. You can
+By default, opencl-clang's cmake script is searching for LLVM 14.0.0. You can
 override target version of LLVM by using the `PREFERRED_LLVM_VERSION` cmake
 option:
 
