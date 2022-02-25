@@ -1,0 +1,43 @@
+From 246d76d6244c94870da16288864be4e7b36578ed Mon Sep 17 00:00:00 2001
+From: Feng Zou <feng.zou@intel.com>
+Date: Thu, 24 Feb 2022 21:51:52 +0800
+Subject: [PATCH] update SPIR-V headers for SPV_INTEL_split_barrier
+
+PR:https://github.com/KhronosGroup/SPIRV-Headers/pull/268
+---
+ lib/SPIRV/libSPIRV/spirv.hpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/lib/SPIRV/libSPIRV/spirv.hpp b/lib/SPIRV/libSPIRV/spirv.hpp
+index ca4359a7..38972ba6 100644
+--- a/lib/SPIRV/libSPIRV/spirv.hpp
++++ b/lib/SPIRV/libSPIRV/spirv.hpp
+@@ -1054,6 +1054,7 @@ enum Capability {
+     CapabilityFastCompositeINTEL = 6093,
+     CapabilityAtomicFloat16AddEXT = 6095,
+     CapabilityDebugInfoModuleINTEL = 6114,
++    CapabilitySplitBarrierINTEL = 6141,
+     CapabilityMax = 0x7fffffff,
+ };
+ 
+@@ -1796,6 +1797,8 @@ enum Op {
+     OpTypeStructContinuedINTEL = 6090,
+     OpConstantCompositeContinuedINTEL = 6091,
+     OpSpecConstantCompositeContinuedINTEL = 6092,
++    OpControlBarrierArriveINTEL = 6142,
++    OpControlBarrierWaitINTEL = 6143,
+     OpMax = 0x7fffffff,
+ };
+ 
+@@ -2438,6 +2441,8 @@ inline void HasResultAndType(Op opcode, bool *hasResult, bool *hasResultType) {
+     case OpTypeStructContinuedINTEL: *hasResult = false; *hasResultType = false; break;
+     case OpConstantCompositeContinuedINTEL: *hasResult = false; *hasResultType = false; break;
+     case OpSpecConstantCompositeContinuedINTEL: *hasResult = false; *hasResultType = false; break;
++    case SpvOpControlBarrierArriveINTEL: *hasResult = false; *hasResultType = false; break;
++    case SpvOpControlBarrierWaitINTEL: *hasResult = false; *hasResultType = false; break;
+     }
+ }
+ #endif /* SPV_ENABLE_UTILITY_CODE */
+-- 
+2.29.2
+
