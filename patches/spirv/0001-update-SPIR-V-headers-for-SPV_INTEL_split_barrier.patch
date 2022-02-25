@@ -1,0 +1,43 @@
+From 961375101474e9fa383f9cfb3939443f5581b252 Mon Sep 17 00:00:00 2001
+From: Feng Zou <feng.zou@intel.com>
+Date: Fri, 25 Feb 2022 09:56:51 +0800
+Subject: [PATCH] update SPIR-V headers for SPV_INTEL_split_barrier
+
+PR:https://github.com/KhronosGroup/SPIRV-Headers/pull/268
+---
+ lib/SPIRV/libSPIRV/spirv.hpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/lib/SPIRV/libSPIRV/spirv.hpp b/lib/SPIRV/libSPIRV/spirv.hpp
+index 94db4f56..043efec6 100644
+--- a/lib/SPIRV/libSPIRV/spirv.hpp
++++ b/lib/SPIRV/libSPIRV/spirv.hpp
+@@ -1058,6 +1058,7 @@ enum Capability {
+     CapabilityAtomicFloat64AddEXT = 6034,
+     CapabilityLongConstantCompositeINTEL = 6089,
+     CapabilityFastCompositeINTEL = 6093,
++    CapabilitySplitBarrierINTEL = 6141,
+     CapabilityMax = 0x7fffffff,
+ };
+ 
+@@ -1766,6 +1767,8 @@ enum Op {
+     OpTypeStructContinuedINTEL = 6090,
+     OpConstantCompositeContinuedINTEL = 6091,
+     OpSpecConstantCompositeContinuedINTEL = 6092,
++    OpControlBarrierArriveINTEL = 6142,
++    OpControlBarrierWaitINTEL = 6143,
+     OpMax = 0x7fffffff,
+ };
+ 
+@@ -2400,6 +2403,8 @@ inline void HasResultAndType(Op opcode, bool *hasResult, bool *hasResultType) {
+     case OpRayQueryGetIntersectionWorldToObjectKHR: *hasResult = true; *hasResultType = true; break;
+     case OpAtomicFAddEXT: *hasResult = true; *hasResultType = true; break;
+     case OpTypeBufferSurfaceINTEL: *hasResult = true; *hasResultType = false; break;
++    case SpvOpControlBarrierArriveINTEL: *hasResult = false; *hasResultType = false; break;
++    case SpvOpControlBarrierWaitINTEL: *hasResult = false; *hasResultType = false; break;
+     }
+ }
+ #endif /* SPV_ENABLE_UTILITY_CODE */
+-- 
+2.29.2
+
