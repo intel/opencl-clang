@@ -55,11 +55,14 @@ jobs:
         with:
           path: llvm-project/opencl-clang
       - name: Configure
+        # llvm-spirv 13 need to download spirv.hpp from the official SPIRV-Headers
+        # repository. Run CMake Configuring for llvm-spirv prior of opencl-clang
+        # so that we can get expected version from SPIRV-Headers.
         run: |
           mkdir build && cd build
           cmake ${{ github.workspace }}/llvm-project/llvm \
             -DLLVM_ENABLE_PROJECTS="clang" \
-            -DLLVM_EXTERNAL_PROJECTS="llvm-spirv;opencl-clang" \
+            -DLLVM_EXTERNAL_PROJECTS="opencl-clang;llvm-spirv" \
             -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR=${{ github.workspace }}/llvm-project/SPIRV-LLVM-Translator \
             -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR=${{ github.workspace }}/llvm-project/opencl-clang \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
