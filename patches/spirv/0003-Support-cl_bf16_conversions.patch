@@ -1,0 +1,1290 @@
+From dbe170bc395c5c5f913acc9014debf29cbf1627e Mon Sep 17 00:00:00 2001
+From: haonanya <haonan.yang@intel.com>
+Date: Tue, 15 Mar 2022 16:35:03 +0800
+Subject: [PATCH] Support cl_bf16_conversions
+
+This backports https://github.com/KhronosGroup/SPIRV-LLVM-Translator/pull/1406
+and https://github.com/KhronosGroup/SPIRV-LLVM-Translator/pull/1103
+
+Signed-off-by: haonanya <haonan.yang@intel.com>
+---
+ include/LLVMSPIRVExtensions.inc               |   1 +
+ lib/SPIRV/OCLToSPIRV.cpp                      | 122 ++++++++++++++
+ lib/SPIRV/OCLUtil.h                           |  20 +++
+ lib/SPIRV/SPIRVToOCL.cpp                      |  31 ++++
+ lib/SPIRV/SPIRVToOCL.h                        |   7 +
+ lib/SPIRV/libSPIRV/SPIRVInstruction.h         |  71 ++++++++
+ lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h         |   1 +
+ lib/SPIRV/libSPIRV/SPIRVOpCodeEnumInternal.h  |   2 +
+ lib/SPIRV/libSPIRV/spirv_internal.hpp         |   9 ++
+ ...tAsBFloat16Float_inval_scalar_signature.ll |  23 +++
+ ...onvertAsBFloat16Float_inval_vec_elem_ty.ll |  23 +++
+ .../ConvertAsBFloat16Float_inval_vec_size.ll  |  23 +++
+ ...BFloat16AsUshort_inval_scalar_signature.ll |  23 +++
+ ...nvertBFloat16AsUshort_inval_vec_elem_ty.ll |  23 +++
+ .../ConvertBFloat16AsUshort_inval_vec_size.ll |  23 +++
+ .../bf16tof_inval_input_ty.ll                 |  28 ++++
+ .../bf16tof_inval_input_ty.spt                |  39 +++++
+ .../bf16tof_inval_output_ty.ll                |  27 ++++
+ .../bf16tof_inval_output_ty.spt               |  41 +++++
+ .../bf16tof_inval_params.spt                  |  39 +++++
+ .../f2bf16_inval_input_ty.ll                  |  28 ++++
+ .../f2bf16_inval_input_ty.spt                 |  37 +++++
+ .../f2bf16_inval_output_ty.spt                |  37 +++++
+ .../f2bf16_inval_output_ty_1.ll               |  28 ++++
+ .../f2bf16_inval_output_ty_2.ll               |  28 ++++
+ .../f2bf16_inval_params.ll                    |  28 ++++
+ .../cl_bfloat16_conversions_extension.ll      | 151 ++++++++++++++++++
+ .../convert_bfloat16_generic.ll               |  66 ++++++++
+ 28 files changed, 979 insertions(+)
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_scalar_signature.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_vec_elem_ty.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_vec_size.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_scalar_signature.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_vec_elem_ty.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_vec_size.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_input_ty.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_input_ty.spt
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_output_ty.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_output_ty.spt
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_params.spt
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_input_ty.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_input_ty.spt
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty.spt
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty_1.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty_2.ll
+ create mode 100644 test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_params.ll
+ create mode 100644 test/transcoding/SPV_INTEL_bfloat16_conversion/cl_bfloat16_conversions_extension.ll
+ create mode 100644 test/transcoding/SPV_INTEL_bfloat16_conversion/convert_bfloat16_generic.ll
+
+diff --git a/include/LLVMSPIRVExtensions.inc b/include/LLVMSPIRVExtensions.inc
+index 262737b9..c268f49d 100644
+--- a/include/LLVMSPIRVExtensions.inc
++++ b/include/LLVMSPIRVExtensions.inc
+@@ -38,3 +38,4 @@ EXT(SPV_INTEL_long_constant_composite)
+ EXT(SPV_INTEL_optnone)
+ EXT(SPV_INTEL_memory_access_aliasing)
+ EXT(SPV_INTEL_split_barrier)
++EXT(SPV_INTEL_bfloat16_conversion)
+diff --git a/lib/SPIRV/OCLToSPIRV.cpp b/lib/SPIRV/OCLToSPIRV.cpp
+index d003a1d0..985fdea2 100644
+--- a/lib/SPIRV/OCLToSPIRV.cpp
++++ b/lib/SPIRV/OCLToSPIRV.cpp
+@@ -268,6 +268,12 @@ public:
+ 
+   void visitCallLdexp(CallInst *CI, StringRef MangledName,
+                       StringRef DemangledName);
++
++   /// For cl_intel_convert_bfloat16_as_ushort
++  void visitCallConvertBFloat16AsUshort(CallInst *CI, StringRef DemangledName);
++  /// For cl_intel_convert_as_bfloat16_float
++  void visitCallConvertAsBFloat16Float(CallInst *CI, StringRef DemangledName);
++
+   static char ID;
+ 
+ private:
+@@ -547,6 +553,24 @@ void OCLToSPIRV::visitCallInst(CallInst &CI) {
+     visitCallLdexp(&CI, MangledName, DemangledName);
+     return;
+   }
++  if (DemangledName == kOCLBuiltinName::ConvertBFloat16AsUShort ||
++      DemangledName == kOCLBuiltinName::ConvertBFloat162AsUShort2 ||
++      DemangledName == kOCLBuiltinName::ConvertBFloat163AsUShort3 ||
++      DemangledName == kOCLBuiltinName::ConvertBFloat164AsUShort4 ||
++      DemangledName == kOCLBuiltinName::ConvertBFloat168AsUShort8 ||
++      DemangledName == kOCLBuiltinName::ConvertBFloat1616AsUShort16) {
++    visitCallConvertBFloat16AsUshort(&CI, DemangledName);
++    return;
++  }
++  if (DemangledName == kOCLBuiltinName::ConvertAsBFloat16Float ||
++      DemangledName == kOCLBuiltinName::ConvertAsBFloat162Float2 ||
++      DemangledName == kOCLBuiltinName::ConvertAsBFloat163Float3 ||
++      DemangledName == kOCLBuiltinName::ConvertAsBFloat164Float4 ||
++      DemangledName == kOCLBuiltinName::ConvertAsBFloat168Float8 ||
++      DemangledName == kOCLBuiltinName::ConvertAsBFloat1616Float16) {
++    visitCallConvertAsBFloat16Float(&CI, DemangledName);
++    return;
++  }
+   visitCallBuiltinSimple(&CI, MangledName, DemangledName);
+ }
+ 
+@@ -1910,6 +1934,104 @@ void OCLToSPIRV::visitCallLdexp(CallInst *CI, StringRef MangledName,
+   visitCallBuiltinSimple(CI, MangledName, DemangledName);
+ }
+ 
++void OCLToSPIRV::visitCallConvertBFloat16AsUshort(CallInst *CI,
++                                                      StringRef DemangledName) {
++  Type *RetTy = CI->getType();
++  Type *ArgTy = CI->getOperand(0)->getType();
++  if (DemangledName == kOCLBuiltinName::ConvertBFloat16AsUShort) {
++    if (!RetTy->isIntegerTy(16U) || !ArgTy->isFloatTy())
++      report_fatal_error(
++          "OpConvertBFloat16AsUShort must be of i16 and take float");
++  } else {
++    FixedVectorType *RetTyVec = cast<FixedVectorType>(RetTy);
++    FixedVectorType *ArgTyVec = cast<FixedVectorType>(ArgTy);
++    if (!RetTyVec || !RetTyVec->getElementType()->isIntegerTy(16U) ||
++        !ArgTyVec || !ArgTyVec->getElementType()->isFloatTy())
++      report_fatal_error("OpConvertBFloat16NAsUShortN must be of <N x i16> and "
++                         "take <N x float>");
++    unsigned RetTyVecSize = RetTyVec->getNumElements();
++    unsigned ArgTyVecSize = ArgTyVec->getNumElements();
++    if (DemangledName == kOCLBuiltinName::ConvertBFloat162AsUShort2) {
++      if (RetTyVecSize != 2 || ArgTyVecSize != 2)
++        report_fatal_error("ConvertBFloat162AsUShort2 must be of <2 x i16> and "
++                           "take <2 x float>");
++    } else if (DemangledName == kOCLBuiltinName::ConvertBFloat163AsUShort3) {
++      if (RetTyVecSize != 3 || ArgTyVecSize != 3)
++        report_fatal_error("ConvertBFloat163AsUShort3 must be of <3 x i16> and "
++                           "take <3 x float>");
++    } else if (DemangledName == kOCLBuiltinName::ConvertBFloat164AsUShort4) {
++      if (RetTyVecSize != 4 || ArgTyVecSize != 4)
++        report_fatal_error("ConvertBFloat164AsUShort4 must be of <4 x i16> and "
++                           "take <4 x float>");
++    } else if (DemangledName == kOCLBuiltinName::ConvertBFloat168AsUShort8) {
++      if (RetTyVecSize != 8 || ArgTyVecSize != 8)
++        report_fatal_error("ConvertBFloat168AsUShort8 must be of <8 x i16> and "
++                           "take <8 x float>");
++    } else if (DemangledName == kOCLBuiltinName::ConvertBFloat1616AsUShort16) {
++      if (RetTyVecSize != 16 || ArgTyVecSize != 16)
++        report_fatal_error("ConvertBFloat1616AsUShort16 must be of <16 x i16> "
++                           "and take <16 x float>");
++    }
++  }
++
++  AttributeList Attrs = CI->getCalledFunction()->getAttributes();
++  mutateCallInstSPIRV(
++      M, CI,
++      [=](CallInst *, std::vector<Value *> &Args) {
++        return getSPIRVFuncName(internal::OpConvertFToBF16INTEL);
++      },
++      &Attrs);
++}
++
++void OCLToSPIRV::visitCallConvertAsBFloat16Float(CallInst *CI,
++                                                     StringRef DemangledName) {
++  Type *RetTy = CI->getType();
++  Type *ArgTy = CI->getOperand(0)->getType();
++  if (DemangledName == kOCLBuiltinName::ConvertAsBFloat16Float) {
++    if (!RetTy->isFloatTy() || !ArgTy->isIntegerTy(16U))
++      report_fatal_error(
++          "OpConvertAsBFloat16Float must be of float and take i16");
++  } else {
++    FixedVectorType *RetTyVec = cast<FixedVectorType>(RetTy);
++    FixedVectorType *ArgTyVec = cast<FixedVectorType>(ArgTy);
++    if (!RetTyVec || !RetTyVec->getElementType()->isFloatTy() || !ArgTyVec ||
++        !ArgTyVec->getElementType()->isIntegerTy(16U))
++      report_fatal_error("OpConvertAsBFloat16NFloatN must be of <N x float> "
++                         "and take <N x i16>");
++    unsigned RetTyVecSize = RetTyVec->getNumElements();
++    unsigned ArgTyVecSize = ArgTyVec->getNumElements();
++    if (DemangledName == kOCLBuiltinName::ConvertAsBFloat162Float2) {
++      if (RetTyVecSize != 2 || ArgTyVecSize != 2)
++        report_fatal_error("ConvertAsBFloat162Float2 must be of <2 x float> "
++                           "and take <2 x i16>");
++    } else if (DemangledName == kOCLBuiltinName::ConvertAsBFloat163Float3) {
++      if (RetTyVecSize != 3 || ArgTyVecSize != 3)
++        report_fatal_error("ConvertAsBFloat163Float3 must be of <3 x float> "
++                           "and take <3 x i16>");
++    } else if (DemangledName == kOCLBuiltinName::ConvertAsBFloat164Float4) {
++      if (RetTyVecSize != 4 || ArgTyVecSize != 4)
++        report_fatal_error("ConvertAsBFloat164Float4 must be of <4 x float> "
++                           "and take <4 x i16>");
++    } else if (DemangledName == kOCLBuiltinName::ConvertAsBFloat168Float8) {
++      if (RetTyVecSize != 8 || ArgTyVecSize != 8)
++        report_fatal_error("ConvertAsBFloat168Float8 must be of <8 x float> "
++                           "and take <8 x i16>");
++    } else if (DemangledName == kOCLBuiltinName::ConvertAsBFloat1616Float16) {
++      if (RetTyVecSize != 16 || ArgTyVecSize != 16)
++        report_fatal_error("ConvertAsBFloat1616Float16 must be of <16 x float> "
++                           "and take <16 x i16>");
++    }
++  }
++
++  AttributeList Attrs = CI->getCalledFunction()->getAttributes();
++  mutateCallInstSPIRV(
++      M, CI,
++      [=](CallInst *, std::vector<Value *> &Args) {
++        return getSPIRVFuncName(internal::OpConvertBF16ToFINTEL);
++      },
++      &Attrs);
++}
++
+ } // namespace SPIRV
+ 
+ INITIALIZE_PASS_BEGIN(OCLToSPIRV, "ocl-to-spv", "Transform OCL 2.0 to SPIR-V",
+diff --git a/lib/SPIRV/OCLUtil.h b/lib/SPIRV/OCLUtil.h
+index 04093ff8..3c569f33 100644
+--- a/lib/SPIRV/OCLUtil.h
++++ b/lib/SPIRV/OCLUtil.h
+@@ -296,6 +296,26 @@ const static char SubgroupImageMediaBlockINTELPrefix[] =
+     "intel_sub_group_media_block";
+ const static char SplitBarrierINTELPrefix[] = "intel_work_group_barrier_";
+ const static char LDEXP[] = "ldexp";
++#define _SPIRV_OP(x)                                                           \
++  const static char ConvertBFloat16##x##AsUShort##x[] =                        \
++      "intel_convert_bfloat16" #x "_as_ushort" #x;
++_SPIRV_OP()
++_SPIRV_OP(2)
++_SPIRV_OP(3)
++_SPIRV_OP(4)
++_SPIRV_OP(8)
++_SPIRV_OP(16)
++#undef _SPIRV_OP
++#define _SPIRV_OP(x)                                                           \
++  const static char ConvertAsBFloat16##x##Float##x[] =                         \
++      "intel_convert_as_bfloat16" #x "_float" #x;
++_SPIRV_OP()
++_SPIRV_OP(2)
++_SPIRV_OP(3)
++_SPIRV_OP(4)
++_SPIRV_OP(8)
++_SPIRV_OP(16)
++#undef _SPIRV_OP
+ } // namespace kOCLBuiltinName
+ 
+ /// Offset for OpenCL image channel order enumeration values.
+diff --git a/lib/SPIRV/SPIRVToOCL.cpp b/lib/SPIRV/SPIRVToOCL.cpp
+index c3922bc3..353a52be 100644
+--- a/lib/SPIRV/SPIRVToOCL.cpp
++++ b/lib/SPIRV/SPIRVToOCL.cpp
+@@ -198,6 +198,11 @@ void SPIRVToOCL::visitCallInst(CallInst &CI) {
+       visitCallSPIRVRelational(&CI, OC);
+     return;
+   }
++  if (OC == internal::OpConvertFToBF16INTEL ||
++      OC == internal::OpConvertBF16ToFINTEL) {
++    visitCallSPIRVBFloat16Conversions(&CI, OC);
++    return;
++  }
+   if (OCLSPIRVBuiltinMap::rfind(OC))
+     visitCallSPIRVBuiltin(&CI, OC);
+ }
+@@ -971,6 +976,32 @@ void SPIRVToOCL::visitCallSPIRVGenericPtrMemSemantics(CallInst *CI) {
+       &Attrs);
+ }
+ 
++void SPIRVToOCL::visitCallSPIRVBFloat16Conversions(CallInst *CI, Op OC) {
++  AttributeList Attrs = CI->getCalledFunction()->getAttributes();
++  mutateCallInstOCL(
++      M, CI,
++      [=](CallInst *, std::vector<Value *> &Args) {
++        Type *ArgTy = CI->getOperand(0)->getType();
++        std::string N =
++            ArgTy->isVectorTy()
++                ? std::to_string(cast<FixedVectorType>(ArgTy)->getNumElements())
++                : "";
++        std::string Name;
++        switch (static_cast<uint32_t>(OC)) {
++        case internal::OpConvertFToBF16INTEL:
++          Name = "intel_convert_bfloat16" + N + "_as_ushort" + N;
++          break;
++        case internal::OpConvertBF16ToFINTEL:
++          Name = "intel_convert_as_bfloat16" + N + "_float" + N;
++          break;
++        default:
++          break; // do nothing
++        }
++        return Name;
++      },
++      &Attrs);
++}
++
+ void SPIRVToOCL::visitCallSPIRVBuiltin(CallInst *CI, Op OC) {
+   AttributeList Attrs = CI->getCalledFunction()->getAttributes();
+   mutateCallInstOCL(
+diff --git a/lib/SPIRV/SPIRVToOCL.h b/lib/SPIRV/SPIRVToOCL.h
+index 2821dcd7..eb715ae7 100644
+--- a/lib/SPIRV/SPIRVToOCL.h
++++ b/lib/SPIRV/SPIRVToOCL.h
+@@ -156,6 +156,13 @@ public:
+   ///  %1 = shl i31 %0, 8
+   void visitCallSPIRVGenericPtrMemSemantics(CallInst *CI);
+ 
++  /// Transform __spirv_ConvertFToBF16INTELDv(N)_f to:
++  /// intel_convert_bfloat16(N)_as_ushort(N)Dv(N)_f;
++  /// and transform __spirv_ConvertBF16ToFINTELDv(N)_s to:
++  /// intel_convert_as_bfloat16(N)_float(N)Dv(N)_t;
++  /// where N is vector size
++  void visitCallSPIRVBFloat16Conversions(CallInst *CI, Op OC);
++
+   /// Transform __spirv_* builtins to OCL 2.0 builtins.
+   /// No change with arguments.
+   void visitCallSPIRVBuiltin(CallInst *CI, Op OC);
+diff --git a/lib/SPIRV/libSPIRV/SPIRVInstruction.h b/lib/SPIRV/libSPIRV/SPIRVInstruction.h
+index 77ce05eb..f9cef115 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVInstruction.h
++++ b/lib/SPIRV/libSPIRV/SPIRVInstruction.h
+@@ -3279,6 +3279,77 @@ _SPIRV_OP(SaveMemory, true, 3)
+ _SPIRV_OP(RestoreMemory, false, 2)
+ #undef _SPIRV_OP
+ 
++template <Op OC>
++class SPIRVBfloat16ConversionINTELInstBase : public SPIRVUnaryInst<OC> {
++protected:
++  SPIRVCapVec getRequiredCapability() const override {
++    return getVec(internal::CapabilityBfloat16ConversionINTEL);
++  }
++
++  llvm::Optional<ExtensionID> getRequiredExtension() const override {
++    return ExtensionID::SPV_INTEL_bfloat16_conversion;
++  }
++
++  void validate() const override {
++    SPIRVUnaryInst<OC>::validate();
++
++    SPIRVType *ResCompTy = this->getType();
++    SPIRVWord ResCompCount = 1;
++    if (ResCompTy->isTypeVector()) {
++      ResCompCount = ResCompTy->getVectorComponentCount();
++      ResCompTy = ResCompTy->getVectorComponentType();
++    }
++
++    // validate is a const method, whilst getOperand is non-const method
++    // because it may call a method of class Module that may modify LiteralMap
++    // of Module field. That modification is not impacting validate method for
++    // these instructions, so const_cast is safe here.
++    using SPVBf16ConvTy = SPIRVBfloat16ConversionINTELInstBase<OC>;
++    SPIRVValue *Input = const_cast<SPVBf16ConvTy *>(this)->getOperand(0);
++
++    SPIRVType *InCompTy = Input->getType();
++    SPIRVWord InCompCount = 1;
++    if (InCompTy->isTypeVector()) {
++      InCompCount = InCompTy->getVectorComponentCount();
++      InCompTy = InCompTy->getVectorComponentType();
++    }
++
++    auto InstName = OpCodeNameMap::map(OC);
++    SPIRVErrorLog &SPVErrLog = this->getModule()->getErrorLog();
++
++    if (OC == internal::OpConvertFToBF16INTEL) {
++      SPVErrLog.checkError(
++          ResCompTy->isTypeInt(16), SPIRVEC_InvalidInstruction,
++          InstName + "\nResult value must be a scalar or vector of integer "
++                     "16-bit type\n");
++      SPVErrLog.checkError(
++          InCompTy->isTypeFloat(32), SPIRVEC_InvalidInstruction,
++          InstName + "\nInput value must be a scalar or vector of "
++                     "floating-point 32-bit type\n");
++    } else {
++      SPVErrLog.checkError(
++          ResCompTy->isTypeFloat(32), SPIRVEC_InvalidInstruction,
++          InstName + "\nResult value must be a scalar or vector of "
++                     "floating-point 32-bit type\n");
++      SPVErrLog.checkError(
++          InCompTy->isTypeInt(16), SPIRVEC_InvalidInstruction,
++          InstName + "\nInput value must be a scalar or vector of integer "
++                     "16-bit type\n");
++    }
++
++    SPVErrLog.checkError(
++        ResCompCount == InCompCount, SPIRVEC_InvalidInstruction,
++        InstName + "\nInput type must have the same number of components as "
++                   "result type\n");
++  }
++};
++
++#define _SPIRV_OP(x)                                                           \
++  typedef SPIRVBfloat16ConversionINTELInstBase<internal::Op##x> SPIRV##x;
++_SPIRV_OP(ConvertFToBF16INTEL)
++_SPIRV_OP(ConvertBF16ToFINTEL)
++#undef _SPIRV_OP
++
+ class SPIRVSplitBarrierINTELBase : public SPIRVInstTemplateBase {
+ protected:
+   SPIRVCapVec getRequiredCapability() const override {
+diff --git a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+index e05b0de1..71586a7f 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
++++ b/lib/SPIRV/libSPIRV/SPIRVNameMapEnum.h
+@@ -528,6 +528,7 @@ template <> inline void SPIRVMap<Capability, std::string>::init() {
+   add(internal::CapabilityMemoryAccessAliasingINTEL,
+       "MemoryAccessAliasingINTEL");
+   add(CapabilitySplitBarrierINTEL, "SplitBarrierINTEL");
++  add(internal::CapabilityBfloat16ConversionINTEL, "Bfloat16ConversionINTEL");
+ }
+ SPIRV_DEF_NAMEMAP(Capability, SPIRVCapabilityNameMap)
+ 
+diff --git a/lib/SPIRV/libSPIRV/SPIRVOpCodeEnumInternal.h b/lib/SPIRV/libSPIRV/SPIRVOpCodeEnumInternal.h
+index fb3a01a2..e3d0a2f0 100644
+--- a/lib/SPIRV/libSPIRV/SPIRVOpCodeEnumInternal.h
++++ b/lib/SPIRV/libSPIRV/SPIRVOpCodeEnumInternal.h
+@@ -6,3 +6,5 @@ _SPIRV_OP_INTERNAL(Forward, internal::OpForward)
+ _SPIRV_OP_INTERNAL(AliasDomainDeclINTEL, internal::OpAliasDomainDeclINTEL)
+ _SPIRV_OP_INTERNAL(AliasScopeDeclINTEL, internal::OpAliasScopeDeclINTEL)
+ _SPIRV_OP_INTERNAL(AliasScopeListDeclINTEL, internal::OpAliasScopeListDeclINTEL)
++_SPIRV_OP_INTERNAL(ConvertFToBF16INTEL, internal::OpConvertFToBF16INTEL)
++_SPIRV_OP_INTERNAL(ConvertBF16ToFINTEL, internal::OpConvertBF16ToFINTEL)
+diff --git a/lib/SPIRV/libSPIRV/spirv_internal.hpp b/lib/SPIRV/libSPIRV/spirv_internal.hpp
+index 3b263606..8cf00968 100644
+--- a/lib/SPIRV/libSPIRV/spirv_internal.hpp
++++ b/lib/SPIRV/libSPIRV/spirv_internal.hpp
+@@ -40,6 +40,8 @@ enum InternalOp {
+   IOpAliasDomainDeclINTEL = 5911,
+   IOpAliasScopeDeclINTEL = 5912,
+   IOpAliasScopeListDeclINTEL = 5913,
++  IOpConvertFToBF16INTEL = 6116,
++  IOpConvertBF16ToFINTEL = 6117,
+   IOpPrev = OpMax - 2,
+   IOpForward
+ };
+@@ -52,6 +54,7 @@ enum InternalDecoration {
+ enum InternalCapability {
+   ICapOptimizationHintsINTEL = 5629,
+   ICapMemoryAccessAliasingINTEL = 5910,
++  ICapBfloat16ConversionINTEL = 6115,
+   ICapOptNoneINTEL = 6094
+ };
+ 
+@@ -78,6 +81,9 @@ constexpr Decoration DecorationAliasScopeINTEL =
+ constexpr Decoration DecorationNoAliasINTEL =
+     static_cast<Decoration>(IDecNoAliasINTEL);
+ 
++constexpr Op OpConvertFToBF16INTEL = static_cast<Op>(IOpConvertFToBF16INTEL);
++constexpr Op OpConvertBF16ToFINTEL = static_cast<Op>(IOpConvertBF16ToFINTEL);
++
+ constexpr Capability CapabilityOptimizationHintsINTEL =
+     static_cast<Capability>(ICapOptimizationHintsINTEL);
+ constexpr Capability CapabilityOptNoneINTEL =
+@@ -85,6 +91,9 @@ constexpr Capability CapabilityOptNoneINTEL =
+ constexpr Capability CapabilityMemoryAccessAliasingINTEL =
+     static_cast<Capability>(ICapMemoryAccessAliasingINTEL);
+ 
++constexpr Capability CapabilityBfloat16ConversionINTEL =
++    static_cast<Capability>(ICapBfloat16ConversionINTEL);
++
+ constexpr FunctionControlMask FunctionControlOptNoneINTELMask =
+     static_cast<FunctionControlMask>(IFunctionControlOptNoneINTELMask);
+ 
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_scalar_signature.ll b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_scalar_signature.ll
+new file mode 100644
+index 00000000..33908268
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_scalar_signature.ll
+@@ -0,0 +1,23 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not --crash llvm-spirv %t.bc -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: OpConvertAsBFloat16Float must be of float and take i16
++
++; ModuleID = 'kernel.cl'
++source_filename = "kernel.cl"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir"
++
++; Function Attrs: convergent noinline norecurse nounwind optnone
++define dso_local spir_kernel void @f() {
++entry:
++  %call = call spir_func double @_Z31intel_convert_as_bfloat16_floatt(i32 zeroext 0)
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func double @_Z31intel_convert_as_bfloat16_floatt(i32 zeroext)
++
++!opencl.ocl.version = !{!0}
++
++!0 = !{i32 2, i32 0}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_vec_elem_ty.ll b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_vec_elem_ty.ll
+new file mode 100644
+index 00000000..d69c354d
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_vec_elem_ty.ll
+@@ -0,0 +1,23 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not --crash llvm-spirv %t.bc -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: OpConvertAsBFloat16NFloatN must be of <N x float> and take <N x i16>
++
++; ModuleID = 'kernel.cl'
++source_filename = "kernel.cl"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir"
++
++; Function Attrs: convergent noinline norecurse nounwind optnone
++define dso_local spir_kernel void @f() {
++entry:
++  %call = call spir_func <2 x double> @_Z33intel_convert_as_bfloat162_float2Dv2_t(<2 x i32> zeroinitializer)
++  ret void
++}
++
++; ; Function Attrs: convergent
++declare spir_func <2 x double> @_Z33intel_convert_as_bfloat162_float2Dv2_t(<2 x i32>)
++
++!opencl.ocl.version = !{!0}
++
++!0 = !{i32 2, i32 0}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_vec_size.ll b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_vec_size.ll
+new file mode 100644
+index 00000000..f8c1c146
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertAsBFloat16Float_inval_vec_size.ll
+@@ -0,0 +1,23 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not --crash llvm-spirv %t.bc -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: ConvertAsBFloat162Float2 must be of <2 x float> and take <2 x i16>
++
++; ModuleID = 'kernel.cl'
++source_filename = "kernel.cl"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir"
++
++; Function Attrs: convergent noinline norecurse nounwind optnone
++define dso_local spir_kernel void @f() {
++entry:
++  %call = call spir_func <8 x float> @_Z33intel_convert_as_bfloat162_float2Dv2_t(<4 x i16> zeroinitializer)
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func <8 x float> @_Z33intel_convert_as_bfloat162_float2Dv2_t(<4 x i16>)
++
++!opencl.ocl.version = !{!0}
++
++!0 = !{i32 2, i32 0}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_scalar_signature.ll b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_scalar_signature.ll
+new file mode 100644
+index 00000000..586dce1b
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_scalar_signature.ll
+@@ -0,0 +1,23 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not --crash llvm-spirv %t.bc -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: OpConvertBFloat16AsUShort must be of i16 and take float
++
++; ModuleID = 'kernel.cl'
++source_filename = "kernel.cl"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir"
++
++; Function Attrs: convergent noinline norecurse nounwind optnone
++define dso_local spir_kernel void @f() {
++entry:
++  %call = call spir_func zeroext i16 @_Z32intel_convert_bfloat16_as_ushortf(double 0.000000e+00)
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func zeroext i16 @_Z32intel_convert_bfloat16_as_ushortf(double)
++
++!opencl.ocl.version = !{!0}
++
++!0 = !{i32 2, i32 0}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_vec_elem_ty.ll b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_vec_elem_ty.ll
+new file mode 100644
+index 00000000..ac4f2388
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_vec_elem_ty.ll
+@@ -0,0 +1,23 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not --crash llvm-spirv %t.bc -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: OpConvertBFloat16NAsUShortN must be of <N x i16> and take <N x float>
++
++; ModuleID = 'kernel.cl'
++source_filename = "kernel.cl"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir"
++
++; Function Attrs: convergent noinline norecurse nounwind optnone
++define dso_local spir_kernel void @f() {
++entry:
++  %call = call spir_func <2 x i32> @_Z34intel_convert_bfloat162_as_ushort2Dv2_f(<2 x double> zeroinitializer)
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func <2 x i32> @_Z34intel_convert_bfloat162_as_ushort2Dv2_f(<2 x double>)
++
++!opencl.ocl.version = !{!0}
++
++!0 = !{i32 2, i32 0}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_vec_size.ll b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_vec_size.ll
+new file mode 100644
+index 00000000..7c3e71fd
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/ConvertBFloat16AsUshort_inval_vec_size.ll
+@@ -0,0 +1,23 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not --crash llvm-spirv %t.bc -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: ConvertBFloat162AsUShort2 must be of <2 x i16> and take <2 x float>
++
++; ModuleID = 'kernel.cl'
++source_filename = "kernel.cl"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir"
++
++; Function Attrs: convergent noinline norecurse nounwind optnone
++define dso_local spir_kernel void @f() {
++entry:
++  %call = call spir_func <8 x i16> @_Z34intel_convert_bfloat162_as_ushort2Dv2_f(<4 x float> zeroinitializer)
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func <8 x i16> @_Z34intel_convert_bfloat162_as_ushort2Dv2_f(<4 x float>)
++
++!opencl.ocl.version = !{!0}
++
++!0 = !{i32 2, i32 0}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_input_ty.ll b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_input_ty.ll
+new file mode 100644
+index 00000000..3663dda8
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_input_ty.ll
+@@ -0,0 +1,28 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not llvm-spirv %t.bc --spirv-ext=+SPV_INTEL_bfloat16_conversion 2>&1 \
++; RUN: | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertBF16ToFINTEL
++; CHECK-ERROR-NEXT: Input type must have the same number of components as result type
++
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir64-unknown-unknown"
++
++define spir_func void @_Z1f() {
++  %1 = alloca <2 x i16>, align 4
++  %2 = load <2 x i16>, <2 x i16>* %1, align 4
++  %3 = tail call spir_func float @_Z27__spirv_ConvertBF16ToFINTELf(<2 x i16> %2)
++  ret void
++}
++
++declare spir_func float @_Z27__spirv_ConvertBF16ToFINTELf(<2 x i16>)
++
++!opencl.spir.version = !{!0}
++!spirv.Source = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, i32 2}
++!1 = !{i32 4, i32 100000}
++!2 = !{!"clang version 13.0.0"}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_input_ty.spt b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_input_ty.spt
+new file mode 100644
+index 00000000..4adc3114
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_input_ty.spt
+@@ -0,0 +1,39 @@
++; RUN: not llvm-spirv %s -to-binary -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertBF16ToFINTEL
++; CHECK-ERROR-NEXT: Input value must be a scalar or vector of integer 16-bit type
++
++119734787 65536 393230 14 0
++2 Capability Addresses
++2 Capability Linkage
++2 Capability Kernel
++2 Capability Int64
++2 Capability Bfloat16ConversionINTEL
++9 Extension "SPV_INTEL_bfloat16_conversion"
++5 ExtInstImport 1 "OpenCL.std"
++3 MemoryModel 2 2
++3 Source 4 100000
++4 Name 4 "_Z1f"
++
++6 Decorate 4 LinkageAttributes "_Z1f" Export
++4 Decorate 11 Alignment 4
++4 TypeInt 6 64 0
++5 Constant 6 7 32 0
++2 TypeVoid 2
++3 TypeFunction 3 2
++2 TypeBool 8
++4 TypeArray 9 8 7
++4 TypePointer 10 7 9
++3 TypeFloat 12 32
++
++
++
++5 Function 2 4 0 3
++
++2 Label 5
++4 Variable 10 11 7
++4 ConvertBF16ToFINTEL 12 13 11
++1 Return
++
++1 FunctionEnd
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_output_ty.ll b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_output_ty.ll
+new file mode 100644
+index 00000000..c1fb2ea3
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_output_ty.ll
+@@ -0,0 +1,27 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not llvm-spirv %t.bc --spirv-ext=+SPV_INTEL_bfloat16_conversion 2>&1 \
++; RUN: | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertBF16ToFINTEL
++; CHECK-ERROR-NEXT: Input value must be a scalar or vector of integer 16-bit type
++
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir64-unknown-unknown"
++
++define spir_func void @_Z1f() {
++  %1 = alloca [3 x i32], align 4
++  %2 = tail call spir_func float @_Z27__spirv_ConvertBF16ToFINTELf([3 x i32]* %1)
++  ret void
++}
++
++declare spir_func float @_Z27__spirv_ConvertBF16ToFINTELf([3 x i32]*)
++
++!opencl.spir.version = !{!0}
++!spirv.Source = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, i32 2}
++!1 = !{i32 4, i32 100000}
++!2 = !{!"clang version 13.0.0"}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_output_ty.spt b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_output_ty.spt
+new file mode 100644
+index 00000000..a1b35c5d
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_output_ty.spt
+@@ -0,0 +1,41 @@
++; RUN: not llvm-spirv %s -to-binary -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertBF16ToFINTEL
++; CHECK-ERROR-NEXT: Result value must be a scalar or vector of floating-point 32-bit type
++
++119734787 65536 393230 16 0
++2 Capability Addresses
++2 Capability Linkage
++2 Capability Kernel
++2 Capability Int64
++2 Capability Bfloat16ConversionINTEL
++9 Extension "SPV_INTEL_bfloat16_conversion"
++5 ExtInstImport 1 "OpenCL.std"
++3 MemoryModel 2 2
++3 Source 4 100000
++4 Name 4 "_Z1f"
++
++6 Decorate 4 LinkageAttributes "_Z1f" Export
++4 Decorate 8 Alignment 4
++4 TypeInt 10 64 0
++4 TypeInt 12 32 0
++5 Constant 10 11 3 0
++2 TypeVoid 2
++3 TypeFunction 3 2
++3 TypeFloat 6 32
++4 TypePointer 7 7 6
++4 TypeArray 13 12 11
++4 TypePointer 14 7 13
++
++
++
++5 Function 2 4 0 3
++
++2 Label 5
++4 Variable 7 8 7
++6 Load 6 9 8 2 4
++4 ConvertBF16ToFINTEL 14 15 9
++1 Return
++
++1 FunctionEnd
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_params.spt b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_params.spt
+new file mode 100644
+index 00000000..874e027f
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/bf16tof_inval_params.spt
+@@ -0,0 +1,39 @@
++; RUN: not llvm-spirv %s -to-binary -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertBF16ToFINTEL
++; CHECK-ERROR-NEXT: Input type must have the same number of components as result type
++
++119734787 65536 393230 14 0
++2 Capability Addresses
++2 Capability Linkage
++2 Capability Kernel
++2 Capability Int16
++2 Capability Bfloat16ConversionINTEL
++9 Extension "SPV_INTEL_bfloat16_conversion"
++5 ExtInstImport 1 "OpenCL.std"
++3 MemoryModel 2 2
++3 Source 4 100000
++4 Name 4 "_Z1f"
++
++6 Decorate 4 LinkageAttributes "_Z1f" Export
++4 Decorate 9 Alignment 4
++4 TypeInt 6 16 0
++2 TypeVoid 2
++3 TypeFunction 3 2
++4 TypeVector 7 6 4
++4 TypePointer 8 7 7
++3 TypeFloat 11 32
++4 TypeVector 12 11 3
++
++
++
++5 Function 2 4 0 3
++
++2 Label 5
++4 Variable 8 9 7
++6 Load 7 10 9 2 4
++4 ConvertBF16ToFINTEL 12 13 10
++1 Return
++
++1 FunctionEnd
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_input_ty.ll b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_input_ty.ll
+new file mode 100644
+index 00000000..cdc722f8
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_input_ty.ll
+@@ -0,0 +1,28 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not llvm-spirv %t.bc --spirv-ext=+SPV_INTEL_bfloat16_conversion 2>&1 \
++; RUN: | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertFToBF16INTEL
++; CHECK-ERROR-NEXT: Input value must be a scalar or vector of floating-point 32-bit type
++
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir64-unknown-unknown"
++
++define spir_func void @_Z1f() {
++  %1 = alloca double, align 8
++  %2 = load double, double* %1, align 8
++  %3 = tail call spir_func zeroext i16 @_Z27__spirv_ConvertFToBF16INTELf(double %2)
++  ret void
++}
++
++declare spir_func zeroext i16 @_Z27__spirv_ConvertFToBF16INTELf(double)
++
++!opencl.spir.version = !{!0}
++!spirv.Source = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, i32 2}
++!1 = !{i32 4, i32 100000}
++!2 = !{!"clang version 13.0.0"}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_input_ty.spt b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_input_ty.spt
+new file mode 100644
+index 00000000..75c8e50c
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_input_ty.spt
+@@ -0,0 +1,37 @@
++; RUN: not llvm-spirv %s -to-binary -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertFToBF16INTEL
++; CHECK-ERROR-NEXT: Input value must be a scalar or vector of floating-point 32-bit type
++
++119734787 65536 393230 12 0
++2 Capability Addresses
++2 Capability Linkage
++2 Capability Kernel
++2 Capability Int16
++2 Capability Bfloat16ConversionINTEL
++9 Extension "SPV_INTEL_bfloat16_conversion"
++5 ExtInstImport 1 "OpenCL.std"
++3 MemoryModel 2 2
++3 Source 4 100000
++4 Name 4 "_Z1f"
++
++6 Decorate 4 LinkageAttributes "_Z1f" Export
++4 Decorate 8 Alignment 4
++4 TypeInt 10 16 0
++2 TypeVoid 2
++3 TypeFunction 3 2
++3 TypeInt 6 32 0
++4 TypePointer 7 7 6
++
++
++
++5 Function 2 4 0 3
++
++2 Label 5
++4 Variable 7 8 7
++6 Load 6 9 8 2 4
++4 ConvertFToBF16INTEL 10 11 9
++1 Return
++
++1 FunctionEnd
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty.spt b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty.spt
+new file mode 100644
+index 00000000..4e72e638
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty.spt
+@@ -0,0 +1,37 @@
++; RUN: not llvm-spirv %s -to-binary -o %t.spv 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertFToBF16INTEL
++; CHECK-ERROR-NEXT: Result value must be a scalar or vector of integer 16-bit type
++
++119734787 65536 393230 12 0
++2 Capability Addresses
++2 Capability Linkage
++2 Capability Kernel
++2 Capability Int16
++2 Capability Bfloat16ConversionINTEL
++9 Extension "SPV_INTEL_bfloat16_conversion"
++5 ExtInstImport 1 "OpenCL.std"
++3 MemoryModel 2 2
++3 Source 4 100000
++4 Name 4 "_Z1f"
++
++6 Decorate 4 LinkageAttributes "_Z1f" Export
++4 Decorate 8 Alignment 4
++4 TypeFloat 10 16
++2 TypeVoid 2
++3 TypeFunction 3 2
++3 TypeFloat 6 32
++4 TypePointer 7 7 6
++
++
++
++5 Function 2 4 0 3
++
++2 Label 5
++4 Variable 7 8 7
++6 Load 6 9 8 2 4
++4 ConvertFToBF16INTEL 10 11 9
++1 Return
++
++1 FunctionEnd
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty_1.ll b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty_1.ll
+new file mode 100644
+index 00000000..c19fc545
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty_1.ll
+@@ -0,0 +1,28 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not llvm-spirv %t.bc --spirv-ext=+SPV_INTEL_bfloat16_conversion 2>&1 \
++; RUN: | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertFToBF16INTEL
++; CHECK-ERROR-NEXT: Result value must be a scalar or vector of integer 16-bit type
++
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir64-unknown-unknown"
++
++define spir_func void @_Z1f() {
++  %1 = alloca float, align 4
++  %2 = load float, float* %1, align 4
++  %3 = tail call spir_func zeroext i32 @_Z27__spirv_ConvertFToBF16INTELf(float %2)
++  ret void
++}
++
++declare spir_func zeroext i32 @_Z27__spirv_ConvertFToBF16INTELf(float)
++
++!opencl.spir.version = !{!0}
++!spirv.Source = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, i32 2}
++!1 = !{i32 4, i32 100000}
++!2 = !{!"clang version 13.0.0"}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty_2.ll b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty_2.ll
+new file mode 100644
+index 00000000..8bfda84b
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_output_ty_2.ll
+@@ -0,0 +1,28 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not llvm-spirv %t.bc --spirv-ext=+SPV_INTEL_bfloat16_conversion 2>&1 \
++; RUN: | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertFToBF16INTEL
++; CHECK-ERROR-NEXT: Input type must have the same number of components as result type
++
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir64-unknown-unknown"
++
++define spir_func void @_Z1f() {
++  %1 = alloca float, align 4
++  %2 = load float, float* %1, align 4
++  %3 = tail call spir_func <4 x i16> @_Z27__spirv_ConvertFToBF16INTELf(float %2)
++  ret void
++}
++
++declare spir_func <4 x i16> @_Z27__spirv_ConvertFToBF16INTELf(float)
++
++!opencl.spir.version = !{!0}
++!spirv.Source = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, i32 2}
++!1 = !{i32 4, i32 100000}
++!2 = !{!"clang version 13.0.0"}
+diff --git a/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_params.ll b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_params.ll
+new file mode 100644
+index 00000000..d8413f2f
+--- /dev/null
++++ b/test/negative/SPV_INTEL_bfloat16_conversion/f2bf16_inval_params.ll
+@@ -0,0 +1,28 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: not llvm-spirv %t.bc --spirv-ext=+SPV_INTEL_bfloat16_conversion 2>&1 \
++; RUN: | FileCheck %s --check-prefix=CHECK-ERROR
++
++; CHECK-ERROR: InvalidInstruction: Can't translate llvm instruction:
++; CHECK-ERROR-NEXT: ConvertFToBF16INTEL
++; CHECK-ERROR-NEXT: Input type must have the same number of components as result type
++
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir64-unknown-unknown"
++
++define spir_func void @_Z1f() {
++  %1 = alloca <4 x float>, align 16
++  %2 = load <4 x float>, <4 x float>* %1, align 16
++  %3 = tail call spir_func <8 x i16> @_Z27__spirv_ConvertFToBF16INTELf(<4 x float> %2)
++  ret void
++}
++
++declare spir_func <8 x i16> @_Z27__spirv_ConvertFToBF16INTELf(<4 x float>)
++
++!opencl.spir.version = !{!0}
++!spirv.Source = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, i32 2}
++!1 = !{i32 4, i32 100000}
++!2 = !{!"clang version 13.0.0"}
+diff --git a/test/transcoding/SPV_INTEL_bfloat16_conversion/cl_bfloat16_conversions_extension.ll b/test/transcoding/SPV_INTEL_bfloat16_conversion/cl_bfloat16_conversions_extension.ll
+new file mode 100644
+index 00000000..11b869a9
+--- /dev/null
++++ b/test/transcoding/SPV_INTEL_bfloat16_conversion/cl_bfloat16_conversions_extension.ll
+@@ -0,0 +1,151 @@
++; RUN: llvm-as %s -o %t.bc
++
++; RUN: not llvm-spirv %t.bc 2>&1 | FileCheck %s --check-prefix=CHECK-WO-EXT
++
++; RUN: llvm-spirv -s %t.bc -o %t.regularized.bc
++; RUN: llvm-dis %t.regularized.bc -o %t.regularized.ll
++; RUN: FileCheck < %t.regularized.ll %s --check-prefix=CHECK-REGULARIZED
++
++; RUN: llvm-spirv --spirv-text %t.bc -o %t.spt --spirv-ext=+SPV_INTEL_bfloat16_conversion
++; RUN: FileCheck < %t.spt %s --check-prefix=CHECK-SPIRV
++
++; RUN: llvm-spirv -to-binary %t.spt -o %t.spv
++
++; RUN: llvm-spirv -r %t.spv -o %t.rev.bc --spirv-target-env=CL2.0
++; RUN: llvm-dis %t.rev.bc -o %t.rev.ll
++; RUN: FileCheck < %t.rev.ll %s --check-prefix=CHECK-LLVM-CL20
++
++; RUN: llvm-spirv -r %t.spv -o %t.rev.bc --spirv-target-env=SPV-IR
++; RUN: llvm-dis %t.rev.bc -o %t.rev.ll
++; RUN: FileCheck < %t.rev.ll %s --check-prefix=CHECK-LLVM-SPV
++
++; CHECK-WO-EXT: RequiresExtension: Feature requires the following SPIR-V extension:
++; CHECK-WO-EXT-NEXT: SPV_INTEL_bfloat16_conversion
++
++; CHECK-REGULARIZED: call spir_func zeroext i16 @_Z27__spirv_ConvertFToBF16INTELf(float 0.000000e+00)
++; CHECK-REGULARIZED: call spir_func <2 x i16> @_Z27__spirv_ConvertFToBF16INTELDv2_f(<2 x float> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func <3 x i16> @_Z27__spirv_ConvertFToBF16INTELDv3_f(<3 x float> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func <4 x i16> @_Z27__spirv_ConvertFToBF16INTELDv4_f(<4 x float> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func <8 x i16> @_Z27__spirv_ConvertFToBF16INTELDv8_f(<8 x float> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func <16 x i16> @_Z27__spirv_ConvertFToBF16INTELDv16_f(<16 x float> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func float @_Z27__spirv_ConvertBF16ToFINTELs(i16 zeroext 0)
++; CHECK-REGULARIZED: call spir_func <2 x float> @_Z27__spirv_ConvertBF16ToFINTELDv2_s(<2 x i16> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func <3 x float> @_Z27__spirv_ConvertBF16ToFINTELDv3_s(<3 x i16> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func <4 x float> @_Z27__spirv_ConvertBF16ToFINTELDv4_s(<4 x i16> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func <8 x float> @_Z27__spirv_ConvertBF16ToFINTELDv8_s(<8 x i16> zeroinitializer)
++; CHECK-REGULARIZED: call spir_func <16 x float> @_Z27__spirv_ConvertBF16ToFINTELDv16_s(<16 x i16> zeroinitializer)
++
++; CHECK-SPIRV: TypeInt [[#Int16Ty:]] 16 0
++; CHECK-SPIRV: TypeFloat [[#FloatTy:]] 32
++; CHECK-SPIRV: TypeVector [[#VecFloat2:]] [[#FloatTy]] 2
++; CHECK-SPIRV: TypeVector [[#VecInt162:]] [[#Int16Ty]] 2
++; CHECK-SPIRV: TypeVector [[#VecFloat3:]] [[#FloatTy]] 3
++; CHECK-SPIRV: TypeVector [[#VecInt163:]] [[#Int16Ty]] 3
++; CHECK-SPIRV: TypeVector [[#VecFloat4:]] [[#FloatTy]] 4
++; CHECK-SPIRV: TypeVector [[#VecInt164:]] [[#Int16Ty]] 4
++; CHECK-SPIRV: TypeVector [[#VecFloat8:]] [[#FloatTy]] 8
++; CHECK-SPIRV: TypeVector [[#VecInt168:]] [[#Int16Ty]] 8
++; CHECK-SPIRV: TypeVector [[#VecFloat16:]] [[#FloatTy]] 16
++; CHECK-SPIRV: TypeVector [[#VecInt1616:]] [[#Int16Ty]] 16
++
++; CHECK-SPIRV: ConvertFToBF16INTEL [[#Int16Ty]]
++; CHECK-SPIRV: ConvertFToBF16INTEL [[#VecInt162]]
++; CHECK-SPIRV: ConvertFToBF16INTEL [[#VecInt163]]
++; CHECK-SPIRV: ConvertFToBF16INTEL [[#VecInt164]]
++; CHECK-SPIRV: ConvertFToBF16INTEL [[#VecInt168]]
++; CHECK-SPIRV: ConvertFToBF16INTEL [[#VecInt1616]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[#FloatTy]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[#VecFloat2]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[#VecFloat3]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[#VecFloat4]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[#VecFloat8]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[#VecFloat16]]
++
++; CHECK-LLVM-SPV: call spir_func i16 @_Z27__spirv_ConvertFToBF16INTELf(float 0.000000e+00)
++; CHECK-LLVM-SPV: call spir_func <2 x i16> @_Z27__spirv_ConvertFToBF16INTELDv2_f(<2 x float> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func <3 x i16> @_Z27__spirv_ConvertFToBF16INTELDv3_f(<3 x float> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func <4 x i16> @_Z27__spirv_ConvertFToBF16INTELDv4_f(<4 x float> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func <8 x i16> @_Z27__spirv_ConvertFToBF16INTELDv8_f(<8 x float> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func <16 x i16> @_Z27__spirv_ConvertFToBF16INTELDv16_f(<16 x float> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func float @_Z27__spirv_ConvertBF16ToFINTELs(i16 0)
++; CHECK-LLVM-SPV: call spir_func <2 x float> @_Z27__spirv_ConvertBF16ToFINTELDv2_s(<2 x i16> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func <3 x float> @_Z27__spirv_ConvertBF16ToFINTELDv3_s(<3 x i16> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func <4 x float> @_Z27__spirv_ConvertBF16ToFINTELDv4_s(<4 x i16> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func <8 x float> @_Z27__spirv_ConvertBF16ToFINTELDv8_s(<8 x i16> zeroinitializer)
++; CHECK-LLVM-SPV: call spir_func <16 x float> @_Z27__spirv_ConvertBF16ToFINTELDv16_s(<16 x i16> zeroinitializer)
++
++; CHECK-LLVM-CL20: call spir_func i16 @_Z32intel_convert_bfloat16_as_ushortf(float 0.000000e+00)
++; CHECK-LLVM-CL20: call spir_func <2 x i16> @_Z34intel_convert_bfloat162_as_ushort2Dv2_f(<2 x float> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func <3 x i16> @_Z34intel_convert_bfloat163_as_ushort3Dv3_f(<3 x float> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func <4 x i16> @_Z34intel_convert_bfloat164_as_ushort4Dv4_f(<4 x float> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func <8 x i16> @_Z34intel_convert_bfloat168_as_ushort8Dv8_f(<8 x float> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func <16 x i16> @_Z36intel_convert_bfloat1616_as_ushort16Dv16_f(<16 x float> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func float @_Z31intel_convert_as_bfloat16_floats(i16 0)
++; CHECK-LLVM-CL20: call spir_func <2 x float> @_Z33intel_convert_as_bfloat162_float2Dv2_s(<2 x i16> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func <3 x float> @_Z33intel_convert_as_bfloat163_float3Dv3_s(<3 x i16> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func <4 x float> @_Z33intel_convert_as_bfloat164_float4Dv4_s(<4 x i16> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func <8 x float> @_Z33intel_convert_as_bfloat168_float8Dv8_s(<8 x i16> zeroinitializer)
++; CHECK-LLVM-CL20: call spir_func <16 x float> @_Z35intel_convert_as_bfloat1616_float16Dv16_s(<16 x i16> zeroinitializer)
++
++; ModuleID = 'kernel.cl'
++source_filename = "kernel.cl"
++target datalayout = "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir"
++
++; Function Attrs: convergent noinline norecurse nounwind optnone
++define dso_local spir_kernel void @f() {
++entry:
++  %call = call spir_func zeroext i16 @_Z32intel_convert_bfloat16_as_ushortf(float 0.000000e+00)
++  %call1 = call spir_func <2 x i16> @_Z34intel_convert_bfloat162_as_ushort2Dv2_f(<2 x float> zeroinitializer)
++  %call2 = call spir_func <3 x i16> @_Z34intel_convert_bfloat163_as_ushort3Dv3_f(<3 x float> zeroinitializer)
++  %call3 = call spir_func <4 x i16> @_Z34intel_convert_bfloat164_as_ushort4Dv4_f(<4 x float> zeroinitializer)
++  %call4 = call spir_func <8 x i16> @_Z34intel_convert_bfloat168_as_ushort8Dv8_f(<8 x float> zeroinitializer)
++  %call5 = call spir_func <16 x i16> @_Z36intel_convert_bfloat1616_as_ushort16Dv16_f(<16 x float> zeroinitializer)
++  %call6 = call spir_func float @_Z31intel_convert_as_bfloat16_floatt(i16 zeroext 0)
++  %call7 = call spir_func <2 x float> @_Z33intel_convert_as_bfloat162_float2Dv2_t(<2 x i16> zeroinitializer)
++  %call8 = call spir_func <3 x float> @_Z33intel_convert_as_bfloat163_float3Dv3_t(<3 x i16> zeroinitializer)
++  %call9 = call spir_func <4 x float> @_Z33intel_convert_as_bfloat164_float4Dv4_t(<4 x i16> zeroinitializer)
++  %call10 = call spir_func <8 x float> @_Z33intel_convert_as_bfloat168_float8Dv8_t(<8 x i16> zeroinitializer)
++  %call11 = call spir_func <16 x float> @_Z35intel_convert_as_bfloat1616_float16Dv16_t(<16 x i16> zeroinitializer)
++  ret void
++}
++
++; Function Attrs: convergent
++declare spir_func zeroext i16 @_Z32intel_convert_bfloat16_as_ushortf(float)
++
++; Function Attrs: convergent
++declare spir_func <2 x i16> @_Z34intel_convert_bfloat162_as_ushort2Dv2_f(<2 x float>)
++
++; Function Attrs: convergent
++declare spir_func <3 x i16> @_Z34intel_convert_bfloat163_as_ushort3Dv3_f(<3 x float>)
++
++; Function Attrs: convergent
++declare spir_func <4 x i16> @_Z34intel_convert_bfloat164_as_ushort4Dv4_f(<4 x float>)
++
++; Function Attrs: convergent
++declare spir_func <8 x i16> @_Z34intel_convert_bfloat168_as_ushort8Dv8_f(<8 x float>)
++
++; Function Attrs: convergent
++declare spir_func <16 x i16> @_Z36intel_convert_bfloat1616_as_ushort16Dv16_f(<16 x float>)
++
++; Function Attrs: convergent
++declare spir_func float @_Z31intel_convert_as_bfloat16_floatt(i16 zeroext)
++
++; Function Attrs: convergent
++declare spir_func <2 x float> @_Z33intel_convert_as_bfloat162_float2Dv2_t(<2 x i16>)
++
++; Function Attrs: convergent
++declare spir_func <3 x float> @_Z33intel_convert_as_bfloat163_float3Dv3_t(<3 x i16>)
++
++; Function Attrs: convergent
++declare spir_func <4 x float> @_Z33intel_convert_as_bfloat164_float4Dv4_t(<4 x i16>)
++
++; Function Attrs: convergent
++declare spir_func <8 x float> @_Z33intel_convert_as_bfloat168_float8Dv8_t(<8 x i16>)
++
++; Function Attrs: convergent
++declare spir_func <16 x float> @_Z35intel_convert_as_bfloat1616_float16Dv16_t(<16 x i16>)
++
++!opencl.ocl.version = !{!0}
++
++!0 = !{i32 2, i32 0}
+diff --git a/test/transcoding/SPV_INTEL_bfloat16_conversion/convert_bfloat16_generic.ll b/test/transcoding/SPV_INTEL_bfloat16_conversion/convert_bfloat16_generic.ll
+new file mode 100644
+index 00000000..a9542a86
+--- /dev/null
++++ b/test/transcoding/SPV_INTEL_bfloat16_conversion/convert_bfloat16_generic.ll
+@@ -0,0 +1,66 @@
++; RUN: llvm-as %s -o %t.bc
++; RUN: llvm-spirv %t.bc -o %t.spv --spirv-ext=+SPV_INTEL_bfloat16_conversion
++; RUN: llvm-spirv %t.spv -o %t.spt --to-text
++; RUN: FileCheck < %t.spt %s --check-prefix=CHECK-SPIRV
++; RUN: llvm-spirv %t.spv -o %t.rev.bc -r --spirv-target-env=SPV-IR
++; RUN: llvm-dis %t.rev.bc -o %t.rev.ll
++; RUN: FileCheck < %t.rev.ll %s --check-prefix=CHECK-LLVM
++
++; RUN: not llvm-spirv %t.bc 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
++; CHECK-ERROR: RequiresExtension: Feature requires the following SPIR-V extension:
++; CHECK-ERROR-NEXT: SPV_INTEL_bfloat16_conversion
++
++target datalayout = "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-n8:16:32:64"
++target triple = "spir64-unknown-unknown"
++
++; CHECK-SPIRV: Capability Bfloat16ConversionINTEL
++; CHECK-SPIRV: Extension "SPV_INTEL_bfloat16_conversion"
++; CHECK-SPIRV: TypeInt [[Int16Ty:.*]] 16 0
++; CHECK-SPIRV: Constant [[Int16Ty]] [[IntConstId:.*]] 67
++; CHECK-SPIRV: TypeFloat [[FP32Ty:.*]] 32
++; CHECK-SPIRV: TypeVector [[FP32v8Ty:.*]] [[FP32Ty]] 8
++; CHECK-SPIRV: TypeVector [[Int16v8Ty:.*]] [[Int16Ty]] 8
++; CHECK-SPIRV: Constant [[FP32Ty]] [[FloatConstId:.*]] 1065353216
++
++; CHECK-SPIRV: FunctionParameter [[FP32Ty]] [[FP32ValId:.*]]
++; CHECK-SPIRV: FunctionParameter [[FP32v8Ty]] [[FP32v8ValId:.*]]
++
++; CHECK-SPIRV: ConvertFToBF16INTEL [[Int16Ty]] [[Int16ValId:.*]] [[FP32ValId]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[FP32Ty]] [[#]] [[Int16ValId]]
++; CHECK-SPIRV: ConvertFToBF16INTEL [[Int16v8Ty]] [[Int16v8ValId:.*]] [[FP32v8ValId]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[FP32v8Ty]] [[#]] [[Int16v8ValId]]
++; CHECK-SPIRV: ConvertFToBF16INTEL [[Int16Ty]] [[#]] [[FloatConstId]]
++; CHECK-SPIRV: ConvertBF16ToFINTEL [[FP32Ty]] [[#]] [[IntConstId]]
++
++; CHECK-LLVM: call spir_func i16 @_Z27__spirv_ConvertFToBF16INTELf(float
++; CHECK-LLVM: call spir_func float @_Z27__spirv_ConvertBF16ToFINTELs(i16
++; CHECK-LLVM: call spir_func <8 x i16> @_Z27__spirv_ConvertFToBF16INTELDv8_f(<8 x float>
++; CHECK-LLVM: call spir_func <8 x float> @_Z27__spirv_ConvertBF16ToFINTELDv8_s(<8 x i16>
++; CHECK-LLVM: call spir_func i16 @_Z27__spirv_ConvertFToBF16INTELf(float 1.000000e+00)
++; CHECK-LLVM: call spir_func float @_Z27__spirv_ConvertBF16ToFINTELs(i16 67)
++
++define spir_func void @_Z2opffv8(float %a, <8 x float> %in) {
++  %1 = tail call spir_func zeroext i16 @_Z27__spirv_ConvertFToBF16INTELf(float %a)
++  %2 = tail call spir_func float @_Z27__spirv_ConvertBF16ToFINTELs(i16 zeroext %1)
++  %3 = tail call spir_func <8 x i16> @_Z27__spirv_ConvertFToBF16INTELDv8_f(<8 x float> %in)
++  %4 = tail call spir_func <8 x float> @_Z27__spirv_ConvertBF16ToFINTELDv8_s(<8 x i16> %3)
++  %5 = tail call spir_func zeroext i16 @_Z27__spirv_ConvertFToBF16INTELf(float 1.000000e+00)
++  %6 = tail call spir_func float @_Z27__spirv_ConvertBF16ToFINTELs(i16 67)
++  ret void
++}
++
++declare spir_func zeroext i16 @_Z27__spirv_ConvertFToBF16INTELf(float)
++
++declare spir_func float @_Z27__spirv_ConvertBF16ToFINTELs(i16 zeroext)
++
++declare spir_func <8 x i16> @_Z27__spirv_ConvertFToBF16INTELDv8_f(<8 x float>)
++
++declare spir_func <8 x float> @_Z27__spirv_ConvertBF16ToFINTELDv8_s(<8 x i16>)
++
++!opencl.spir.version = !{!0}
++!spirv.Source = !{!1}
++!llvm.ident = !{!2}
++
++!0 = !{i32 1, i32 2}
++!1 = !{i32 4, i32 100000}
++!2 = !{!"clang version 13.0.0"}
+-- 
+2.17.1
+
