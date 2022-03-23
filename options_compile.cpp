@@ -178,7 +178,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   effectiveArgs.push_back("-cl-kernel-arg-info");
   effectiveArgs.push_back("-fno-validate-pch");
   effectiveArgs.push_back("-fno-caret-diagnostics");
-  effectiveArgs.push_back("-dwarf-column-info");
 
   if (std::find_if(effectiveArgs.begin(), effectiveArgs.end(),
                    [](const ArgsVector::value_type& a) {
