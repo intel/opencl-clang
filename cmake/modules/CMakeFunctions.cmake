@@ -89,8 +89,11 @@ endfunction()
 # Then all patches from the `patches_dir` are committed to the `target_branch`.
 # Does nothing if the `target_branch` is already checked out in the `repo_dir`.
 #
-function(apply_patches repo_dir patches_dir base_revision target_branch)
-    file(GLOB patches ${patches_dir}/*.patch)
+function(apply_patches repo_dir patches_dir base_revision target_branch ret)
+    foreach(patches_dir ${patches_dir})
+        file(GLOB patches_in_dir ${patches_dir}/*.patch)
+        list(APPEND patches ${patches_in_dir})
+    endforeach()
     if(NOT patches)
         message(STATUS "[OPENCL-CLANG] No patches in ${patches_dir}")
         return()
@@ -105,7 +108,9 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
         ERROR_QUIET
         OUTPUT_QUIET
     )
-    if(patches_needed) # The target branch doesn't exist
+    if(patches_needed EQUAL 128) # not a git repo
+        set(ret_not_git_repo 1)
+	elseif(patches_needed) # The target branch doesn't exist
         list(SORT patches)
         is_valid_revision(${repo_dir} ${base_revision} exists_base_rev)
 
@@ -139,8 +144,12 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
                     WORKING_DIRECTORY ${repo_dir}
                     OUTPUT_VARIABLE patching_log
                     ERROR_QUIET
+                    RESULT_VARIABLE ret_apply_patch
                 )
                 message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
+                if (ret_apply_patch)
+                    break()
+                endif()
             endif()
         endforeach(patch)
     else() # The target branch already exists
@@ -149,7 +158,13 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
             WORKING_DIRECTORY ${repo_dir}
             ERROR_QUIET
             OUTPUT_QUIET
+            RESULT_VARIABLE ret_check_out
         )
+    endif()
+	if (NOT (ret_not_git_repo OR ret_check_out OR ret_apply_patch))
+        set(${ret} True PARENT_SCOPE)
+    else()
+        message(FATAL_ERROR "[OPENCL-CLANG] Failed to apply patch!")
     endif()
 endfunction()
 
