@@ -1,4 +1,4 @@
-From fbff7b620452496d66b3a9849952533966e575e5 Mon Sep 17 00:00:00 2001
+From eae2701909906d6ebd49b4c5bce90b318897fc1d Mon Sep 17 00:00:00 2001
 From: haonanya <haonan.yang@intel.com>
 Date: Wed, 16 Mar 2022 11:26:19 +0800
 Subject: [PATCH] Support cl_bf16_conversions
@@ -218,7 +218,7 @@ index cda026ae..71f0d0c0 100644
  
  INITIALIZE_PASS_BEGIN(OCL20ToSPIRV, "cl20tospv", "Transform OCL 2.0 to SPIR-V",
 diff --git a/lib/SPIRV/OCLUtil.h b/lib/SPIRV/OCLUtil.h
-index 4e585cee..9fd1eb6e 100644
+index 9ed16a63..8ec2bbeb 100644
 --- a/lib/SPIRV/OCLUtil.h
 +++ b/lib/SPIRV/OCLUtil.h
 @@ -240,6 +240,26 @@ const static char SubgroupImageMediaBlockINTELPrefix[] =
@@ -249,11 +249,11 @@ index 4e585cee..9fd1eb6e 100644
  
  /// Offset for OpenCL image channel order enumeration values.
 diff --git a/lib/SPIRV/SPIRVToOCL.cpp b/lib/SPIRV/SPIRVToOCL.cpp
-index c485fb0d..c3318add 100644
+index 931ab7be..2ea197b2 100644
 --- a/lib/SPIRV/SPIRVToOCL.cpp
 +++ b/lib/SPIRV/SPIRVToOCL.cpp
-@@ -197,6 +197,11 @@ void SPIRVToOCL::visitCallInst(CallInst &CI) {
-       visitCallSPIRVRelational(&CI, OC);
+@@ -178,6 +178,11 @@ void SPIRVToOCL::visitCallInst(CallInst &CI) {
+     visitCallSPIRVEnqueueKernel(&CI, OC);
      return;
    }
 +  if (OC == internal::OpConvertFToBF16INTEL ||
@@ -264,8 +264,8 @@ index c485fb0d..c3318add 100644
    if (OCLSPIRVBuiltinMap::rfind(OC))
      visitCallSPIRVBuiltin(&CI, OC);
  }
-@@ -970,6 +975,32 @@ void SPIRVToOCL::visitCallSPIRVGenericPtrMemSemantics(CallInst *CI) {
-       &Attrs);
+@@ -1066,6 +1071,32 @@ std::string SPIRVToOCL::getGroupBuiltinPrefix(CallInst *CI) {
+   return Prefix;
  }
  
 +void SPIRVToOCL::visitCallSPIRVBFloat16Conversions(CallInst *CI, Op OC) {
@@ -294,16 +294,16 @@ index c485fb0d..c3318add 100644
 +      &Attrs);
 +}
 +
- void SPIRVToOCL::visitCallSPIRVBuiltin(CallInst *CI, Op OC) {
-   AttributeList Attrs = CI->getCalledFunction()->getAttributes();
-   mutateCallInstOCL(
+ std::string
+ SPIRVToOCL::getOCLImageOpaqueType(SmallVector<std::string, 8> &Postfixes) {
+   SmallVector<int, 7> Ops;
 diff --git a/lib/SPIRV/SPIRVToOCL.h b/lib/SPIRV/SPIRVToOCL.h
-index 3577496b..4e5c47e3 100644
+index febc3a8d..bc220394 100644
 --- a/lib/SPIRV/SPIRVToOCL.h
 +++ b/lib/SPIRV/SPIRVToOCL.h
-@@ -157,6 +157,13 @@ public:
-   ///  %1 = shl i31 %0, 8
-   void visitCallSPIRVGenericPtrMemSemantics(CallInst *CI);
+@@ -152,6 +152,13 @@ public:
+   ///   intel_sub_group_avc_mce_get_default_inter_base_multi_reference_penalty
+   void visitCallSPIRVAvcINTELInstructionBuiltin(CallInst *CI, Op OC);
  
 +  /// Transform __spirv_ConvertFToBF16INTELDv(N)_f to:
 +  /// intel_convert_bfloat16(N)_as_ushort(N)Dv(N)_f;
