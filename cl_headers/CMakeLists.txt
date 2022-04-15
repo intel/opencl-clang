@@ -53,7 +53,7 @@ set(CL20 "-cl-std=CL2.0")
 set(CL30 "-cl-std=CL3.0")
 # Add OpenCL C 3.0 Optional features
 set(OPTS30 "-cl-ext=+__opencl_c_3d_image_writes,+__opencl_c_atomic_order_acq_rel,+__opencl_c_atomic_order_seq_cst,+__opencl_c_atomic_scope_device,+__opencl_c_atomic_scope_all_devices,+__opencl_c_device_enqueue,+__opencl_c_generic_address_space,+__opencl_c_images,+__opencl_c_int64,+__opencl_c_pipes,+__opencl_c_program_scope_global_variables,+__opencl_c_read_write_images,+__opencl_c_subgroups,+__opencl_c_work_group_collective_functions")
-set(OPTS30_FP64 "-cl-ext=+__opencl_c_fp64")
+set(OPTS30_FP64 "-cl-ext=+__opencl_c_fp64,+__opencl_c_fp64")
 
 set(SPIR_TRIPLE "-triple;spir-unknown-unknown")
 set(SPIR64_TRIPLE "-triple;spir64-unknown-unknown")
@@ -64,7 +64,7 @@ else()
     set(HOST_TRIPLE  "${SPIR_TRIPLE}")
 endif()
 
-set(OPTS -cl-ext=+all,-cl_khr_fp64)
+set(OPTS -cl-ext=+all,-cl_khr_fp64,-__opencl_c_fp64)
 create_pcm(opencl-c-12-spir.pcm cl12spir opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir.pcm cl20spir opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-30-spir.pcm cl30spir opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
