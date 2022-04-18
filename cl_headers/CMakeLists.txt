@@ -64,7 +64,7 @@ else()
     set(HOST_TRIPLE  "${SPIR_TRIPLE}")
 endif()
 
-set(OPTS -cl-ext=+all,-cl_khr_fp64)
+set(OPTS -cl-ext=+all,-cl_khr_fp64,-__opencl_c_fp64)
 create_pcm(opencl-c-12-spir.pcm cl12spir opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir.pcm cl20spir opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-30-spir.pcm cl30spir opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
