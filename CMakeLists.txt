@@ -1,5 +1,26 @@
-project( common_clang )
 cmake_minimum_required(VERSION 3.4.3)
+
+if(NOT DEFINED BASE_LLVM_VERSION)
+  set(BASE_LLVM_VERSION 11.0.0)
+endif(NOT DEFINED BASE_LLVM_VERSION)
+set(OPENCL_CLANG_VERSION ${BASE_LLVM_VERSION}.0)
+
+if(NOT DEFINED OPENCL_CLANG_BUILD_EXTERNAL)
+  # check if we build inside llvm or not
+  if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(OPENCL_CLANG_BUILD_EXTERNAL YES)
+  endif(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+endif(NOT DEFINED OPENCL_CLANG_BUILD_EXTERNAL)
+
+if(OPENCL_CLANG_BUILD_EXTERNAL)
+  project(OPENCL_CLANG
+    VERSION
+    ${OPENCL_CLANG_VERSION}
+    LANGUAGES
+      CXX
+      C
+  )
+endif()
 
 # Do not omit TARGET_OBJECTS expression from the SOURCES target
 # property
@@ -14,7 +35,7 @@ set(CMAKE_MODULE_PATH
 
 include(CMakeFunctions)
 
-if(LLVM_USE_HOST_TOOLS)
+if(LLVM_USE_HOST_TOOLS AND OPENCL_CLANG_BUILD_EXTERNAL)
   include(CrossCompile)
   llvm_create_cross_target(${PROJECT_NAME} NATIVE "" Release)
 endif()
