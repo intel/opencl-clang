@@ -52,6 +52,8 @@ To build opencl-clang as a standalone project, you need to obtain pre-built LLVM
 and SPIR-V Translator libraries. **Note:** currently this kind of build is
 supported on Linux only.
 
+If opencl-clang is used as part of another CMake project, you will need to define `OPENCL_CLANG_BUILD_EXTERNAL`.
+
 Integration with pre-built LLVM is done using standard `find_package` way as
 documented in [Embedding LLVM in your project](https://llvm.org/docs/CMake.html#embedding-llvm-in-your-project).
 

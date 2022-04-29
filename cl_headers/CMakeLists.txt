@@ -1,6 +1,6 @@
 set(CL_HEADERS_LIB cl_headers)
 set(CLANG_COMMAND $<TARGET_FILE:clang> )
-if(LLVM_USE_HOST_TOOLS)
+if(LLVM_USE_HOST_TOOLS AND NOT OPENCL_CLANG_BUILD_EXTERNAL)
   build_native_tool(clang CLANG_COMMAND)
 endif()
 
