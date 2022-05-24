@@ -324,6 +324,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       if (!optionsParser.hasOptDisable()) {
         SPIRVOpts.setMemToRegEnabled(true);
       }
+      SPIRVOpts.setPreserveOCLKernelArgTypeMetadataThroughString(true);
       success = llvm::writeSpirv(M.get(), SPIRVOpts, OS, Err);
       err_ostream << Err.c_str();
       err_ostream.flush();
