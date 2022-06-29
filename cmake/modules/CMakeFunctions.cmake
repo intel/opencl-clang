@@ -57,7 +57,6 @@ function(is_backport_patch_present patch_path repo_dir patch_in_branch)
         WORKING_DIRECTORY ${repo_dir}
         RESULT_VARIABLE patch_not_in_branches
         OUTPUT_QUIET
-        ERROR_QUIET
         )
     if(patch_not_in_branches)
         set(patch_in_branch False PARENT_SCOPE) # The patch is not present in local branch
@@ -74,7 +73,6 @@ function(is_valid_revision repo_dir revision return_val)
         COMMAND ${GIT_EXECUTABLE} log -1 ${revision}
         WORKING_DIRECTORY ${repo_dir}
         RESULT_VARIABLE output_var
-        ERROR_QUIET
         OUTPUT_QUIET
         )
     if(${output_var} EQUAL 0)
@@ -106,7 +104,6 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
         COMMAND ${GIT_EXECUTABLE} rev-parse --verify --no-revs -q ${target_branch}
         WORKING_DIRECTORY ${repo_dir}
         RESULT_VARIABLE patches_needed
-        ERROR_QUIET
         OUTPUT_QUIET
     )
     if(patches_needed EQUAL 128) # not a git repo
@@ -122,7 +119,6 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
                 WORKING_DIRECTORY ${repo_dir}
                 OUTPUT_VARIABLE repo_head
                 OUTPUT_STRIP_TRAILING_WHITESPACE
-                ERROR_QUIET
                 )
             message(STATUS "[OPENCL-CLANG] ref ${base_revision} not exists in repository, using current HEAD:${repo_head}")
             set(base_revision ${repo_head})
@@ -142,10 +138,9 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
                 message(STATUS "[OPENCL-CLANG] Patch ${patch} is already in local branch - ignore patching")
             else()
                 execute_process( # Apply the patch
-                    COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patch}
+                    COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace -C0 ${patch}
                     WORKING_DIRECTORY ${repo_dir}
                     OUTPUT_VARIABLE patching_log
-                    ERROR_QUIET
                     RESULT_VARIABLE ret_apply_patch
                 )
                 message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
@@ -159,7 +154,6 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch ret)
             COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}
             WORKING_DIRECTORY ${repo_dir}
             RESULT_VARIABLE ret_check_out
-            ERROR_QUIET
             OUTPUT_QUIET
         )
     endif()
