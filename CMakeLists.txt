@@ -1,5 +1,26 @@
-project( common_clang )
 cmake_minimum_required(VERSION 3.4.3)
+
+if(NOT DEFINED BASE_LLVM_VERSION)
+  set(BASE_LLVM_VERSION 16.0.0)
+endif(NOT DEFINED BASE_LLVM_VERSION)
+set(OPENCL_CLANG_VERSION ${BASE_LLVM_VERSION}.0)
+
+if(NOT DEFINED OPENCL_CLANG_BUILD_EXTERNAL)
+  # check if we build inside llvm or not
+  if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(OPENCL_CLANG_BUILD_EXTERNAL YES)
+  endif(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+endif(NOT DEFINED OPENCL_CLANG_BUILD_EXTERNAL)
+
+if(OPENCL_CLANG_BUILD_EXTERNAL)
+  project(OPENCL_CLANG
+    VERSION
+    ${OPENCL_CLANG_VERSION}
+    LANGUAGES
+      CXX
+      C
+  )
+endif()
 
 # Do not omit TARGET_OBJECTS expression from the SOURCES target
 # property
@@ -14,13 +35,18 @@ set(CMAKE_MODULE_PATH
 
 include(CMakeFunctions)
 
+if(LLVM_USE_HOST_TOOLS AND OPENCL_CLANG_BUILD_EXTERNAL)
+  include(CrossCompile)
+  llvm_create_cross_target(${PROJECT_NAME} NATIVE "" Release)
+endif()
+
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(USE_PREBUILT_LLVM ON)
 
     add_definitions(-DUSE_PREBUILT_LLVM)
 
     if(NOT PREFERRED_LLVM_VERSION)
-        set(PREFERRED_LLVM_VERSION "12.0.0")
+        set(PREFERRED_LLVM_VERSION "16.0.0")
     endif(NOT PREFERRED_LLVM_VERSION)
     message(STATUS "[OPENCL-CLANG] Looking for LLVM version ${PREFERRED_LLVM_VERSION}")
     find_package(LLVM ${PREFERRED_LLVM_VERSION} REQUIRED)
@@ -55,7 +81,7 @@ include(AddLLVM)
 include(TableGen)
 
 if (NOT WIN32)
-    add_subdirectory( linux_linker )
+    add_subdirectory( linux_linker bin)
 endif()
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
@@ -137,7 +163,7 @@ endif(NOT USE_PREBUILT_LLVM)
 set (COMPILE_OPTIONS_TD  opencl_clang_options.td)
 set (COMPILE_OPTIONS_INC opencl_clang_options.inc)
 
-set(LLVM_TABLEGEN_EXE "llvm-tblgen")
+find_program(LLVM_TABLEGEN_EXE "llvm-tblgen" ${LLVM_TOOLS_BINARY_DIR})
 set(LLVM_TARGET_DEFINITIONS ${COMPILE_OPTIONS_TD})
 if(USE_PREBUILT_LLVM)
   set(TABLEGEN_ADDITIONAL -I ${LLVM_INCLUDE_DIRS})
