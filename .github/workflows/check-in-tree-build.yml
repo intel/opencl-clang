@@ -21,7 +21,7 @@ on:
     - cron: 0 0 * * 0
 
 env:
-  LLVM_VERSION: 14
+  LLVM_VERSION: 15
 
 jobs:
   build_and_test_linux:
@@ -42,13 +42,13 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: llvm/llvm-project
-          ref: release/14.x
+          ref: release/15.x
           path: llvm-project
       - name:  Checkout the translator sources
         uses: actions/checkout@v2
         with:
           repository: KhronosGroup/SPIRV-LLVM-Translator
-          ref: llvm_release_140
+          ref: llvm_release_150
           path: llvm-project/SPIRV-LLVM-Translator
       - name:  Checkout opencl-clang sources
         uses: actions/checkout@v2
