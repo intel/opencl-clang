@@ -294,52 +294,53 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       success = clang::ExecuteCompilerInvocation(compiler.get());
     } catch (const std::exception &) {
     }
-    pResult->setIRType(IR_TYPE_COMPILED_OBJECT);
-    pResult->setIRName(optionsParser.getSourceName());
-
-    // Our error handler depends on the Diagnostics object, which we're
-    // potentially about to delete. Uninstall the handler now so that any
-    // later errors use the default handling behavior instead.
-    // (currently commented out since setting the llvm error handling in
-    // multi-threaded environment is unsupported)
-    // llvm::remove_fatal_error_handler();
-    err_ostream.flush();
-
-    if (success && (optionsParser.hasEmitSPIRV() || optionsParser.hasEmitSPIRVText())) {
-      // Translate LLVM IR to SPIR-V.
-      if (optionsParser.hasEmitSPIRVText())
-        SPIRV::SPIRVUseTextFormat = true;
-      llvm::StringRef LLVM_IR(static_cast<const char*>(pResult->GetIR()),
-          pResult->GetIRSize());
-      std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(LLVM_IR, pResult->GetIRName(), false);
-      llvm::LLVMContext Context;
-      auto E = llvm::getOwningLazyBitcodeModule(std::move(MB), Context,
-          /*ShouldLazyLoadMetadata=*/true);
-      llvm::logAllUnhandledErrors(E.takeError(), err_ostream, "error: ");
-      std::unique_ptr<llvm::Module> M = std::move(*E);
-
-      if (M->materializeAll()) {
-        if (pBinaryResult) {
-          *pBinaryResult = nullptr;
-        }
-        assert(!"Failed to read just compiled LLVM IR!");
-        return CL_COMPILE_PROGRAM_FAILURE;
-      }
-      pResult->getIRBufferRef().clear();
-      SmallVectorBuffer StreamBuf(pResult->getIRBufferRef());
-      std::ostream OS(&StreamBuf);
-      std::string Err;
-      SPIRV::TranslatorOpts SPIRVOpts;
-      SPIRVOpts.enableAllExtensions();
-      if (!optionsParser.hasOptDisable()) {
-        SPIRVOpts.setMemToRegEnabled(true);
-      }
-      success = llvm::writeSpirv(M.get(), SPIRVOpts, OS, Err);
-      err_ostream << Err.c_str();
-      err_ostream.flush();
-    }
     {
       llvm::sys::SmartScopedLock<true> compileGuard {*compileMutex};
+      pResult->setIRType(IR_TYPE_COMPILED_OBJECT);
+      pResult->setIRName(optionsParser.getSourceName());
+
+      // Our error handler depends on the Diagnostics object, which we're
+      // potentially about to delete. Uninstall the handler now so that any
+      // later errors use the default handling behavior instead.
+      // (currently commented out since setting the llvm error handling in
+      // multi-threaded environment is unsupported)
+      // llvm::remove_fatal_error_handler();
+      err_ostream.flush();
+
+      if (success && (optionsParser.hasEmitSPIRV() || optionsParser.hasEmitSPIRVText())) {
+        // Translate LLVM IR to SPIR-V.
+        if (optionsParser.hasEmitSPIRVText())
+          SPIRV::SPIRVUseTextFormat = true;
+        llvm::StringRef LLVM_IR(static_cast<const char*>(pResult->GetIR()),
+            pResult->GetIRSize());
+        std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(LLVM_IR, pResult->GetIRName(), false);
+        llvm::LLVMContext Context;
+        auto E = llvm::getOwningLazyBitcodeModule(std::move(MB), Context,
+            /*ShouldLazyLoadMetadata=*/true);
+        llvm::logAllUnhandledErrors(E.takeError(), err_ostream, "error: ");
+        std::unique_ptr<llvm::Module> M = std::move(*E);
+
+        if (M->materializeAll()) {
+          if (pBinaryResult) {
+            *pBinaryResult = nullptr;
+          }
+          assert(!"Failed to read just compiled LLVM IR!");
+          return CL_COMPILE_PROGRAM_FAILURE;
+        }
+        pResult->getIRBufferRef().clear();
+        SmallVectorBuffer StreamBuf(pResult->getIRBufferRef());
+        std::ostream OS(&StreamBuf);
+        std::string Err;
+        SPIRV::TranslatorOpts SPIRVOpts;
+        SPIRVOpts.enableAllExtensions();
+        if (!optionsParser.hasOptDisable()) {
+          SPIRVOpts.setMemToRegEnabled(true);
+        }
+        success = llvm::writeSpirv(M.get(), SPIRVOpts, OS, Err);
+        err_ostream << Err.c_str();
+        err_ostream.flush();
+      }
+
       if (pBinaryResult) {
         *pBinaryResult = pResult.release();
       }
