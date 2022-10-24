@@ -5,11 +5,18 @@
 name: Build opencl-clang
 inputs:
   ref_llvm:
+    description: 'LLVM ref to build with'
     required: true
   ref_translator:
+    description: 'SPIRV-LLVM-Translator ref to build with'
     required: true
   ref_opencl-clang:
+    description: 'opencl-clang ref to build with'
     required: true
+  build_type:
+    description: 'Build type to pass to CMake'
+    required: false
+    default: Release
 
 runs:
   using: 'composite'
@@ -50,7 +57,7 @@ runs:
           -DLLVM_EXTERNAL_PROJECTS="llvm-spirv;opencl-clang" \
           -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR=${{ github.workspace }}/llvm-project/SPIRV-LLVM-Translator \
           -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR=${{ github.workspace }}/llvm-project/opencl-clang        \
-          -DCMAKE_BUILD_TYPE=Release    \
+          -DCMAKE_BUILD_TYPE=${{ inputs.build_type }}  \
           -DLLVM_TARGETS_TO_BUILD="X86" \
           -G "Unix Makefiles"
 

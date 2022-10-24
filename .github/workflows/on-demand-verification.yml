@@ -11,15 +11,24 @@ on:
       ref_llvm:
         description: 'LLVM ref to build with'
         required: true
-        default: 'main'
+        default: main
       ref_translator:
         description: 'SPIRV-LLVM-Translator ref to build with'
         required: true
-        default: 'main'
+        default: main
       ref_opencl-clang:
         description: 'opencl-clang ref to build with'
         required: true
-        default: 'master'
+        default: master
+      build_type:
+        description: 'Build type to pass to CMake'
+        required: true
+        default: Release
+        type: choice
+        options: 
+        - Release
+        - Debug
+        - RelWithDebInfo
 
 jobs:
 
