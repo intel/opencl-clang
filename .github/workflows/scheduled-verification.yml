@@ -1,0 +1,32 @@
+name: Scheduled verification
+run-name: Scheduled verification
+
+on:
+  schedule:
+    # Run Monday & Thrusday at 00:00
+    - cron: 0 0 * * 1,4
+
+jobs:
+
+  verify-default-branches:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3  # Make build-opencl-clang available
+      - uses: ./.github/actions/build-opencl-clang
+        with:
+          ref_llvm: main
+          ref_translator: main
+          ref_opencl-clang: master
+
+  verify-release-branches:
+    strategy:
+      matrix:
+        llvm_version: [ 11, 12, 13, 14, 15 ]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3  # Make build-opencl-clang available
+      - uses: ./.github/actions/build-opencl-clang
+        with:
+          ref_llvm: release/${{ matrix.llvm_version }}.x
+          ref_translator: llvm_release_${{ matrix.llvm_version }}0
+          ref_opencl-clang: ocl-open-${{ matrix.llvm_version }}0

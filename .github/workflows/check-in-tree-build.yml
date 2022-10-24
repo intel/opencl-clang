@@ -3,13 +3,13 @@ name: In-tree build
 on:
   push:
     branches:
-      - 'ocl-open-*'
+      - master
     paths-ignore: # no need to check build for:
       - 'docs/**' # documentation
       - '**.md'   # README
   pull_request:
     branches:
-      - 'ocl-open-*'
+      - master
     paths-ignore: # no need to check build for:
       - 'docs/**' # documentation
       - '**.md'   # README
@@ -21,7 +21,7 @@ on:
     - cron: 0 0 * * 0
 
 env:
-  LLVM_VERSION: 11
+  LLVM_VERSION: 15 
 
 jobs:
   build_and_test_linux:
@@ -34,21 +34,17 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-18.04
     steps:
-      - name: setup git config
-        run: |
-          git config --global user.email "<>"
-          git config --global user.name "GitHub Actions Bot"
       - name: Checkout LLVM sources
         uses: actions/checkout@v2
         with:
           repository: llvm/llvm-project
-          ref: release/11.x
+          ref: main 
           path: llvm-project
       - name:  Checkout the translator sources
         uses: actions/checkout@v2
         with:
           repository: KhronosGroup/SPIRV-LLVM-Translator
-          ref: llvm_release_110
+          ref: main
           path: llvm-project/SPIRV-LLVM-Translator
       - name:  Checkout opencl-clang sources
         uses: actions/checkout@v2
