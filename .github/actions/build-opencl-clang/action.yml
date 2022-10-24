@@ -1,0 +1,57 @@
+name: Build opencl-clang
+inputs:
+  ref_llvm:
+    required: true
+  ref_translator:
+    required: true
+  ref_opencl-clang:
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+
+    # Setup git credentials to make applying patches possible
+    - run: |
+        git config --global user.email "action@intel.com"
+        git config --global user.name "Action Bot"
+      shell: bash
+
+    - name: Checkout LLVM
+      uses: actions/checkout@v3
+      with:
+        repository: llvm/llvm-project
+        path: llvm-project
+        ref: ${{ inputs.ref_llvm }}
+
+    - name: Checkout SPIRV-LLVM-Translator
+      uses: actions/checkout@v3
+      with:
+        repository: KhronosGroup/SPIRV-LLVM-Translator
+        path: llvm-project/SPIRV-LLVM-Translator
+        ref: ${{ inputs.ref_translator }}
+        
+    - name: Checkout opencl-clang
+      uses: actions/checkout@v3
+      with:
+        path: llvm-project/opencl-clang
+        ref: ${{ inputs.ref_opencl-clang }}
+        
+    - name: Configure
+      shell: bash
+      run: |
+        mkdir build && cd build
+        cmake ${{ github.workspace }}/llvm-project/llvm      \
+          -DLLVM_ENABLE_PROJECTS="clang"                     \
+          -DLLVM_EXTERNAL_PROJECTS="llvm-spirv;opencl-clang" \
+          -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR=${{ github.workspace }}/llvm-project/SPIRV-LLVM-Translator \
+          -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR=${{ github.workspace }}/llvm-project/opencl-clang        \
+          -DCMAKE_BUILD_TYPE=Release    \
+          -DLLVM_TARGETS_TO_BUILD="X86" \
+          -G "Unix Makefiles"
+
+    - name: Build
+      shell: bash
+      run: |
+        cd build
+        make opencl-clang -j8
