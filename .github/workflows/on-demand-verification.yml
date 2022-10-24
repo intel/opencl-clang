@@ -24,7 +24,6 @@ on:
 jobs:
 
   verify_on_demand:
-    if: ${{ github.ref_name == 'master' }}
     runs-on: ubuntu-22.04
     steps:
 
