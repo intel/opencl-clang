@@ -1,11 +1,11 @@
-name: On push verification
-run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
-
 # ===---
 # Running on push & pull_request.
 #   This workflow parses the destination branch
 #   to choose correct dependencies revisions
 # ===---
+
+name: On push verification
+run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
 
 on:
   push:

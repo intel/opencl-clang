@@ -1,3 +1,7 @@
+# ===---
+# Main opencl-clang building script
+# ===---
+
 name: Build opencl-clang
 inputs:
   ref_llvm:

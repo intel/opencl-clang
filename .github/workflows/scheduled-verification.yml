@@ -1,9 +1,9 @@
-name: Scheduled verification
-run-name: Scheduled verification
-
 # ===---
 # Workflow run for regular SPIRV-LLVM-Translator and LLVM compatibility check
 # ===---
+
+name: Scheduled verification
+run-name: Scheduled verification
 
 on:
   schedule:

@@ -1,9 +1,9 @@
-name: On demand verification
-run-name: 'On demand by ${{ github.actor }}'
-
 # ===---
 # To be run manually by maintainers
 # ===---
+
+name: On demand verification
+run-name: 'On demand by ${{ github.actor }}'
 
 on:
   workflow_dispatch:
