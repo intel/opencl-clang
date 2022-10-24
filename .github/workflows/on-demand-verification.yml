@@ -1,5 +1,9 @@
+# ===---
+# To be run manually by maintainers
+# ===---
+
 name: On demand verification
-run-name: 'On demand by ${{ github.actor }}: ${{ github.ref_name }}'
+run-name: 'On demand by ${{ github.actor }}'
 
 on:
   workflow_dispatch:
@@ -7,25 +11,36 @@ on:
       ref_llvm:
         description: 'LLVM ref to build with'
         required: true
-        default: 'main'
+        default: main
       ref_translator:
         description: 'SPIRV-LLVM-Translator ref to build with'
         required: true
-        default: 'main'
+        default: main
       ref_opencl-clang:
         description: 'opencl-clang ref to build with'
         required: true
-        default: 'master'
+        default: master
+      build_type:
+        description: 'Build type to pass to CMake'
+        required: true
+        default: Release
+        type: choice
+        options: 
+        - Release
+        - Debug
+        - RelWithDebInfo
 
 jobs:
 
   verify_on_demand:
-    if: ${{ github.ref_name == 'master' }}
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout opencl-clang sources for action files
+
+      - name: Checkout opencl-clang sources for action files availabilty
         uses: actions/checkout@v3
-      - uses: ./.github/actions/build-opencl-clang
+
+      - name: Run build-opencl-clang action
+        uses: ./.github/actions/build-opencl-clang
         with:
           ref_llvm: ${{ inputs.ref_llvm }}
           ref_translator:  ${{ inputs.ref_translator }}
