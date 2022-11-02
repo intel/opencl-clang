@@ -3,7 +3,6 @@ set(CLANG_COMMAND $<TARGET_FILE:clang> )
 if(LLVM_USE_HOST_TOOLS AND NOT OPENCL_CLANG_BUILD_EXTERNAL)
   build_native_tool(clang CLANG_COMMAND)
 endif()
-set(LINUX_RESOURCE_LINKER_COMMAND linux_resource_linker)
 
 function(copy_file SRC DST)
 add_custom_command(
