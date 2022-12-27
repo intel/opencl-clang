@@ -254,7 +254,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
           new llvm::vfs::InMemoryFileSystem);
       OverlayFS->pushOverlay(MemFS);
 
-      compiler->createFileManager(OverlayFS);
+      compiler->createFileManager(std::move(OverlayFS));
       compiler->createSourceManager(compiler->getFileManager());
 
       // Create compiler invocation from user args before trickering with it
