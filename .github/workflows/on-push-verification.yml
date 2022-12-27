@@ -10,11 +10,11 @@ run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name 
 on:
   push:
     branches:
-      - master
+      - main
       - ocl-open-*
   pull_request:
     branches:
-      - master
+      - main
       - ocl-open-*
     types:
       - opened
@@ -25,10 +25,10 @@ on:
 jobs:
 
   verify_default_branch:
-    name: Verify for `master` branch
+    name: Verify for `main` branch
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
-    if: ${{ (github.event_name == 'push' && github.ref_name == 'master') || (github.event_name == 'pull_request' && github.base_ref == 'master') }}
+    if: ${{ (github.event_name == 'push' && github.ref_name == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'main') }}
     runs-on: ubuntu-22.04
     steps:
 
@@ -46,7 +46,7 @@ jobs:
     name: Verify for `ocl-open-*` release branch
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
-    if: ${{ github.ref_name != 'master' && github.base_ref != 'master' }}
+    if: ${{ github.ref_name != 'main' && github.base_ref != 'main' }}
     runs-on: ubuntu-22.04
     steps:
 

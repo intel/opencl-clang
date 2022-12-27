@@ -19,7 +19,7 @@ on:
       ref_opencl-clang:
         description: 'opencl-clang ref to build with'
         required: true
-        default: master
+        default: main
       build_type:
         description: 'Build type to pass to CMake'
         required: true
