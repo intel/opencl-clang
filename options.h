@@ -71,6 +71,8 @@ public:
 
   const char *MakeArgStringRef(llvm::StringRef str) const override;
 
+  virtual ~OpenCLArgList() {}
+
 private:
   /// List of argument strings used by the contained Args.
   ///
@@ -93,10 +95,10 @@ private:
 //
 // OpenCL specific OptTable
 //
-class OpenCLOptTable : public llvm::opt::OptTable {
+class OpenCLOptTable : public llvm::opt::GenericOptTable {
 public:
   OpenCLOptTable(llvm::ArrayRef<Info> pOptionInfos)
-      : OptTable(pOptionInfos) {}
+      : llvm::opt::GenericOptTable(pOptionInfos) {}
 
   OpenCLArgList *ParseArgs(const char *szOptions, unsigned &missingArgIndex,
                            unsigned &missingArgCount) const;

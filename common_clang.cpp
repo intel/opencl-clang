@@ -40,7 +40,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
-#include "llvm/Support/VirtualFileSystem.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticIDs.h"
@@ -63,11 +62,8 @@ Copyright (c) Intel Corporation (2009-2017).
 #define CL_OUT_OF_HOST_MEMORY -6
 
 #include "assert.h"
-#include <algorithm>
 #include <iosfwd>
 #include <iterator>
-#include <list>
-#include <streambuf>
 #ifdef _WIN32
 #include <ctype.h>
 #endif
@@ -265,8 +261,6 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       ProcessWarningOptions(*Diags, compiler->getDiagnosticOpts());
 
       // Map memory buffers to a virtual file system
-
-      // Source file
       MemFS->addFile(
           optionsParser.getSourceName(), (time_t)0,
           llvm::MemoryBuffer::getMemBuffer(
