@@ -237,17 +237,37 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 
   for (auto it = effectiveArgs.begin(), end = effectiveArgs.end(); it != end;
        ++it) {
-    if (it->compare("-Dcl_khr_fp64") == 0)
+    if (it->compare("-Dcl_khr_fp64") == 0 || it->compare("-D cl_khr_fp64=1") == 0)
       fp64Enabled = true;
+    else if (it->compare("-U cl_khr_fp64") == 0)
+      fp64Enabled = false;
+    // Find last position that enables or disables cl_khr_fp64
+    else if (it->find("cl_khr_fp64") != std::string::npos) {
+      auto NegFp64 = it->rfind("-cl_khr_fp64");
+      auto PosFp64 = it->rfind("+cl_khr_fp64");
+      if(NegFp64 != std::string::npos && PosFp64 != std::string::npos)
+         fp64Enabled = PosFp64 > NegFp64;
+      else if(NegFp64 != std::string::npos)
+        fp64Enabled = false;
+      else
+        fp64Enabled = true;
+    }
   }
 
   std::map<std::string, bool> extMap{
       {"cl_khr_3d_image_writes", true},
       {"cl_khr_depth_images", true},
+#ifdef GPU_EXT
       {"cl_khr_fp16", true},
+      {"cl_khr_mipmap_image", true},
+      {"cl_khr_mipmap_image_writes", true},
+      {"cl_khr_subgroups", true},
+      {"cl_intel_device_side_avc_motion_estimation", true},
+      {"cl_intel_planar_yuv", true},
 #ifdef _WIN32
       // cl_khr_gl_msaa_sharing is only supported on Windows [NEO].
       {"cl_khr_gl_msaa_sharing", true},
+#endif
 #endif
       {"cl_khr_global_int32_base_atomics", true},
       {"cl_khr_global_int32_extended_atomics", true},
@@ -255,11 +275,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       {"cl_khr_int64_extended_atomics", true},
       {"cl_khr_local_int32_base_atomics", true},
       {"cl_khr_local_int32_extended_atomics", true},
-      {"cl_khr_mipmap_image", true},
-      {"cl_khr_mipmap_image_writes", true},
-      {"cl_khr_subgroups", true},
-      {"cl_intel_device_side_avc_motion_estimation", true},
-      {"cl_intel_planar_yuv", true},
       {"cl_intel_subgroups", true},
       {"cl_intel_subgroups_short", true}};
 
