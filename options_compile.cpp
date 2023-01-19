@@ -165,6 +165,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     case OPT_COMPILE_g_Flag:
       effectiveArgs.push_back("-debug-info-kind=limited");
       effectiveArgs.push_back("-dwarf-version=4");
+#ifdef _WIN32
+      // Do not use column information on Windows.
+      effectiveArgs.push_back("-gno-column-info");
+#endif
       break;
     }
   }
