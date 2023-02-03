@@ -29,7 +29,8 @@ Copyright (c) Intel Corporation (2009-2017).
 #include <map>
 #include <sstream>
 
-#define PREFIX(NAME, VALUE) const char *const NAME[] = VALUE;
+#define PREFIX(NAME, VALUE)                                                    \
+  const llvm::ArrayRef<llvm::StringLiteral> NAME = VALUE;
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
                HELPTEXT, METAVAR, VALUES)
 #include "opencl_clang_options.inc"
@@ -47,7 +48,7 @@ static const OptTable::Info ClangOptionsInfoTable[] = {
   {                                                                            \
     PREFIX, NAME, HELPTEXT, METAVAR, OPT_COMPILE_##ID,                         \
         llvm::opt::Option::KIND##Class, PARAM, FLAGS, OPT_COMPILE_##GROUP,     \
-        OPT_COMPILE_##ALIAS, ALIASARGS                                         \
+        OPT_COMPILE_##ALIAS, ALIASARGS, VALUES                                 \
   }                                                                            \
   ,
 #include "opencl_clang_options.inc"
