@@ -101,7 +101,7 @@ add_custom_target (
 function(pack_to_obj SRC DST TAG)
     add_custom_command (
         OUTPUT ${DST}
-        DEPENDS ${SRC} linux_resource_linker
+        DEPENDS ${SRC} ${LINUX_RESOURCE_LINKER_COMMAND}
         COMMAND ${LINUX_RESOURCE_LINKER_COMMAND} "${SRC}" "${DST}" "${TAG}"
         COMMENT "Packing ${SRC}"
     )

@@ -158,13 +158,17 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       // default:
       // assert(false && "some unknown argument");
     case OPT_COMPILE_profiling:
-    case OPT_COMPILE_g_Flag:
-      effectiveArgs.push_back("-debug-info-kind=limited");
-      effectiveArgs.push_back("-dwarf-version=4");
-      break;
     case OPT_COMPILE_gline_tables_only_Flag:
       effectiveArgs.push_back("-debug-info-kind=line-tables-only");
       effectiveArgs.push_back("-dwarf-version=4");
+      break;
+    case OPT_COMPILE_g_Flag:
+      effectiveArgs.push_back("-debug-info-kind=limited");
+      effectiveArgs.push_back("-dwarf-version=4");
+#ifdef _WIN32
+      // Do not use column information on Windows.
+      effectiveArgs.push_back("-gno-column-info");
+#endif
       break;
     }
   }
@@ -221,7 +225,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   // OpenCL v2.0 s6.9.u - Implicit function declaration is not supported.
   // Behavior of clang is changed and now there is only warning about
   // implicit function declarations. To be more user friendly and avoid
-  // unexpected indirect function calls in IR, let's force this warning to
+  // unexpected indirect function calls in BE, let's force this warning to
   // error.
   effectiveArgs.push_back("-Werror=implicit-function-declaration");
 

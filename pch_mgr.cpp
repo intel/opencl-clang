@@ -18,8 +18,8 @@ Copyright (c) Intel Corporation (2009-2017).
 
 #include "pch_mgr.h"
 
-#include "llvm/Object/ELF.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Object/ELF.h"
 
 #include <cstdlib>
 #include <stdio.h>
@@ -35,6 +35,8 @@ struct auto_dlclose {
   auto_dlclose(void *module) : m_pModule(module) {}
 
   ~auto_dlclose() {
+    if (m_pModule)
+      dlclose(m_pModule);
   }
 
   void *get() { return m_pModule; }

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4.3)
+cmake_minimum_required(VERSION 3.13.4)
 
 if(NOT DEFINED BASE_LLVM_VERSION)
   set(BASE_LLVM_VERSION 16.0.0)
@@ -83,6 +83,8 @@ include(TableGen)
 if (NOT WIN32)
     add_subdirectory( linux_linker bin)
 endif()
+
+use_rtti(FALSE)
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
     set(ADDR 32)
