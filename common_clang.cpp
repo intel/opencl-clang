@@ -319,7 +319,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
         if (pBinaryResult) {
           *pBinaryResult = nullptr;
         }
-        assert(!"Failed to read just compiled LLVM IR!");
+        assert(0 && "Failed to read just compiled LLVM IR!");
         return CL_COMPILE_PROGRAM_FAILURE;
       }
       pResult->getIRBufferRef().clear();
