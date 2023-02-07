@@ -30,7 +30,9 @@ Copyright (c) Intel Corporation (2009-2017).
 #include <sstream>
 
 #define PREFIX(NAME, VALUE)                                                    \
-  const llvm::ArrayRef<llvm::StringLiteral> NAME = VALUE;
+  static constexpr llvm::StringLiteral NAME##_init[] = VALUE;                  \
+  static constexpr llvm::ArrayRef<llvm::StringLiteral> NAME(                   \
+      NAME##_init, std::size(NAME##_init) - 1);
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
                HELPTEXT, METAVAR, VALUES)
 #include "opencl_clang_options.inc"
@@ -41,7 +43,7 @@ using namespace llvm::opt;
 
 static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > compileOptionsMutex;
 
-static const OptTable::Info ClangOptionsInfoTable[] = {
+static constexpr OptTable::Info ClangOptionsInfoTable[] = {
 #define PREFIX(NAME, VALUE)
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
                HELPTEXT, METAVAR, VALUES)                                      \
