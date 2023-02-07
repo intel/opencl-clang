@@ -135,7 +135,7 @@ static bool GetHeaders(std::vector<Resource> &Result) {
   for (auto Header : Headers) {
     Resource R = RM.get_resource(Header.Name, Header.ID, "PCM", true);
     if (!R) {
-      assert(0 && "Resource not found");
+      assert(false && "Resource not found");
       return false;
     }
 
@@ -319,7 +319,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
         if (pBinaryResult) {
           *pBinaryResult = nullptr;
         }
-        assert(0 && "Failed to read just compiled LLVM IR!");
+        assert(false && "Failed to read just compiled LLVM IR!");
         return CL_COMPILE_PROGRAM_FAILURE;
       }
       pResult->getIRBufferRef().clear();
