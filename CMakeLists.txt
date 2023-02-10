@@ -85,6 +85,7 @@ if (NOT WIN32)
 endif()
 
 use_rtti(FALSE)
+use_eh(TRUE)
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
     set(ADDR 32)
@@ -284,51 +285,15 @@ else()
   )
 endif()
 
-add_llvm_library(${TARGET_NAME} SHARED
-  ${TARGET_INCLUDE_FILES}
-  ${TARGET_SOURCE_FILES}
-  $<TARGET_OBJECTS:cl_headers>
+add_library(${TARGET_NAME} SHARED
+    ${TARGET_INCLUDE_FILES}
+    ${TARGET_SOURCE_FILES}
+    $<TARGET_OBJECTS:cl_headers>
+)
 
-  DEPENDS CClangCompileOptions
-  LINK_COMPONENTS
-    all
-  LINK_LIBS
-    ${OPENCL_CLANG_LINK_LIBS}
-  )
+add_dependencies(${TARGET_NAME} CClangCompileOptions)
 
-# Configure resource file on Windows
 if (WIN32)
-    # windows_resource_file should be defined by llvm_add_library and should
-    # contain full patch to a .rc file
-    # It also might not be defined if this library is built out-of-tree:
-    # let's use our copy of .rc file from LLVM source tree in that case
-    if (NOT DEFINED windows_resource_file)
-        set(windows_resource_file windows_resource_file.rc)
-    endif(NOT DEFINED windows_resource_file)
-
-    set(RC_CHAR_TM "\\231")
-    set(RC_CHAR_C "\\251")
-    set(RC_CHAR_R "\\256")
-
-    set(RC_FILE_VERSION "${PRODUCT_VER_MAJOR}.${PRODUCT_VER_MINOR}.${LLVM_VER_MAJOR}.${LLVM_VER_MINOR}")
-    set(RC_PRODUCT_NAME "Intel${RC_CHAR_R} Front-end Library for OpenCL${RC_CHAR_TM} software")
-
-    # Adjust content of the resource file by specifying compile definitions
-    set_property(SOURCE ${windows_resource_file}
-        PROPERTY COMPILE_DEFINITIONS
-            "RC_VERSION_FIELD_1=${PRODUCT_VER_MAJOR}"
-            "RC_VERSION_FIELD_2=${PRODUCT_VER_MINOR}"
-            "RC_VERSION_FIELD_3=${LLVM_VER_MAJOR}"
-            "RC_VERSION_FIELD_4=${LLVM_VER_MINOR}"
-            "RC_COMPANY_NAME=\"Intel Corporation\""
-            "RC_FILE_DESCRIPTION=\"${RC_PRODUCT_NAME}\""
-            "RC_FILE_VERSION=\"${RC_FILE_VERSION}\""
-            "RC_INTERNAL_NAME=\"${TARGET_NAME}\""
-            "RC_ORIGINAL_FILENAME=\"${TARGET_NAME}.dll\""
-            "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
-            "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
-            "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
-
     # Enable compiler generation of Control Flow Guard security checks.
     target_compile_options(${TARGET_NAME} PUBLIC "/guard:cf")
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
@@ -342,10 +307,75 @@ elseif(UNIX)
         LINK_FLAGS " -Wl,--no-undefined")
 endif(WIN32)
 
+# Enable new IN_LIST operator.
+cmake_policy(SET CMP0057 NEW)
+set(OTHER_LIBRARIES)
+if ("NVPTX" IN_LIST LLVM_TARGETS_TO_BUILD)
+    list(APPEND OTHER_LIBRARIES LLVMNVPTXCodeGen LLVMNVPTXDesc LLVMNVPTXInfo)
+endif()
+if ("AMDGPU" IN_LIST LLVM_TARGETS_TO_BUILD)
+    list(APPEND OTHER_LIBRARIES LLVMAMDGPUCodeGen LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUInfo)
+endif()
+
+target_link_libraries( ${TARGET_NAME}
+                       LINK_PRIVATE
+                       ${OPENCL_CLANG_LINK_LIBS}
+                       LLVMX86CodeGen
+                       LLVMX86AsmParser
+                       LLVMX86Desc
+                       LLVMX86Info
+                       LLVMX86Disassembler
+                       LLVMAnalysis
+                       LLVMCodeGen
+                       LLVMCore
+                       LLVMipo
+                       LLVMInstCombine
+                       LLVMInstrumentation
+                       LLVMMC
+                       LLVMMCParser
+                       LLVMObjCARCOpts
+                       LLVMOption
+                       LLVMScalarOpts
+                       LLVMSupport
+                       LLVMTransformUtils
+                       LLVMVectorize
+                       LLVMAsmPrinter
+                       LLVMSelectionDAG
+                       LLVMMCDisassembler
+                       LLVMProfileData
+                       LLVMObject
+                       LLVMBitWriter
+                       LLVMIRReader
+                       LLVMAsmParser
+                       LLVMTarget
+                       LLVMBitReader
+                       ${OTHER_LIBRARIES}
+                      )
+
 install(FILES common_clang.h
         DESTINATION include/cclang
         COMPONENT ${TARGET_NAME})
 
-SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
-
-add_custom_target(deploy DEPENDS install-${TARGET_NAME})
+#
+# Stripped PDB files
+#
+if (WIN32)
+    get_target_property(RT_OUTPUT_DIRECTORY ${TARGET_NAME} RUNTIME_OUTPUT_DIRECTORY)
+    file(TO_NATIVE_PATH ${RT_OUTPUT_DIRECTORY}/${CMAKE_CFG_INTDIR}/${TARGET_NAME}_stripped.pdb PDB_NAME)
+    if (${MSVC_VERSION} EQUAL 1500)
+        # Visual Studio 2008
+        set_target_properties(${TARGET_NAME} PROPERTIES LINK_FLAGS    "${LINK_FLAGS} /PDBSTRIPPED:${PDB_NAME}")
+    else (${MSVC_VERSION} EQUAL 1500)
+        # Visual Studio 2010 (assumed if not Visual Studio 2008)
+        # This is a fix due to a bug in CMake, Does not add the flag /DEBUG to the linker flags in Release mode.
+        # The /DEBUG flag is required in order to create stripped pdbs.
+        set_target_properties(${TARGET_NAME} PROPERTIES LINK_FLAGS_DEBUG    "${LINK_FLAGS_DEBUG} /PDBSTRIPPED:${PDB_NAME}")
+        set_target_properties(${TARGET_NAME} PROPERTIES LINK_FLAGS_RELEASE    "${LINK_FLAGS_RELEASE} /DEBUG /PDBSTRIPPED:${PDB_NAME}")
+    endif (${MSVC_VERSION} EQUAL 1500)
+    if (INSTALL_PDBS)
+        install(FILES ${RT_OUTPUT_DIRECTORY}/\${BUILD_TYPE}/${TARGET_NAME}.pdb DESTINATION bin)
+    endif(INSTALL_PDBS)
+    install(FILES ${RT_OUTPUT_DIRECTORY}/\${BUILD_TYPE}/${TARGET_NAME}_stripped.pdb DESTINATION bin)
+else (WIN32)
+    SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
+endif(WIN32)
