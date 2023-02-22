@@ -1,0 +1,74 @@
+From 523775f96742e6f099b3498b6606b7250c0af841 Mon Sep 17 00:00:00 2001
+From: Sven van Haastregt <sven.vanhaastregt@arm.com>
+Date: Tue, 1 Dec 2020 11:33:10 +0000
+Subject: [PATCH] [OpenCL] Allow pointer-to-pointer kernel args beyond CL 1.2
+
+The restriction on pointer-to-pointer kernel arguments has been
+relaxed in OpenCL 2.0.  Apply the same address space restrictions for
+pointer argument types to the inner pointer types.
+
+Differential Revision: https://reviews.llvm.org/D92091
+---
+ clang/lib/Sema/SemaDecl.cpp                   | 29 ++++++++++++++-----
+ .../SemaOpenCL/invalid-kernel-parameters.cl   | 17 ++++++++++-
+ 2 files changed, 38 insertions(+), 8 deletions(-)
+
+/*========================== begin_copyright_notice ============================
+
+Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+See https://llvm.org/LICENSE.txt for license information.
+SPDX-License-Identifier: Apache-2.0 with LLVM-exception
+
+============================= end_copyright_notice ===========================*/
+
+diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+index 9c282a73e0ed..2116b3f7b78e 100644
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -8591,12 +8591,21 @@ static bool isOpenCLSizeDependentType(ASTContext &C, QualType Ty) {
+ static OpenCLParamType getOpenCLKernelParameterType(Sema &S, QualType PT) {
+   if (PT->isPointerType()) {
+     QualType PointeeType = PT->getPointeeType();
+-    if (PointeeType->isPointerType())
+-      return PtrPtrKernelParam;
+     if (PointeeType.getAddressSpace() == LangAS::opencl_generic ||
+         PointeeType.getAddressSpace() == LangAS::opencl_private ||
+         PointeeType.getAddressSpace() == LangAS::Default)
+       return InvalidAddrSpacePtrKernelParam;
++
++    if (PointeeType->isPointerType()) {
++      // This is a pointer to pointer parameter.
++      // Recursively check inner type.
++      OpenCLParamType ParamKind = getOpenCLKernelParameterType(S, PointeeType);
++      if (ParamKind == InvalidAddrSpacePtrKernelParam ||
++          ParamKind == InvalidKernelParam)
++        return ParamKind;
++
++      return PtrPtrKernelParam;
++    }
+     return PtrKernelParam;
+   }
+ 
+@@ -8649,11 +8658,17 @@ static void checkIsValidOpenCLKernelParameter(
+ 
+   switch (getOpenCLKernelParameterType(S, PT)) {
+   case PtrPtrKernelParam:
+-    // OpenCL v1.2 s6.9.a:
+-    // A kernel function argument cannot be declared as a
+-    // pointer to a pointer type.
+-    S.Diag(Param->getLocation(), diag::err_opencl_ptrptr_kernel_param);
+-    D.setInvalidType();
++    // OpenCL v3.0 s6.11.a:
++    // A kernel function argument cannot be declared as a pointer to a pointer
++    // type. [...] This restriction only applies to OpenCL C 1.2 or below.
++    if (S.getLangOpts().OpenCLVersion < 120 &&
++        !S.getLangOpts().OpenCLCPlusPlus) {
++      S.Diag(Param->getLocation(), diag::err_opencl_ptrptr_kernel_param);
++      D.setInvalidType();
++      return;
++    }
++
++    ValidTypes.insert(PT.getTypePtr());
+     return;
+ 
+   case InvalidAddrSpacePtrKernelParam:
