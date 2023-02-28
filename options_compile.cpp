@@ -257,17 +257,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   std::map<std::string, bool> extMap{
       {"cl_khr_3d_image_writes", true},
       {"cl_khr_depth_images", true},
-#ifdef GPU_EXT
       {"cl_khr_fp16", true},
-      {"cl_khr_mipmap_image", true},
-      {"cl_khr_mipmap_image_writes", true},
-      {"cl_khr_subgroups", true},
-      {"cl_intel_device_side_avc_motion_estimation", true},
-      {"cl_intel_planar_yuv", true},
 #ifdef _WIN32
       // cl_khr_gl_msaa_sharing is only supported on Windows [NEO].
       {"cl_khr_gl_msaa_sharing", true},
-#endif
 #endif
       {"cl_khr_global_int32_base_atomics", true},
       {"cl_khr_global_int32_extended_atomics", true},
@@ -275,8 +268,24 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       {"cl_khr_int64_extended_atomics", true},
       {"cl_khr_local_int32_base_atomics", true},
       {"cl_khr_local_int32_extended_atomics", true},
+      {"cl_khr_mipmap_image", true},
+      {"cl_khr_mipmap_image_writes", true},
+      {"cl_khr_subgroups", true},
+      {"cl_intel_device_side_avc_motion_estimation", true},
+      {"cl_intel_planar_yuv", true},
       {"cl_intel_subgroups", true},
       {"cl_intel_subgroups_short", true}};
+
+#ifdef PCH_EXTENSION
+  extMap.clear();
+  std::string customPCHExtStr(PCH_EXTENSION);
+  std::stringstream sstr(customPCHExtStr);
+  while(sstr.good()) {
+    std::string substr;
+    getline(sstr, substr, ',');
+    extMap[substr] = true;
+  }
+#endif
 
   auto parseClExt = [&](const std::string &clExtStr) {
     llvm::StringRef clExtRef(clExtStr);
