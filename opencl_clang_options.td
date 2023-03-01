@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-//  This file defines the options accepted by common_clang.
+//  This file defines the options accepted by opencl_clang.
 //
 //===----------------------------------------------------------------------===//
 

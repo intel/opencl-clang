@@ -12,14 +12,14 @@ Copyright (c) Intel Corporation (2009-2017).
     use of the code. No license, express or implied, by estoppel or otherwise,
     to any intellectual property rights is granted herein.
 
-  \file common_clang.h
+  \file opencl_clang.h
 
   \brief Defines the common structures for both compile and link options parsing
 
 \*****************************************************************************/
 
-#ifndef COMMON_CLANG_OPTIONS_H
-#define COMMON_CLANG_OPTIONS_H
+#ifndef OPENCL_CLANG_OPTIONS_H
+#define OPENCL_CLANG_OPTIONS_H
 
 #include "llvm/Option/Arg.h"
 #include "llvm/ADT/ArrayRef.h"

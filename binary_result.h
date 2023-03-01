@@ -18,7 +18,7 @@ Copyright (c) Intel Corporation (2009-2017).
 
 #pragma once
 
-#include "common_clang.h"
+#include "opencl_clang.h"
 #include "llvm/ADT/SmallVector.h"
 #include <string>
 

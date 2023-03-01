@@ -12,11 +12,11 @@ Copyright (c) Intel Corporation (2009-2017).
     use of the code. No license, express or implied, by estoppel or otherwise,
     to any intellectual property rights is granted herein.
 
-  \file common_clang.cpp
+  \file opencl_clang.cpp
 
 \*****************************************************************************/
 
-#include "common_clang.h"
+#include "opencl_clang.h"
 #include "pch_mgr.h"
 #include "cl_headers/resource.h"
 #include "binary_result.h"
