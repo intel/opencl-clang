@@ -106,12 +106,12 @@ if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
 endif()
 set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
-option(CUSTOM_PCH_EXTENSION_MAP "Set PCH extension map" OFF)
+# PCH_EXTENSION is used to custom PCH extension map, by default it is empty,
+# that is to say, we will use orignal extMap on options_compile.cpp.
+# PCH_EXTENSION can be set by CMake command line or set on CMakeList.
 set(PCH_EXTENSION "" CACHE STRING "")
-if(CUSTOM_PCH_EXTENSION_MAP)
-  if (NOT "${PCH_EXTENSION}" STREQUAL "")
-    add_definitions(-DPCH_EXTENSION="${PCH_EXTENSION}")
-  endif()
+if (NOT "${PCH_EXTENSION}" STREQUAL "")
+  add_definitions(-DPCH_EXTENSION="${PCH_EXTENSION}")
 endif()
 
 if(NOT USE_PREBUILT_LLVM)

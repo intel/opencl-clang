@@ -20,6 +20,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "options.h"
 
 #include "clang/Driver/Options.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -254,6 +255,13 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     }
   }
 
+#ifdef PCH_EXTENSION
+  std::map<std::string, bool> extMap;
+  llvm::SmallVector<llvm::StringRef> extVec;
+  llvm::SplitString(PCH_EXTENSION, extVec, ",");
+  for(auto ext : extVec)
+    extMap.insert({ext.str(), true});
+#else
   std::map<std::string, bool> extMap{
       {"cl_khr_3d_image_writes", true},
       {"cl_khr_depth_images", true},
@@ -275,16 +283,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       {"cl_intel_planar_yuv", true},
       {"cl_intel_subgroups", true},
       {"cl_intel_subgroups_short", true}};
-
-#ifdef PCH_EXTENSION
-  extMap.clear();
-  std::string customPCHExtStr(PCH_EXTENSION);
-  std::stringstream sstr(customPCHExtStr);
-  while(sstr.good()) {
-    std::string substr;
-    getline(sstr, substr, ',');
-    extMap[substr] = true;
-  }
 #endif
 
   auto parseClExt = [&](const std::string &clExtStr) {
