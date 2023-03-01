@@ -106,10 +106,8 @@ if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
 endif()
 set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
-# PCH_EXTENSION is used to custom PCH extension map, by default it is empty,
-# that is to say, we will use orignal extMap on options_compile.cpp.
-# PCH_EXTENSION is fromed by comma-separated list, e.g, "cl_khr_3d_image_writes,cl_khr_depth_images"
-# PCH_EXTENSION can be set by CMake command line or set on CMakeList.
+# PCH_EXTENSION can override PCH extension map in options_compile.cpp.
+# Example: "cl_khr_3d_image_writes,cl_khr_depth_images"
 set(PCH_EXTENSION "" CACHE STRING "Comma-separated list of OpenCL extensions")
 if (NOT "${PCH_EXTENSION}" STREQUAL "")
   add_definitions(-DPCH_EXTENSION="${PCH_EXTENSION}")
