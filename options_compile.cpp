@@ -20,6 +20,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "options.h"
 
 #include "clang/Driver/Options.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -237,10 +238,30 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 
   for (auto it = effectiveArgs.begin(), end = effectiveArgs.end(); it != end;
        ++it) {
-    if (it->compare("-Dcl_khr_fp64") == 0)
+    if (it->compare("-Dcl_khr_fp64") == 0 || it->compare("-D cl_khr_fp64=1") == 0)
       fp64Enabled = true;
+    else if (it->compare("-U cl_khr_fp64") == 0)
+      fp64Enabled = false;
+    // Find last position that enables or disables cl_khr_fp64
+    else if (it->find("cl_khr_fp64") != std::string::npos) {
+      auto NegFp64 = it->rfind("-cl_khr_fp64");
+      auto PosFp64 = it->rfind("+cl_khr_fp64");
+      if(NegFp64 != std::string::npos && PosFp64 != std::string::npos)
+         fp64Enabled = PosFp64 > NegFp64;
+      else if(NegFp64 != std::string::npos)
+        fp64Enabled = false;
+      else
+        fp64Enabled = true;
+    }
   }
 
+#ifdef PCH_EXTENSION
+  std::map<std::string, bool> extMap;
+  llvm::SmallVector<llvm::StringRef> extVec;
+  llvm::SplitString(PCH_EXTENSION, extVec, ",");
+  for(auto ext : extVec)
+    extMap.insert({ext.str(), true});
+#else
   std::map<std::string, bool> extMap{
       {"cl_khr_3d_image_writes", true},
       {"cl_khr_depth_images", true},
@@ -262,6 +283,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       {"cl_intel_planar_yuv", true},
       {"cl_intel_subgroups", true},
       {"cl_intel_subgroups_short", true}};
+#endif
 
   auto parseClExt = [&](const std::string &clExtStr) {
     llvm::StringRef clExtRef(clExtStr);

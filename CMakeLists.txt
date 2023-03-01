@@ -106,6 +106,13 @@ if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
 endif()
 set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
+# PCH_EXTENSION can override PCH extension map in options_compile.cpp.
+# Example: "cl_khr_3d_image_writes,cl_khr_depth_images"
+set(PCH_EXTENSION "" CACHE STRING "Comma-separated list of OpenCL extensions")
+if (NOT "${PCH_EXTENSION}" STREQUAL "")
+  add_definitions(-DPCH_EXTENSION="${PCH_EXTENSION}")
+endif()
+
 if(NOT USE_PREBUILT_LLVM)
 
     if(NOT LLVM_EXTERNAL_CLANG_SOURCE_DIR)
