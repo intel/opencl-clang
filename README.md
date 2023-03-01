@@ -39,7 +39,7 @@ cmake -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_ENABLE_PROJECTS="clang" \
       -DLLVM_EXTERNAL_PROJECTS="llvm-spirv;opencl-clang" \
       -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR="$OCL_CLANG_WS/SPIRV-LLVM-Translator" \
       -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR="$OCL_CLANG_WS/opencl-clang" \
-      $OCL_CLANG_WS/llvm
+      -DCMAKE_BUILD_TYPE=Release $OCL_CLANG_WS/llvm
 make opencl-clang -j`nproc`
 ```
 
