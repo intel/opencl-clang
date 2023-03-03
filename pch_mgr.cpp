@@ -210,7 +210,7 @@ bool ResourceManager::load_resource(const char *id, const char *pszType,
 #ifdef WIN32
   bool ok = GetResourceWin32(id, pszType, res, size);
 #else
-  bool ok = GetResourceUnix(id, pszType, LIBCOMMON_CLANG_NAME,
+  bool ok = GetResourceUnix(id, pszType, LIBOPENCL_CLANG_NAME,
                             false, res, size);
 #endif
 

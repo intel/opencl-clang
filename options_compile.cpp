@@ -16,7 +16,7 @@ Copyright (c) Intel Corporation (2009-2017).
 
 \*****************************************************************************/
 
-#include "common_clang.h"
+#include "opencl_clang.h"
 #include "options.h"
 
 #include "clang/Driver/Options.h"

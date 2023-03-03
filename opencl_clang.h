@@ -12,7 +12,7 @@ Copyright (c) Intel Corporation (2009-2017).
     use of the code. No license, express or implied, by estoppel or otherwise,
     to any intellectual property rights is granted herein.
 
-  \file common_clang.h
+  \file opencl_clang.h
 
 \*****************************************************************************/
 
@@ -21,7 +21,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "cstddef" // size_t
 
 #if defined(_WIN32)
-#if defined(COMMON_CLANG_EXPORTS)
+#if defined(OPENCL_CLANG_EXPORTS)
 #define CC_DLL_EXPORT _declspec(dllexport)
 #else
 #define CC_DLL_EXPORT _declspec(dllimport)

@@ -101,10 +101,10 @@ else (WIN32)
 endif (WIN32)
 
 # set that name of the main output file as a target name
-if (NOT DEFINED COMMON_CLANG_LIBRARY_NAME)
-    set(COMMON_CLANG_LIBRARY_NAME "opencl-clang")
+if (NOT DEFINED OPENCL_CLANG_LIBRARY_NAME)
+    set(OPENCL_CLANG_LIBRARY_NAME "opencl-clang")
 endif()
-set(TARGET_NAME ${COMMON_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
+set(TARGET_NAME ${OPENCL_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
 # PCH_EXTENSION can override PCH extension map in options_compile.cpp.
 # Example: "cl_khr_3d_image_writes,cl_khr_depth_images"
@@ -187,7 +187,7 @@ add_public_tablegen_target(CClangCompileOptions)
 # Source code
 #
 set(TARGET_INCLUDE_FILES
-    common_clang.h
+    opencl_clang.h
     options.h
     binary_result.h
     pch_mgr.h
@@ -196,7 +196,7 @@ set(TARGET_INCLUDE_FILES
 )
 
 set(TARGET_SOURCE_FILES
-    common_clang.cpp
+    opencl_clang.cpp
     options.cpp
     pch_mgr.cpp
     options_compile.cpp
@@ -213,7 +213,7 @@ set (LLVM_VER_MINOR ${LLVM_VERSION_MINOR} )
 
 add_definitions( -D__STDC_LIMIT_MACROS )
 add_definitions( -D__STDC_CONSTANT_MACROS )
-add_definitions( -DCOMMON_CLANG_EXPORTS )
+add_definitions( -DOPENCL_CLANG_EXPORTS )
 
 #
 # Include directories
@@ -308,7 +308,7 @@ if (WIN32)
 
 elseif(UNIX)
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-        COMPILE_DEFINITIONS LIBCOMMON_CLANG_NAME="$<TARGET_SONAME_FILE_NAME:${TARGET_NAME}>")
+        COMPILE_DEFINITIONS LIBOPENCL_CLANG_NAME="$<TARGET_SONAME_FILE_NAME:${TARGET_NAME}>")
 
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
         LINK_FLAGS " -Wl,--no-undefined")
@@ -359,7 +359,7 @@ target_link_libraries( ${TARGET_NAME}
                        ${OTHER_LIBRARIES}
                       )
 
-install(FILES common_clang.h
+install(FILES opencl_clang.h
         DESTINATION include/cclang
         COMPONENT ${TARGET_NAME})
 
@@ -384,5 +384,5 @@ if (WIN32)
     endif(INSTALL_PDBS)
     install(FILES ${RT_OUTPUT_DIRECTORY}/\${BUILD_TYPE}/${TARGET_NAME}_stripped.pdb DESTINATION bin)
 else (WIN32)
-    SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
+    SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} opencl_clang.map )
 endif(WIN32)
