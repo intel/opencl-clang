@@ -298,6 +298,14 @@ add_library(${TARGET_NAME} SHARED
     $<TARGET_OBJECTS:cl_headers>
 )
 
+# Same CRT compile option are reqiured to avoid link errors on Windows.
+# MD and MDd are choosed by default for release and debug build in LLVM.
+# If users set MT or MTd flags, they also need to add the flags for
+# opencl-clang sources using a custom macro set_msvc_crt_flags.
+if(COMMAND set_msvc_crt_flags)
+    set_msvc_crt_flags(${TARGET_NAME})
+endif()
+
 add_dependencies(${TARGET_NAME} CClangCompileOptions)
 
 if (WIN32)
