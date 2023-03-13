@@ -259,7 +259,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   std::map<std::string, bool> extMap;
   llvm::SmallVector<llvm::StringRef> extVec;
   llvm::SplitString(PCH_EXTENSION, extVec, ",");
-  for(auto ext : extVec)
+  for (auto &ext : extVec)
     extMap.insert({ext.str(), true});
 #else
   std::map<std::string, bool> extMap{
@@ -287,10 +287,12 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 
   auto parseClExt = [&](const std::string &clExtStr) {
     llvm::StringRef clExtRef(clExtStr);
-    clExtRef.consume_front("-cl-ext=");
+    bool hasPrefix = clExtRef.consume_front("-cl-ext=");
+    assert(hasPrefix && "clExtRef doesn't start with \"-cl-ext\" prefix");
+    (void)hasPrefix;
     llvm::SmallVector<llvm::StringRef, 32> parsedExt;
     clExtRef.split(parsedExt, ',');
-    for (auto ext : parsedExt) {
+    for (auto &ext : parsedExt) {
       char sign = ext.front();
       bool enabled = sign != '-';
       llvm::StringRef extName = ext;
