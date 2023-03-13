@@ -287,8 +287,9 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 
   auto parseClExt = [&](const std::string &clExtStr) {
     llvm::StringRef clExtRef(clExtStr);
-    if (!clExtRef.consume_front("-cl-ext="))
-      return;
+    bool hasPrefix = clExtRef.consume_front("-cl-ext=");
+    assert(hasPrefix && "clExtRef doesn't start with \"-cl-ext\" prefix");
+    (void)hasPrefix;
     llvm::SmallVector<llvm::StringRef, 32> parsedExt;
     clExtRef.split(parsedExt, ',');
     for (auto &ext : parsedExt) {
