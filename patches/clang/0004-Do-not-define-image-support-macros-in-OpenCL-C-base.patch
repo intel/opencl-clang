@@ -1,0 +1,35 @@
+From 1e987989037c52c0c786f7c9b6b5bed21b740375 Mon Sep 17 00:00:00 2001
+From: Artem Gindinson <artem.gindinson@intel.com>
+Date: Thu, 23 Mar 2023 10:58:45 +0100
+Subject: [PATCH] [PATCH] Do not define image support macros in OpenCL C header
+ base
+
+---
+ clang/lib/Headers/opencl-c-base.h | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
+index 5191c41bcd05..8907886aeecf 100644
+--- a/clang/lib/Headers/opencl-c-base.h
++++ b/clang/lib/Headers/opencl-c-base.h
+@@ -58,9 +58,7 @@
+ #define __opencl_c_atomic_scope_device 1
+ #define __opencl_c_atomic_scope_all_devices 1
+ #define __opencl_c_device_enqueue 1
+-#define __opencl_c_read_write_images 1
+ #define __opencl_c_program_scope_global_variables 1
+-#define __opencl_c_images 1
+ #endif
+ 
+ // Define header-only feature macros for OpenCL C 3.0.
+@@ -70,7 +68,6 @@
+ #define __opencl_c_atomic_order_seq_cst 1
+ #define __opencl_c_atomic_scope_device 1
+ #define __opencl_c_atomic_scope_all_devices 1
+-#define __opencl_c_read_write_images 1
+ #endif // defined(__SPIR__)
+ #endif // (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300)
+ 
+-- 
+2.34.1
+
