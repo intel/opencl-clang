@@ -12,16 +12,6 @@ diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base
 index 5191c41bcd05..8907886aeecf 100644
 --- a/clang/lib/Headers/opencl-c-base.h
 +++ b/clang/lib/Headers/opencl-c-base.h
-@@ -58,9 +58,7 @@
- #define __opencl_c_atomic_scope_device 1
- #define __opencl_c_atomic_scope_all_devices 1
- #define __opencl_c_device_enqueue 1
--#define __opencl_c_read_write_images 1
- #define __opencl_c_program_scope_global_variables 1
--#define __opencl_c_images 1
- #endif
- 
- // Define header-only feature macros for OpenCL C 3.0.
 @@ -70,7 +68,6 @@
  #define __opencl_c_atomic_order_seq_cst 1
  #define __opencl_c_atomic_scope_device 1
