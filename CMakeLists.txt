@@ -153,9 +153,9 @@ if(NOT USE_PREBUILT_LLVM)
         )
     endif()
 
-    set(CLANG_BASE_REVISION master)
-    set(SPIRV_BASE_REVISION master)
-    set(TARGET_BRANCH "ocl-open-110")
+    set(CLANG_BASE_REVISION release/16.x)
+    set(SPIRV_BASE_REVISION llvm_release_160)
+    set(TARGET_BRANCH "ocl-open-160")
 
     apply_patches(${CLANG_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
