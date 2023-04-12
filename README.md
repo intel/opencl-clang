@@ -76,7 +76,7 @@ option:
 
 Example:
 ```bash
-cmake -DPREFERRED_LLVM_VERSION="10.0.0" ../opencl-clang
+cmake -DPREFERRED_LLVM_VERSION="16.0.0" ../opencl-clang
 ```
 
 ##### Custom LLVM installation
