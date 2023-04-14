@@ -99,10 +99,9 @@ void CommonClangInitialize() {
       // llvm_shutdown before static object are destroyed, so we use atexit to
       // satisfy this requirement.
       atexit(CommonClangTerminate);
-      llvm::InitializeAllTargets();
-      llvm::InitializeAllAsmPrinters();
-      llvm::InitializeAllAsmParsers();
-      llvm::InitializeAllTargetMCs();
+      llvm::InitializeNativeTarget();
+      llvm::InitializeNativeTargetAsmPrinter();
+      llvm::InitializeNativeTargetAsmParser();
       lazyCCInit = false;
     }
   }
