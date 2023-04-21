@@ -92,8 +92,8 @@ if (CMAKE_SIZEOF_VOID_P EQUAL 4)
 elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(ADDR 64)
 else ()
-  # CMAKE_SIZEOF_VOID_P is not set on windows x86 somehow
-  message(STATUS "[OPENCL-CLANG] CMAKE_SIZEOF_VOID_P is not set")
+  # CMAKE_SIZEOF_VOID_P might not be set on windows x86 in in-tree build
+  message(WARNING "[OPENCL-CLANG] CMAKE_SIZEOF_VOID_P is not set")
   if (WIN32 AND LLVM_BUILD_32_BITS)
     set(ADDR 32)
   endif()
