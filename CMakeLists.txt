@@ -88,9 +88,15 @@ use_rtti(FALSE)
 use_eh(TRUE)
 
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
-    set(ADDR 32)
+  set(ADDR 32)
+elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(ADDR 64)
 else ()
-    set(ADDR 64)
+  # CMAKE_SIZEOF_VOID_P might not be set on windows x86 in in-tree build
+  message(WARNING "[OPENCL-CLANG] CMAKE_SIZEOF_VOID_P is not set")
+  if (WIN32 AND LLVM_BUILD_32_BITS)
+    set(ADDR 32)
+  endif()
 endif (CMAKE_SIZEOF_VOID_P EQUAL 4)
 
 # set windows binary suffix
