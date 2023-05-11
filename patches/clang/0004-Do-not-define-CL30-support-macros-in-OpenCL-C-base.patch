@@ -1,0 +1,36 @@
+From 1e987989037c52c0c786f7c9b6b5bed21b740375 Mon Sep 17 00:00:00 2001
+From: Artem Gindinson <artem.gindinson@intel.com>
+Date: Thu, 23 Mar 2023 10:58:45 +0100
+Subject: [PATCH] [PATCH] Do not define CL3.0 support macros in OpenCL C header
+ base
+
+---
+ clang/lib/Headers/opencl-c-base.h | 11 ---
+ 1 file changed, 11 deletions(-)
+
+diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
+index 5191c41bcd05..8907886aeecf 100644
+--- a/clang/lib/Headers/opencl-c-base.h
++++ b/clang/lib/Headers/opencl-c-base.h
+@@ -63,17 +63,6 @@
+ #define __opencl_c_images 1
+ #endif
+
+-// Define header-only feature macros for OpenCL C 3.0.
+-#if (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300)
+-// For the SPIR and SPIR-V target all features are supported.
+-#if defined(__SPIR__) || defined(__SPIRV__)
+-#define __opencl_c_atomic_order_seq_cst 1
+-#define __opencl_c_atomic_scope_device 1
+-#define __opencl_c_atomic_scope_all_devices 1
+-#define __opencl_c_read_write_images 1
+-#endif // defined(__SPIR__)
+-#endif // (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300)
+-
+ #if !defined(__opencl_c_generic_address_space)
+ // Internal feature macro to provide named (global, local, private) address
+ // space overloads for builtin functions that take a pointer argument.
+
+--
+2.34.1
+
