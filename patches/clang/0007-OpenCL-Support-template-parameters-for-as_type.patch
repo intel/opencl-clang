@@ -1,0 +1,128 @@
+From bd03c20a07e35cca4418f72531c48bc4967af5ad Mon Sep 17 00:00:00 2001
+From: Haonan Yang <haonan.yang@intel.com>
+Date: Tue, 16 May 2023 11:37:40 +0800
+Subject: [PATCH] Support template parameters for as_type
+
+Implement the TreeTransform for AsTypeExpr.  Split `BuildAsTypeExpr`
+out of `ActOnAsTypeExpr`, such that we can call the Build method from
+the TreeTransform.
+
+Fixes PR47979.
+---
+ clang/include/clang/Sema/Sema.h             |  3 +++
+ clang/lib/Sema/SemaExpr.cpp                 | 24 +++++++++++++--------
+ clang/lib/Sema/TreeTransform.h              |  9 +++++++-
+ clang/test/SemaOpenCLCXX/template-astype.cl | 23 ++++++++++++++++++++
+ 4 files changed, 49 insertions(+), 10 deletions(-)
+ create mode 100644 clang/test/SemaOpenCLCXX/template-astype.cl
+
+diff --git a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
+index d8ac91bc8a31..d22249235204 100644
+--- a/clang/include/clang/Sema/Sema.h
++++ b/clang/include/clang/Sema/Sema.h
+@@ -5076,6 +5076,9 @@ public:
+   ExprResult ActOnAsTypeExpr(Expr *E, ParsedType ParsedDestTy,
+                              SourceLocation BuiltinLoc,
+                              SourceLocation RParenLoc);
++  ExprResult BuildAsTypeExpr(Expr *E, QualType DestTy,
++                             SourceLocation BuiltinLoc,
++                             SourceLocation RParenLoc);
+ 
+   //===---------------------------- C++ Features --------------------------===//
+ 
+diff --git a/clang/lib/Sema/SemaExpr.cpp b/clang/lib/Sema/SemaExpr.cpp
+index 04a7038d6754..099ed286e33d 100644
+--- a/clang/lib/Sema/SemaExpr.cpp
++++ b/clang/lib/Sema/SemaExpr.cpp
+@@ -5867,24 +5867,30 @@ ExprResult Sema::BuildCallExpr(Scope *Scope, Expr *Fn, SourceLocation LParenLoc,
+                                ExecConfig, IsExecConfig);
+ }
+ 
+-/// ActOnAsTypeExpr - create a new asType (bitcast) from the arguments.
++/// Parse a __builtin_astype expression.
+ ///
+ /// __builtin_astype( value, dst type )
+ ///
+ ExprResult Sema::ActOnAsTypeExpr(Expr *E, ParsedType ParsedDestTy,
+                                  SourceLocation BuiltinLoc,
+                                  SourceLocation RParenLoc) {
++  QualType DstTy = GetTypeFromParser(ParsedDestTy);
++  return BuildAsTypeExpr(E, DstTy, BuiltinLoc, RParenLoc);
++}
++
++/// Create a new AsTypeExpr node (bitcast) from the arguments.
++ExprResult Sema::BuildAsTypeExpr(Expr *E, QualType DestTy,
++                                 SourceLocation BuiltinLoc,
++                                 SourceLocation RParenLoc) {
+   ExprValueKind VK = VK_RValue;
+   ExprObjectKind OK = OK_Ordinary;
+-  QualType DstTy = GetTypeFromParser(ParsedDestTy);
+   QualType SrcTy = E->getType();
+-  if (Context.getTypeSize(DstTy) != Context.getTypeSize(SrcTy))
+-    return ExprError(Diag(BuiltinLoc,
+-                          diag::err_invalid_astype_of_different_size)
+-                     << DstTy
+-                     << SrcTy
+-                     << E->getSourceRange());
+-  return new (Context) AsTypeExpr(E, DstTy, VK, OK, BuiltinLoc, RParenLoc);
++  if (!SrcTy->isDependentType() &&
++      Context.getTypeSize(DestTy) != Context.getTypeSize(SrcTy))
++    return ExprError(
++        Diag(BuiltinLoc, diag::err_invalid_astype_of_different_size)
++        << DestTy << SrcTy << E->getSourceRange());
++  return new (Context) AsTypeExpr(E, DestTy, VK, OK, BuiltinLoc, RParenLoc);
+ }
+ 
+ /// ActOnConvertVectorExpr - create a new convert-vector expression from the
+diff --git a/clang/lib/Sema/TreeTransform.h b/clang/lib/Sema/TreeTransform.h
+index bbc6fc6deeef..b50dd4ae6852 100644
+--- a/clang/lib/Sema/TreeTransform.h
++++ b/clang/lib/Sema/TreeTransform.h
+@@ -13103,7 +13103,14 @@ TreeTransform<Derived>::TransformBlockExpr(BlockExpr *E) {
+ template<typename Derived>
+ ExprResult
+ TreeTransform<Derived>::TransformAsTypeExpr(AsTypeExpr *E) {
+-  llvm_unreachable("Cannot transform asType expressions yet");
++  ExprResult SrcExpr = getDerived().TransformExpr(E->getSrcExpr());
++  if (SrcExpr.isInvalid())
++    return ExprError();
++
++  QualType Type = getDerived().TransformType(E->getType());
++
++  return SemaRef.BuildAsTypeExpr(SrcExpr.get(), Type, E->getBuiltinLoc(),
++                                 E->getRParenLoc());
+ }
+ 
+ template<typename Derived>
+diff --git a/clang/test/SemaOpenCLCXX/template-astype.cl b/clang/test/SemaOpenCLCXX/template-astype.cl
+new file mode 100644
+index 000000000000..bf9a83df19ce
+--- /dev/null
++++ b/clang/test/SemaOpenCLCXX/template-astype.cl
+@@ -0,0 +1,23 @@
++// RUN: %clang_cc1 -finclude-default-header %s -cl-std=clc++ -verify
++
++// Test as_type, which is defined in terms of __builtin_astype.
++template <typename T>
++auto templated_astype(T x) {
++  return as_int2(x);
++  // expected-error@-1{{invalid reinterpretation: sizes of 'int2' (vector of 2 'int' values) and '__private int' must match}}
++}
++
++auto test_long(long x) { return templated_astype(x); }
++
++auto neg_test_int(int x) { return templated_astype(x); }
++// expected-note@-1{{in instantiation of function template specialization 'templated_astype<int>' requested here}}
++
++auto test_short4(short4 x) { return templated_astype(x); }
++
++// Test __builtin_astype.
++template <typename T>
++auto templated_builtin_astype(T x) {
++  return __builtin_astype(x, int2);
++}
++
++auto test_builtin(char8 x) { return templated_builtin_astype(x); }
+-- 
+2.31.1
+
