@@ -20,6 +20,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "options.h"
 
 #include "clang/Driver/Options.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
@@ -306,11 +307,30 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
         it->second = enabled;
     }
   };
+  llvm::SmallSet<llvm::StringRef, 32> parsedOclCFeatures;
   std::for_each(effectiveArgs.begin(), effectiveArgs.end(),
                 [&](const ArgsVector::value_type &a) {
                   if (a.find("-cl-ext=") == 0)
                     parseClExt(a);
+		  else if (a.find("-D__opencl_c_") == 0)
+		    parsedOclCFeatures.insert(a);
                 });
+
+  // "opencl-c-base.h" unconditionally enables a list of so-called "optional
+  // core" language features. We need to undef those that aren't explicitly
+  // defined within the compilation command (which would suggest that the
+  // target platform supports the corresponding feature).
+  const char* optionalCoreOclCFeaturesList[] = {
+      "__opencl_c_work_group_collective_functions",
+      "__opencl_c_atomic_order_seq_cst",
+      "__opencl_c_atomic_scope_device",
+      "__opencl_c_atomic_scope_all_devices",
+      "__opencl_c_read_write_images" };
+  for (std::string OclCFeature : optionalCoreOclCFeaturesList) {
+    if (!parsedOclCFeatures.contains(std::string("-D") + OclCFeature))
+      effectiveArgs.push_back(std::string("-D__undef_") + OclCFeature);
+  }
+
   // extension is enabled in PCH but disabled or not specifed in options =>
   // disable pch
   bool useModules =
