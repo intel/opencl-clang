@@ -36,7 +36,7 @@ Copyright (c) Intel Corporation (2009-2017).
 
 using namespace llvm::opt;
 
-static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > compileOptionsMutex;
+extern llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 static const OptTable::Info ClangOptionsInfoTable[] = {
 #define PREFIX(NAME, VALUE)
@@ -320,7 +320,7 @@ extern "C" CC_DLL_EXPORT bool CheckCompileOptions(const char *pszOptions,
                                                   size_t uiUnknownOptionsSize) {
   // LLVM doesn't guarantee thread safety,
   // therefore we serialize execution of LLVM code.
-  llvm::sys::SmartScopedLock<true> compileOptionsGuard {*compileOptionsMutex};
+  llvm::sys::SmartScopedLock<true> compileOptionsGuard{*compileMutex};
 
   try {
     CompileOptionsParser optionsParser("200");
