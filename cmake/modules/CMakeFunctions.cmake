@@ -15,7 +15,6 @@ macro(use_rtti val)
             llvm_replace_compiler_option(CMAKE_CXX_FLAGS "-frtti" "-fno-rtti" )
         endif()
     endif()
-    set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" PARENT_SCOPE )
 endmacro(use_rtti)
 
 #
