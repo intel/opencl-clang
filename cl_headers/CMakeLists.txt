@@ -19,8 +19,15 @@ add_custom_command(
 endfunction(copy_file)
 
 if(USE_PREBUILT_LLVM)
-    set(OPENCL_HEADERS_DIR
+  set(OPENCL_HEADERS_DIR
       "${LLVM_LIBRARY_DIRS}/clang/${LLVM_VERSION_MAJOR}.${LLVM_VERSION_MINOR}.${LLVM_VERSION_PATCH}/include/")
+  if(NOT EXISTS ${OPENCL_HEADERS_DIR})
+    set(OPENCL_HEADERS_DIR
+        "${LLVM_LIBRARY_DIRS}/clang/${LLVM_VERSION_MAJOR}/include/")
+  endif()
+  if(NOT EXISTS ${OPENCL_HEADERS_DIR})
+    message(FATAL_ERROR "Unable to find clang include folder at ${OPENCL_HEADERS_DIR}")
+  endif()
 else(USE_PREBUILT_LLVM)
     set(OPENCL_HEADERS_DIR "${CLANG_SOURCE_DIR}/lib/Headers")
 endif(USE_PREBUILT_LLVM)
