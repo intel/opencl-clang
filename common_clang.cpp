@@ -85,7 +85,7 @@ static volatile bool lazyCCInit =
     true; // the flag must be 'volatile' to prevent caching in a CPU register
 static llvm::sys::Mutex lazyCCInitMutex;
 
-static llvm::ManagedStatic<llvm::sys::SmartMutex<true> > compileMutex;
+llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 void CommonClangTerminate() { llvm::llvm_shutdown(); }
 
@@ -212,6 +212,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
   CommonClangInitialize();
 
   try {
+    llvm::sys::SmartScopedLock<true> compileGuard{*compileMutex};
     std::unique_ptr<OCLFEBinaryResult> pResult(new OCLFEBinaryResult());
 
     // Create the clang compiler
@@ -223,8 +224,6 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
     // Prepare error log
     llvm::raw_string_ostream err_ostream(pResult->getLogRef());
     {
-      llvm::sys::SmartScopedLock<true> compileGuard {*compileMutex};
-
       // Parse options
       optionsParser.processOptions(pszOptions, pszOptionsEx);
 
@@ -343,7 +342,6 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       err_ostream.flush();
     }
     {
-      llvm::sys::SmartScopedLock<true> compileGuard {*compileMutex};
       if (pBinaryResult) {
         *pBinaryResult = pResult.release();
       }
