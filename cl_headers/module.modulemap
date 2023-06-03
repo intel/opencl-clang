@@ -1,60 +1,60 @@
 module cl12spir {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl20spir {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl30spir {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl12spir64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl20spir64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl30spir64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl12spirfp64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl20spirfp64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl30spirfp64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl12spir64fp64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl20spir64fp64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }
 module cl30spir64fp64 {
-  header "opencl-c.h"
-  header "opencl-c-base.h"
+  header "opencl-c-intel.h"
+  header "opencl-c-intel-base.h"
   export *
 }

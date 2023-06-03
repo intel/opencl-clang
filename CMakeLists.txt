@@ -171,6 +171,11 @@ if(NOT USE_PREBUILT_LLVM)
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
                   ${SPIRV_BASE_REVISION}
                   ${TARGET_BRANCH})
+    # Prepare opencl-c-intel.h and opencl-c-intel-base.h file
+    file(READ "${CLANG_SOURCE_DIR}/lib/Headers/opencl-c.h" opencl_c_old)
+    string(REGEX REPLACE "#include \"opencl-c-base\.h\"" "#include \"opencl-c-intel-base.h\"" opencl_c_intel_new "${opencl_c_old}")
+    file(WRITE "${CLANG_SOURCE_DIR}/lib/Headers/opencl-c-intel.h" "${opencl_c_intel_new}")
+    execute_process(COMMAND ${CMAKE_COMMAND} -E copy "${CLANG_SOURCE_DIR}/lib/Headers/opencl-c-base.h" "${CLANG_SOURCE_DIR}/lib/Headers/opencl-c-intel-base.h")
 endif(NOT USE_PREBUILT_LLVM)
 
 #
