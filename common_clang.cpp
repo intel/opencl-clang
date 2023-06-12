@@ -212,7 +212,9 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
   CommonClangInitialize();
 
   try {
+#ifdef _WIN32
     llvm::sys::SmartScopedLock<true> compileGuard{*compileMutex};
+#endif
     std::unique_ptr<OCLFEBinaryResult> pResult(new OCLFEBinaryResult());
 
     // Create the clang compiler
@@ -224,6 +226,9 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
     // Prepare error log
     llvm::raw_string_ostream err_ostream(pResult->getLogRef());
     {
+#ifndef _WIN32
+      llvm::sys::SmartScopedLock<true> compileGuard{*compileMutex};
+#endif
       // Parse options
       optionsParser.processOptions(pszOptions, pszOptionsEx);
 
@@ -342,6 +347,9 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       err_ostream.flush();
     }
     {
+#ifndef _WIN32
+      llvm::sys::SmartScopedLock<true> compileGuard{*compileMutex};
+#endif
       if (pBinaryResult) {
         *pBinaryResult = pResult.release();
       }
