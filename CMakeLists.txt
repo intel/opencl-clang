@@ -35,7 +35,7 @@ set(CMAKE_MODULE_PATH
 
 include(CMakeFunctions)
 
-if(LLVM_USE_HOST_TOOLS AND OPENCL_CLANG_BUILD_EXTERNAL)
+if(CMAKE_CROSSCOMPILING AND OPENCL_CLANG_BUILD_EXTERNAL)
   include(CrossCompile)
   llvm_create_cross_target(${PROJECT_NAME} NATIVE "" Release)
 endif()
