@@ -31,7 +31,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/IR/Metadata.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeReader.h"
-#include "llvm/Linker/Linker.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Casting.h"
