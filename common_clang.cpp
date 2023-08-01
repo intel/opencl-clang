@@ -37,7 +37,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Threading.h"
-#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/VirtualFileSystem.h"
@@ -81,10 +80,6 @@ Copyright (c) Intel Corporation (2009-2017).
 
 using namespace Intel::OpenCL::ClangFE;
 
-static volatile bool lazyCCInit =
-    true; // the flag must be 'volatile' to prevent caching in a CPU register
-static llvm::sys::Mutex lazyCCInitMutex;
-
 llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 void CommonClangTerminate() { llvm::llvm_shutdown(); }
@@ -93,23 +88,13 @@ void CommonClangTerminate() { llvm::llvm_shutdown(); }
 // from a DllMain function (Windows specific), or from a function
 // w\ __attribute__ ((constructor)) (Linux specific).
 void CommonClangInitialize() {
-  if (lazyCCInit) {
-    llvm::sys::ScopedLock lock(lazyCCInitMutex);
-
-    if (lazyCCInit) {
-      // CommonClangTerminate calls llvm_shutdown to deallocate resources used
-      // by LLVM libraries. llvm_shutdown uses static mutex to make it safe for
-      // multi-threaded envirounment and LLVM libraries user is expected call
-      // llvm_shutdown before static object are destroyed, so we use atexit to
-      // satisfy this requirement.
-      atexit(CommonClangTerminate);
-      llvm::InitializeAllTargets();
-      llvm::InitializeAllAsmPrinters();
-      llvm::InitializeAllAsmParsers();
-      llvm::InitializeAllTargetMCs();
-      lazyCCInit = false;
-    }
-  }
+  // CommonClangTerminate calls llvm_shutdown to deallocate resources used
+  // by LLVM libraries. llvm_shutdown uses static mutex to make it safe for
+  // multi-threaded envirounment and LLVM libraries user is expected call
+  // llvm_shutdown before static object are destroyed, so we use atexit to
+  // satisfy this requirement.
+  llvm::once_flag OnceFlag;
+  llvm::call_once(OnceFlag, []() { atexit(CommonClangTerminate); });
 }
 
 static bool GetHeaders(std::vector<Resource> &Result) {
