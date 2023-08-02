@@ -45,8 +45,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/FrontendTool/Utils.h"
-#include "clang/Driver/DriverDiagnostic.h"
-#include "clang/Serialization/ModuleManager.h"
 #ifdef USE_PREBUILT_LLVM
 #include "LLVMSPIRVLib/LLVMSPIRVLib.h"
 #else // USE_PREBUILT_LLVM
