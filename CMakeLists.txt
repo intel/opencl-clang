@@ -112,11 +112,11 @@ if (NOT DEFINED OPENCL_CLANG_LIBRARY_NAME)
 endif()
 set(TARGET_NAME ${OPENCL_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
 
-# PCH_EXTENSION can override PCH extension map in options_compile.cpp.
+# OPENCL_CLANG_PCH_EXTENSION can override PCH extension map in options_compile.cpp.
 # Example: "cl_khr_3d_image_writes,cl_khr_depth_images"
-set(PCH_EXTENSION "" CACHE STRING "Comma-separated list of OpenCL extensions")
-if (NOT "${PCH_EXTENSION}" STREQUAL "")
-  add_definitions(-DPCH_EXTENSION="${PCH_EXTENSION}")
+set(OPENCL_CLANG_PCH_EXTENSION "" CACHE STRING "Comma-separated list of OpenCL extensions")
+if (NOT "${OPENCL_CLANG_PCH_EXTENSION}" STREQUAL "")
+  add_definitions(-DPCH_EXTENSION="${OPENCL_CLANG_PCH_EXTENSION}")
 endif()
 
 if(NOT USE_PREBUILT_LLVM)
@@ -298,10 +298,10 @@ else()
   )
 endif()
 
-set(EXCLUDE_LIBS_FROM_ALL "" CACHE STRING "Space-separated list of LLVM libraries to exclude from all")
+set(OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL "" CACHE STRING "Space-separated list of LLVM libraries to exclude from all")
 llvm_map_components_to_libnames(ALL_LLVM_LIBS all)
-if (NOT "${EXCLUDE_LIBS_FROM_ALL}" STREQUAL "")
-  list(REMOVE_ITEM ALL_LLVM_LIBS ${EXCLUDE_LIBS_FROM_ALL})
+if (NOT "${OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL}" STREQUAL "")
+  list(REMOVE_ITEM ALL_LLVM_LIBS ${OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL})
 endif()
 list(APPEND OPENCL_CLANG_LINK_LIBS ${ALL_LLVM_LIBS})
 
