@@ -78,19 +78,19 @@ using namespace Intel::OpenCL::ClangFE;
 
 llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
-void CommonClangTerminate() { llvm::llvm_shutdown(); }
+void OpenCLClangTerminate() { llvm::llvm_shutdown(); }
 
 // This function mustn't be invoked from a static object constructor,
 // from a DllMain function (Windows specific), or from a function
 // w\ __attribute__ ((constructor)) (Linux specific).
-void CommonClangInitialize() {
-  // CommonClangTerminate calls llvm_shutdown to deallocate resources used
+void OpenCLClangInitialize() {
+  // OpenCLClangTerminate calls llvm_shutdown to deallocate resources used
   // by LLVM libraries. llvm_shutdown uses static mutex to make it safe for
   // multi-threaded envirounment and LLVM libraries user is expected call
   // llvm_shutdown before static object are destroyed, so we use atexit to
   // satisfy this requirement.
   llvm::once_flag OnceFlag;
-  llvm::call_once(OnceFlag, []() { atexit(CommonClangTerminate); });
+  llvm::call_once(OnceFlag, []() { atexit(OpenCLClangTerminate); });
 }
 
 static bool GetHeaders(std::vector<Resource> &Result) {
@@ -190,7 +190,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
   PrintCompileOptions(pszOptions, pszOptionsEx, pszOpenCLVer, pszProgramSource);
 
   // Lazy initialization
-  CommonClangInitialize();
+  OpenCLClangInitialize();
 
   try {
 #ifdef _WIN32
