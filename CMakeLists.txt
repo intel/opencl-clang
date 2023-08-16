@@ -267,6 +267,7 @@ else()
     clangBasic
     clangFrontend
     clangFrontendTool
+    clangSerialization
   )
 endif()
 
