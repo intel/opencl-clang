@@ -264,9 +264,37 @@ if(USE_PREBUILT_LLVM OR CLANG_LINK_CLANG_DYLIB)
   list(APPEND OPENCL_CLANG_LINK_LIBS clang-cpp)
 else()
   list(APPEND OPENCL_CLANG_LINK_LIBS
+# The list of clang libraries is taken from clang makefile
+# (build/tools/clang/tools/driver/CMakeFiles/clang.dir/link.txt)
+# All duplicate libraries are there on purpose
     clangBasic
+    clangCodeGen
+    clangDriver
     clangFrontend
     clangFrontendTool
+    clangCodeGen
+    clangRewriteFrontend
+    clangARCMigrate
+    clangStaticAnalyzerFrontend
+    clangStaticAnalyzerCheckers
+    clangStaticAnalyzerCore
+    clangCrossTU
+    clangIndex
+    clangFrontend
+    clangDriver
+    clangParse
+    clangSerialization
+    clangSema
+    clangAnalysis
+    clangEdit
+    clangFormat
+    clangToolingInclusions
+    clangToolingCore
+    clangRewrite
+    clangASTMatchers
+    clangAST
+    clangLex
+    clangBasic
   )
 endif()
 
