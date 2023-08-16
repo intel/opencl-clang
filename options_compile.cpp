@@ -51,7 +51,7 @@ static constexpr OptTable::Info ClangOptionsInfoTable[] = {
                PARAM, HELPTEXT, METAVAR, VALUES)                               \
   {                                                                            \
     PREFIX, NAME, HELPTEXT, METAVAR, OPT_COMPILE_##ID,                         \
-        llvm::opt::Option::KIND##Class, VISIBILITY, PARAM, FLAGS,              \
+        llvm::opt::Option::KIND##Class, PARAM, FLAGS, VISIBILITY,              \
         OPT_COMPILE_##GROUP, OPT_COMPILE_##ALIAS, ALIASARGS, VALUES            \
   }                                                                            \
   ,
