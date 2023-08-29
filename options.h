@@ -33,8 +33,8 @@ Copyright (c) Intel Corporation (2009-2017).
 enum COMPILE_OPT_ID {
   OPT_COMPILE_INVALID = 0, // This is not an option ID.
 #define PREFIX(NAME, VALUE)
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
-               VISIBILITY, PARAM, HELPTEXT, METAVAR, VALUES)                   \
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
+               HELPTEXT, METAVAR, VALUES)                                      \
   OPT_COMPILE_##ID,
 #include "opencl_clang_options.inc"
   OPT_COMPILE_LAST_OPTION
