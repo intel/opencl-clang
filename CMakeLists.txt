@@ -325,9 +325,12 @@ if (WIN32)
 elseif(UNIX)
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
         COMPILE_DEFINITIONS LIBOPENCL_CLANG_NAME="$<TARGET_SONAME_FILE_NAME:${TARGET_NAME}>")
-
-    set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-        LINK_FLAGS " -Wl,--no-undefined")
+    
+    # Sanitizers do not support this flag, disable this when under sanitizer build
+    if(NOT LLVM_USE_SANITIZER)
+        set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
+            LINK_FLAGS " -Wl,--no-undefined")
+    endif()
 endif(WIN32)
 
 install(FILES opencl_clang.h
