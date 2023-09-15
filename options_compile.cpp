@@ -87,6 +87,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     case OPT_COMPILE_cl_opt_disable:
     case OPT_COMPILE_cl_mad_enable:
     case OPT_COMPILE_cl_no_signed_zeros:
+    case OPT_COMPILE_cl_uniform_work_group_size:
     case OPT_COMPILE_cl_unsafe_math_optimizations:
       effectiveArgs.push_back((*it)->getAsString(args));
       break;
@@ -141,9 +142,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       break;
     case OPT_COMPILE_triple:
       szTriple = (*it)->getValue();
-      break;
-    case OPT_COMPILE_cl_uniform_work_group_size:
-      effectiveArgs.push_back("-cl-uniform-work-group-size");
       break;
     case OPT_COMPILE_cl_no_subgroup_ifp:
     case OPT_COMPILE_target_triple:
