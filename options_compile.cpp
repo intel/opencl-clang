@@ -143,6 +143,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       szTriple = (*it)->getValue();
       break;
     case OPT_COMPILE_cl_uniform_work_group_size:
+      effectiveArgs.push_back("-cl-uniform-work-group-size");
+      break;
     case OPT_COMPILE_cl_no_subgroup_ifp:
     case OPT_COMPILE_target_triple:
     case OPT_COMPILE_spir_std_1_0:
