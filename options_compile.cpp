@@ -256,6 +256,12 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     }
   }
 
+  // ffp-contract is on by default for clang, we turn off it if cl-mad-enable is
+  // not specified.
+  if (std::find(effectiveArgs.begin(), effectiveArgs.end(), "-cl-mad-enable") ==
+      effectiveArgs.end())
+    effectiveArgs.push_back("-ffp-contract=off");
+
 #ifdef PCH_EXTENSION
   std::map<std::string, bool> extMap;
   llvm::SmallVector<llvm::StringRef> extVec;
