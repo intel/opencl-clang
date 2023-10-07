@@ -302,9 +302,8 @@ if(USE_PREBUILT_LLVM AND UNIX)
   # llvm_map_components_to_libnames(... all) returns empty string if llvm is
   # pre-built locally in either static or shared type in Ubuntu 22.04 container.
   execute_process(COMMAND llvm-config --libs all OUTPUT_VARIABLE ALL_LIBS)
-  string(STRIP ${ALL_LIBS} ALL_LIBS_STRIP)
-  string(REGEX REPLACE "[ ]*-l" ";" ALL_LLVM_LIBS ${ALL_LIBS_STRIP})
-  set(ALL_LLVM_LIBS "${ALL_LLVM_LIBS};LLVMSPIRVLib")
+  string(REGEX REPLACE "( |\r|\n|-l)+" ";" ALL_LLVM_LIBS ${ALL_LIBS})
+  set(ALL_LLVM_LIBS "LLVMSPIRVLib${ALL_LLVM_LIBS}")
 else()
   llvm_map_components_to_libnames(ALL_LLVM_LIBS all)
 endif()
