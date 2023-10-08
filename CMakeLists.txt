@@ -292,10 +292,18 @@ else()
   )
 endif()
 
-set(EXCLUDE_LIBS_FROM_ALL "" CACHE STRING "Space-separated list of LLVM libraries to exclude from all")
-llvm_map_components_to_libnames(ALL_LLVM_LIBS all)
-if (NOT "${EXCLUDE_LIBS_FROM_ALL}" STREQUAL "")
-  list(REMOVE_ITEM ALL_LLVM_LIBS ${EXCLUDE_LIBS_FROM_ALL})
+if(USE_PREBUILT_LLVM AND UNIX)
+  # llvm_map_components_to_libnames(... all) returns empty string if llvm is
+  # pre-built locally in either static or shared type in Ubuntu 22.04 container.
+  execute_process(COMMAND llvm-config --libs all OUTPUT_VARIABLE ALL_LIBS)
+  string(REGEX REPLACE "( |\r|\n|-l)+" ";" ALL_LLVM_LIBS ${ALL_LIBS})
+  set(ALL_LLVM_LIBS "LLVMSPIRVLib${ALL_LLVM_LIBS}")
+else()
+  llvm_map_components_to_libnames(ALL_LLVM_LIBS all)
+endif()
+set(OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL "" CACHE STRING "Space-separated list of LLVM libraries to exclude from all")
+if (NOT "${OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL}" STREQUAL "")
+  list(REMOVE_ITEM ALL_LLVM_LIBS ${OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL})
 endif()
 list(APPEND OPENCL_CLANG_LINK_LIBS ${ALL_LLVM_LIBS})
 
