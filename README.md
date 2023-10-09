@@ -70,13 +70,13 @@ make all -j`nproc`
 
 ##### Preferred LLVM version
 
-By default, opencl-clang's cmake script is searching for LLVM 16.0.0. You can
-override target version of LLVM by using the `PREFERRED_LLVM_VERSION` cmake
-option:
+By default, opencl-clang's cmake script is searching for LLVM which is built
+based on the latest verion of current branch. You can override target version of
+LLVM by using the `PREFERRED_LLVM_VERSION` cmake option:
 
 Example:
 ```bash
-cmake -DPREFERRED_LLVM_VERSION="10.0.0" ../opencl-clang
+cmake -DPREFERRED_LLVM_VERSION="18" ../opencl-clang
 ```
 
 ##### Custom LLVM installation
