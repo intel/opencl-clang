@@ -296,7 +296,7 @@ if(USE_PREBUILT_LLVM AND UNIX)
   # llvm_map_components_to_libnames(... all) returns empty string if llvm is
   # pre-built locally in either static or shared type in Ubuntu 22.04 container.
   find_program(LLVM_CONFIG_EXE
-    NAMES llvm-config-16 llvm-config-16.0 llvm-config160 llvm-config
+    NAMES llvm-config-${PREFERRED_LLVM_VERSION} llvm-config
     PATHS ${LLVM_BINARY_DIR} ${LLVM_BINARY_DIR}/bin)
   if(NOT LLVM_CONFIG_EXE)
     message(FATAL_ERROR "[OPENCL-CLANG] llvm-config is not found")
