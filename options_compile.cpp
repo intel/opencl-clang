@@ -161,6 +161,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       // The below assert is usable for manual debugging only
       // default:
       // assert(false && "some unknown argument");
+    case OPT_COMPILE_coverage:
     case OPT_COMPILE_profiling:
     case OPT_COMPILE_gline_tables_only_Flag:
       effectiveArgs.push_back("-debug-info-kind=line-tables-only");

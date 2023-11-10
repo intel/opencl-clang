@@ -14,6 +14,7 @@ include "llvm/Option/OptParser.td"
 def g_Flag : Flag<["-"], "g">, HelpText<"Generate source level debug information">;
 def gline_tables_only_Flag : Flag<["-"], "gline-tables-only">;
 def profiling : Flag<["-"], "profiling">, HelpText<"Allow profiling">;
+def coverage: Flag<["-"], "coverage">, HelpText<"Enable source level coverage analysis">;
 def w : Flag<["-"], "w">, HelpText<"Suppress all warnings">;
 def D : JoinedOrSeparate<["-"], "D">;
 def I : JoinedOrSeparate<["-"], "I">, Flags<[RenderJoined]>, HelpText<"Add directory to include search path">;
