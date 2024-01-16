@@ -1,0 +1,162 @@
+From 237c6924bd46ec0e33da71f9616caf9bf9965b23 Mon Sep 17 00:00:00 2001
+From: Anastasia Stulova <anastasia.stulova@arm.com>
+Date: Mon, 24 May 2021 12:38:02 +0100
+Subject: [PATCH] [OpenCL] Add clang extension for bit-fields.
+
+Allow use of bit-fields as a clang extension
+in OpenCL. The extension can be enabled using
+pragma directives.
+
+This fixes PR45339!
+
+Differential Revision: https://reviews.llvm.org/D101843
+
+
+diff --git a/clang/docs/LanguageExtensions.rst b/clang/docs/LanguageExtensions.rst
+index 0fec251c4bdc..870b8f9744c1 100644
+--- a/clang/docs/LanguageExtensions.rst
++++ b/clang/docs/LanguageExtensions.rst
+@@ -1522,6 +1522,34 @@ Query the presence of this new mangling with
+ OpenCL Features
+ ===============
+ 
++``__cl_clang_bitfields``
++--------------------------------
++
++With this extension it is possible to enable bitfields in structs
++or unions using the OpenCL extension pragma mechanism detailed in
++`the OpenCL Extension Specification, section 1.2
++<https://www.khronos.org/registry/OpenCL/specs/3.0-unified/html/OpenCL_Ext.html#extensions-overview>`_.
++
++Use of bitfields in OpenCL kernels can result in reduced portability as struct
++layout is not guaranteed to be consistent when compiled by different compilers.
++If structs with bitfields are used as kernel function parameters, it can result
++in incorrect functionality when the layout is different between the host and
++device code.
++
++**Example of Use**:
++
++.. code-block:: c++
++
++  #pragma OPENCL EXTENSION __cl_clang_bitfields : enable
++  struct with_bitfield {
++    unsigned int i : 5; // compiled - no diagnostic generated
++  };
++
++  #pragma OPENCL EXTENSION __cl_clang_bitfields : disable
++  struct without_bitfield {
++    unsigned int i : 5; // error - bitfields are not supported
++  };
++
+ C++ for OpenCL
+ --------------
+ 
+diff --git a/clang/include/clang/Basic/OpenCLExtensions.def b/clang/include/clang/Basic/OpenCLExtensions.def
+index 5536a6e8e4df..6438e5060576 100644
+--- a/clang/include/clang/Basic/OpenCLExtensions.def
++++ b/clang/include/clang/Basic/OpenCLExtensions.def
+@@ -76,6 +76,7 @@ OPENCLEXT_INTERNAL(cl_khr_terminate_context, 200, ~0U)
+ 
+ // Clang Extensions.
+ OPENCLEXT_INTERNAL(cl_clang_storage_class_specifiers, 100, ~0U)
++OPENCLEXT_INTERNAL(__cl_clang_bitfields, 100, ~0U)
+ 
+ // AMD OpenCL extensions
+ OPENCLEXT_INTERNAL(cl_amd_media_ops, 100, ~0U)
+diff --git a/clang/lib/Basic/Targets/AMDGPU.h b/clang/lib/Basic/Targets/AMDGPU.h
+index 456cb2ebb8b5..1befc0e742cd 100644
+--- a/clang/lib/Basic/Targets/AMDGPU.h
++++ b/clang/lib/Basic/Targets/AMDGPU.h
+@@ -247,6 +247,8 @@ public:
+ 
+     bool IsAMDGCN = isAMDGCN(getTriple());
+ 
++    Opts.support("__cl_clang_bitfields");
++
+     if (hasFP64())
+       Opts.support("cl_khr_fp64");
+ 
+diff --git a/clang/lib/Basic/Targets/NVPTX.h b/clang/lib/Basic/Targets/NVPTX.h
+index 2cdd37ca1b07..5fac6cb70fe0 100644
+--- a/clang/lib/Basic/Targets/NVPTX.h
++++ b/clang/lib/Basic/Targets/NVPTX.h
+@@ -132,6 +132,8 @@ public:
+     Opts.support("cl_khr_global_int32_extended_atomics");
+     Opts.support("cl_khr_local_int32_base_atomics");
+     Opts.support("cl_khr_local_int32_extended_atomics");
++
++    Opts.support("__cl_clang_bitfields");
+   }
+ 
+   /// \returns If a target requires an address within a target specific address
+diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+index 8f19edbc4f36..8e8d138cb84f 100644
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -15836,8 +15836,10 @@ FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
+       Record->setInvalidDecl();
+       InvalidDecl = true;
+     }
+-    // OpenCL v1.2 s6.9.c: bitfields are not supported.
+-    if (BitWidth) {
++    // OpenCL v1.2 s6.9.c: bitfields are not supported, unless Clang extension
++    // is enabled.
++    if (BitWidth && !getOpenCLOptions().isEnabled(
++                        "__cl_clang_bitfields")) {
+       Diag(Loc, diag::err_opencl_bitfields);
+       InvalidDecl = true;
+     }
+diff --git a/clang/test/Misc/amdgcn.languageOptsOpenCL.cl b/clang/test/Misc/amdgcn.languageOptsOpenCL.cl
+index 6a07fc98069c..be59a6cc5227 100644
+--- a/clang/test/Misc/amdgcn.languageOptsOpenCL.cl
++++ b/clang/test/Misc/amdgcn.languageOptsOpenCL.cl
+@@ -14,6 +14,11 @@
+ #endif
+ #pragma OPENCL EXTENSION cl_clang_storage_class_specifiers: enable
+ 
++#ifndef __cl_clang_bitfields
++#error "Missing __cl_clang_bitfields define"
++#endif
++#pragma OPENCL EXTENSION __cl_clang_bitfields : enable
++
+ #ifndef cl_khr_fp16
+ #error "Missing cl_khr_fp16 define"
+ #endif
+diff --git a/clang/test/Misc/r600.languageOptsOpenCL.cl b/clang/test/Misc/r600.languageOptsOpenCL.cl
+index 58444cf7688a..9d2f2ef88939 100644
+--- a/clang/test/Misc/r600.languageOptsOpenCL.cl
++++ b/clang/test/Misc/r600.languageOptsOpenCL.cl
+@@ -30,6 +30,11 @@
+ #endif
+ #pragma OPENCL EXTENSION cl_clang_storage_class_specifiers: enable
+ 
++#ifndef __cl_clang_bitfields
++#error "Missing __cl_clang_bitfields define"
++#endif
++#pragma OPENCL EXTENSION __cl_clang_bitfields : enable
++
+ #ifdef cl_khr_fp16
+ #error "Incorrect cl_khr_fp16 define"
+ #endif
+diff --git a/clang/test/SemaOpenCL/unsupported.cl b/clang/test/SemaOpenCL/unsupported.cl
+index a5fc570e757e..36f60259f8a7 100644
+--- a/clang/test/SemaOpenCL/unsupported.cl
++++ b/clang/test/SemaOpenCL/unsupported.cl
+@@ -1,7 +1,15 @@
+ // RUN: %clang_cc1 -verify %s
++// RUN: %clang_cc1 -verify %s -DBITFIELDS_EXT
+ 
+-struct {
+-  int a : 1; // expected-error {{bit-fields are not supported in OpenCL}}
++#ifdef BITFIELDS_EXT
++#pragma OPENCL EXTENSION __cl_clang_bitfields : enable
++#endif
++
++struct test {
++  int a : 1;
++#ifndef BITFIELDS_EXT
++// expected-error@-2 {{bit-fields are not supported in OpenCL}}
++#endif
+ };
+ 
+ void no_vla(int n) {
