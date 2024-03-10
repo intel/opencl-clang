@@ -25,6 +25,8 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
 
+#include <algorithm>
+#include <map>
 #include <sstream>
 
 #define PREFIX(NAME, VALUE) const char *const NAME[] = VALUE;
@@ -64,6 +66,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
                                                    ArgsVector &effectiveArgs) {
   // Reset args
   int iCLStdSet = 0;
+  int fp64Enable = 0;
   std::string szTriple;
   std::string sourceName(llvm::Twine(s_progID++).str());
 
@@ -202,7 +205,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   }
 
   effectiveArgs.push_back(szTriple);
-
   effectiveArgs.push_back("-include");
   effectiveArgs.push_back("opencl-c.h");
 
@@ -230,6 +232,97 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   // add the extended options verbatim
   std::back_insert_iterator<ArgsVector> it(std::back_inserter(effectiveArgs));
   quoted_tokenize(it, pszOptionsEx, " \t", '"', '\x00');
+
+  for (ArgsVector::iterator it = effectiveArgs.begin(),
+                            end = effectiveArgs.end();
+       it != end; ++it) {
+    if (it->compare("-Dcl_khr_fp64") == 0) {
+      fp64Enable = true;
+    }
+  }
+
+  std::map<std::string, bool> extMap {
+    {"cl_khr_3d_image_writes", true},
+    {"cl_khr_depth_images", true},
+    {"cl_khr_fp16", true},
+    {"cl_khr_gl_msaa_sharing", true},
+    {"cl_khr_global_int32_base_atomics", true},
+    {"cl_khr_global_int32_extended_atomics", true},
+    {"cl_khr_int64_base_atomics", true},
+    {"cl_khr_int64_extended_atomics", true},
+    {"cl_khr_local_int32_base_atomics", true},
+    {"cl_khr_local_int32_extended_atomics", true},
+    {"cl_khr_mipmap_image", true},
+    {"cl_khr_mipmap_image_writes", true},
+    {"cl_khr_subgroups", true},
+    {"cl_intel_device_side_avc_motion_estimation", true},
+    {"cl_intel_planar_yuv", true},
+    {"cl_intel_subgroups", true},
+    {"cl_intel_subgroups_short", true}
+  };
+  auto parseClExt = [&](const std::string& clExtStr) {
+    llvm::StringRef clExtRef(clExtStr);
+    clExtRef.consume_front("-cl-ext=");
+    llvm::SmallVector<llvm::StringRef, 32> parsedExt;
+    clExtRef.split(parsedExt, ',');
+    for (llvm::StringRef ext : parsedExt) {
+      char sign = ext.front();
+      bool enabled = sign != '-';
+      llvm::StringRef extName = ext;
+      if (sign == '+' || sign == '-')
+        extName = extName.drop_front();
+      if (extName == "all") {
+        for (auto& p : extMap)
+          p.second = enabled;
+        continue;
+      }
+      auto it = extMap.find(extName);
+      if (it != extMap.end())
+        it->second = enabled;
+    }
+  };
+  std::for_each(effectiveArgs.begin(), effectiveArgs.end(),
+                [&](const ArgsVector::value_type& a) {
+                  if (a.find("-cl-ext=") == 0)
+                    parseClExt(a);
+                });
+
+  // extension is enabled in PCH but disabled or not specifed in options => disable pch
+  bool useModules = !std::any_of(extMap.begin(), extMap.end(),
+      [](decltype(*begin(extMap))p) {return p.second == false;});
+
+  if (useModules) {
+    effectiveArgs.push_back("-fmodules");
+    if (fp64Enable == 0) {
+      if (szTriple.find("spir64") != szTriple.npos) {
+        if (iCLStdSet <= 120) {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
+        } else {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
+        }
+      } else if (szTriple.find("spir") != szTriple.npos) {
+        if (iCLStdSet <= 120) {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
+        } else {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
+        }
+      }
+    } else if (fp64Enable == 1) {
+      if (szTriple.find("spir64") != szTriple.npos) {
+        if (iCLStdSet <= 120) {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
+        } else {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64-fp64.pcm");
+        }
+      } else if (szTriple.find("spir") != szTriple.npos) {
+        if (iCLStdSet <= 120) {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir-fp64.pcm");
+        } else {
+          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir-fp64.pcm");
+        }
+      }
+    }
+  }
 
   // add source name to options as an input file
   assert(!sourceName.empty() && "Empty source name.");
