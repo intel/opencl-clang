@@ -35,8 +35,9 @@ Copyright (c) Intel Corporation (2009-2017).
   static constexpr llvm::StringLiteral NAME##_init[] = VALUE;                  \
   static constexpr llvm::ArrayRef<llvm::StringLiteral> NAME(                   \
       NAME##_init, std::size(NAME##_init) - 1);
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, VISIBILITY, \
-               PARAM, HELPTEXT, HELPTEXTSFORVARIANTS, METAVAR, VALUES)
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
+               VISIBILITY, PARAM, HELPTEXT, HELPTEXTSFORVARIANTS, METAVAR,     \
+               VALUES)
 #include "opencl_clang_options.inc"
 #undef OPTION
 #undef PREFIX
@@ -47,14 +48,23 @@ extern llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 static constexpr OptTable::Info ClangOptionsInfoTable[] = {
 #define PREFIX(NAME, VALUE)
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, VISIBILITY, \
-               PARAM, HELPTEXT, HELPTEXTSFORVARIANTS,METAVAR, VALUES)          \
-  {                                                                            \
-    PREFIX, NAME, HELPTEXT, HELPTEXTSFORVARIANTS, METAVAR, OPT_COMPILE_##ID,   \
-        llvm::opt::Option::KIND##Class, PARAM, FLAGS, VISIBILITY,              \
-        OPT_COMPILE_##GROUP, OPT_COMPILE_##ALIAS, ALIASARGS, VALUES            \
-  }                                                                            \
-  ,
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
+               VISIBILITY, PARAM, HELPTEXT, HELPTEXTSFORVARIANTS, METAVAR,     \
+               VALUES)                                                         \
+  {PREFIX,                                                                     \
+   NAME,                                                                       \
+   HELPTEXT,                                                                   \
+   HELPTEXTSFORVARIANTS,                                                       \
+   METAVAR,                                                                    \
+   OPT_COMPILE_##ID,                                                           \
+   llvm::opt::Option::KIND##Class,                                             \
+   PARAM,                                                                      \
+   FLAGS,                                                                      \
+   VISIBILITY,                                                                 \
+   OPT_COMPILE_##GROUP,                                                        \
+   OPT_COMPILE_##ALIAS,                                                        \
+   ALIASARGS,                                                                  \
+   VALUES},
 #include "opencl_clang_options.inc"
 };
 
