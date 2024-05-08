@@ -71,6 +71,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
                                                    ArgsVector &effectiveArgs) {
   // Reset args
   int iCLStdSet = 0;
+  bool isCpp = false;
   bool fp64Enabled = false;
   std::string szTriple;
   std::string sourceName(llvm::Twine(s_progID++).str());
@@ -137,6 +138,17 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       break;
     case OPT_COMPILE_cl_std_CL3_0:
       iCLStdSet = 300;
+      effectiveArgs.push_back((*it)->getAsString(args));
+      break;
+    case OPT_COMPILE_cl_std_CLCxx:
+    case OPT_COMPILE_cl_std_CLCxx1_0:
+      iCLStdSet = 200;
+      isCpp = true;
+      effectiveArgs.push_back((*it)->getAsString(args));
+      break;
+    case OPT_COMPILE_cl_std_CLCxx2021:
+      iCLStdSet = 300;
+      isCpp = true;
       effectiveArgs.push_back((*it)->getAsString(args));
       break;
     case OPT_COMPILE_triple:
@@ -220,7 +232,9 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 
   // Specifying the option makes clang emit function body for functions
   // marked with inline keyword.
-  effectiveArgs.push_back("-fgnu89-inline");
+  if (!isCpp) {
+    effectiveArgs.push_back("-fgnu89-inline");
+  }
 
   // Do not support all extensions by default. Support for a particular
   // extension should be enabled by passing a '-cl-ext' option in pszOptionsEx.
