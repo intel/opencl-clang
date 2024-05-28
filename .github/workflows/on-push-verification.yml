@@ -7,6 +7,9 @@
 name: On push & pull-request verification
 run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
