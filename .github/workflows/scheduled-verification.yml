@@ -21,7 +21,7 @@ jobs:
     steps:
 
       - name: Checkout opencl-clang sources for action files availabilty
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Run build-opencl-clang action
         uses: ./.github/actions/build-opencl-clang
@@ -39,7 +39,7 @@ jobs:
     steps:
 
       - name: Checkout opencl-clang sources for action files availabilty
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Run build-opencl-clang action
         uses: ./.github/actions/build-opencl-clang
