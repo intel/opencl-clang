@@ -4,7 +4,7 @@
 #   to choose correct dependencies revisions
 # ===---
 
-name: On push & pull-request verification
+name: In-tree build
 run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
 
 on:
@@ -24,26 +24,8 @@ on:
 
 jobs:
 
-  verify_default_branch:
-    name: Verify for `master` branch
-    # ref_name for 'on: push'
-    # base_ref for 'on: pull_request'
-    if: ${{ (github.event_name == 'push' && github.ref_name == 'master') || (github.event_name == 'pull_request' && github.base_ref == 'master') }}
-    runs-on: ubuntu-22.04
-    steps:
-
-      - name: Checkout opencl-clang sources for action files
-        uses: actions/checkout@v3
-
-      - name: Run build-opencl-clang action
-        uses: ./.github/actions/build-opencl-clang
-        with:
-          ref_llvm: main
-          ref_translator: main
-          ref_opencl-clang: ${{ github.ref }}
-
   verify_release_branch:
-    name: Verify for `ocl-open-*` release branch
+    name: Linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
     if: ${{ github.ref_name != 'master' && github.base_ref != 'master' }}
