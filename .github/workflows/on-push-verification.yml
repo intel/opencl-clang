@@ -25,7 +25,7 @@ on:
 jobs:
 
   verify_default_branch:
-    name: In-tree build
+    name: In-tree build / Linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
     if: ${{ (github.event_name == 'push' && github.ref_name == 'master') || (github.event_name == 'pull_request' && github.base_ref == 'master') }}
