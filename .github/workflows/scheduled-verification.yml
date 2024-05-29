@@ -5,6 +5,9 @@
 name: Scheduled verification
 run-name: Scheduled verification
 
+permissions:
+  contents: read
+
 on:
   schedule:
     # Run Sunday & Wednesday at 00:00
