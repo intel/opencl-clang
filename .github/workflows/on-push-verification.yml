@@ -4,7 +4,7 @@
 #   to choose correct dependencies revisions
 # ===---
 
-name: On push & pull-request verification
+name: In-tree build
 run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
 
 permissions:
@@ -28,10 +28,9 @@ on:
 jobs:
 
   verify_default_branch:
-    name: Verify for `main` branch
+    name: Linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
-    if: ${{ (github.event_name == 'push' && github.ref_name == 'main') || (github.event_name == 'pull_request' && github.base_ref == 'main') }}
     runs-on: ubuntu-22.04
     steps:
 
@@ -43,32 +42,4 @@ jobs:
         with:
           ref_llvm: main
           ref_translator: main
-          ref_opencl-clang: ${{ github.ref }}
-
-  verify_release_branch:
-    name: Verify for `ocl-open-*` release branch
-    # ref_name for 'on: push'
-    # base_ref for 'on: pull_request'
-    if: ${{ github.ref_name != 'main' && github.base_ref != 'main' }}
-    runs-on: ubuntu-22.04
-    steps:
-
-      - name: Checkout opencl-clang sources for action files
-        uses: actions/checkout@v4
-
-      # This step will fail when the branch naming scheme 'ocl-open-XXX' changes!
-      - name: Parse LLVM version from branch name
-        id: check-llvm-version
-        run: |
-          BRANCH="${{ github.base_ref }}"          # on: pull_request, otherwise null
-          BRANCH=${BRANCH:-${{ github.ref_name }}} # on: push
-          LLVM_VERSION_LONG=$(echo $BRANCH | grep -oP '\d+') # Eg. 150 for LLVM 15
-          LLVM_VERSION_SHORT=${LLVM_VERSION_LONG::-1}        # Eg. 15  for LLVM 15
-          echo "llvm_version=$LLVM_VERSION_SHORT" >> $GITHUB_OUTPUT
-
-      - name: Run build-opencl-clang action
-        uses: ./.github/actions/build-opencl-clang
-        with:
-          ref_llvm: release/${{ steps.check-llvm-version.outputs.llvm_version }}.x
-          ref_translator: llvm_release_${{ steps.check-llvm-version.outputs.llvm_version }}0
           ref_opencl-clang: ${{ github.ref }}
