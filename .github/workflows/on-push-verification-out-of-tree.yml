@@ -30,7 +30,7 @@ on:
 jobs:
 
   verify_default_branch:
-    name: Linux
+    name: linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
     runs-on: ubuntu-22.04
