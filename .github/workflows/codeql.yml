@@ -33,18 +33,18 @@ jobs:
     - name: Checkout opencl-clang sources for action files
       uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
 
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@f079b8493333aace61c81488f8bd40919487bd9f # v3.25.7
+      with:
+        languages: ${{ matrix.language }}
+        build-mode: ${{ matrix.build-mode }}
+
     - name: Run build-opencl-clang action
       uses: ./.github/actions/build-opencl-clang
       with:
         ref_llvm: main
         ref_translator: main
         ref_opencl-clang: main
-
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@f079b8493333aace61c81488f8bd40919487bd9f # v3.25.7
-      with:
-        languages: ${{ matrix.language }}
-        build-mode: ${{ matrix.build-mode }}
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@f079b8493333aace61c81488f8bd40919487bd9f # v3.25.7
