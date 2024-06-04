@@ -76,7 +76,7 @@ LLVM by using the `PREFERRED_LLVM_VERSION` cmake option:
 
 Example:
 ```bash
-cmake -DPREFERRED_LLVM_VERSION="18" ../opencl-clang
+cmake -DPREFERRED_LLVM_VERSION="19.0" ../opencl-clang
 ```
 
 ##### Custom LLVM installation
