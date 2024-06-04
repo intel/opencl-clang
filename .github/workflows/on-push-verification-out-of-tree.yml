@@ -1,0 +1,88 @@
+# ===---
+# Running on push & pull_request.
+#   This workflow parses the destination branch
+#   to choose correct dependencies revisions
+# ===---
+
+name: Out-of-tree build
+run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
+
+permissions:
+  contents: read
+
+env:
+  LLVM_PACKAGE_VERSION: 19
+  PREFERRED_LLVM_VERSION: 19.0
+  ref: main
+
+on:
+  push:
+    branches:
+      - ${{ env.ref }}
+  pull_request:
+    branches:
+      - ${{ env.ref }}
+    types:
+      - opened
+      - reopened
+      - synchronize       # commit pushed to the PR
+      - ready_for_review  # moved from draft state
+
+jobs:
+
+  verify_default_branch:
+    name: Linux
+    # ref_name for 'on: push'
+    # base_ref for 'on: pull_request'
+    runs-on: ubuntu-22.04
+    steps:
+
+      - name: Install llvm and its dependencies
+        run:
+          curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
+          curl -L "https://packages.lunarg.com/lunarg-signing-key-pub.asc" | sudo apt-key add -
+          echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy main" | sudo tee -a /etc/apt/sources.list
+          echo "deb https://packages.lunarg.com/vulkan jammy main" | sudo tee -a /etc/apt/sources.list
+          sudo apt-get update
+          sudo apt-get -yq --no-install-suggests --no-install-recommends install \
+            clang-${{ env.LLVM_PACKAGE_VERSION }} \
+            llvm-${{ env.LLVM_PACKAGE_VERSION }}-dev \
+            libclang-${{ env.LLVM_PACKAGE_VERSION }}-dev \
+            libclang-cpp${{ env.LLVM_PACKAGE_VERSION }}-dev \
+            libpolly-${{ env.LLVM_PACKAGE_VERSION }}-dev \
+            libzstd-dev \
+            libedit-dev
+
+      - name: Checkout SPIRV-LLVM-Translator sources
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          path: SPIRV-LLVM-Translator
+          ref: ${{ env.ref }}
+
+      - name: Build SPIRV-LLVM-Translator
+        run: |
+          builddir=${{ github.workspace }}/SPIRV-LLVM-Translator/build
+          cmake -B "$builddir" \
+            ${{ github.workspace }}/SPIRV-LLVM-Translator \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DCMAKE_INSTALL_PREFIX="$builddir"/install \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$builddir" -j $(nproc)
+          cmake --install "$builddir"
+          echo "spirv-translator-dir=${builddir}/install" >> $GITHUB_ENV
+
+      - name: Checkout opencl-clang sources
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          path: opencl-clang
+          ref: ${{ github.ref }}
+
+      - name: Build opencl-clang
+        run: |
+          mkdir build && cd build
+          cmake ${{ github.workspace }}/opencl-clang \
+            -DPREFERRED_LLVM_VERSION=${{ env.PREFERRED_LLVM_VERSION }} \
+            -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
+            -DSPIRV_TRANSLATOR_DIR=${{ env.spirv-translator-dir }} \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build . -j $(nproc)
