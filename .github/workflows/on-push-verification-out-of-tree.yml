@@ -81,7 +81,7 @@ jobs:
         run: |
           mkdir build && cd build
           cmake ${{ github.workspace }}/opencl-clang \
-            -DLLVM_VERSION_MINOR="${{ env.LLVM_VERSION }}.${{ env.LLVM_VERSION_MINOR }}" \
+            -DPREFERRED_LLVM_VERSION="${{ env.LLVM_VERSION }}.${{ env.LLVM_VERSION_MINOR }}" \
             -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
             -DSPIRV_TRANSLATOR_DIR=${{ env.spirv-translator-dir }} \
             -DCMAKE_BUILD_TYPE=Release
