@@ -11,17 +11,16 @@ permissions:
   contents: read
 
 env:
-  LLVM_PACKAGE_VERSION: 19
-  PREFERRED_LLVM_VERSION: 19.0
-  ref: main
+  LLVM_VERSION: 19
+  LLVM_VERSION_MINOR: 0
 
 on:
   push:
     branches:
-      - ${{ env.ref }}
+      - main
   pull_request:
     branches:
-      - ${{ env.ref }}
+      - main
     types:
       - opened
       - reopened
@@ -45,19 +44,20 @@ jobs:
           echo "deb https://packages.lunarg.com/vulkan jammy main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get -yq --no-install-suggests --no-install-recommends install \
-            clang-${{ env.LLVM_PACKAGE_VERSION }} \
-            llvm-${{ env.LLVM_PACKAGE_VERSION }}-dev \
-            libclang-${{ env.LLVM_PACKAGE_VERSION }}-dev \
-            libclang-cpp${{ env.LLVM_PACKAGE_VERSION }}-dev \
-            libpolly-${{ env.LLVM_PACKAGE_VERSION }}-dev \
+            clang-${{ env.LLVM_VERSION }} \
+            llvm-${{ env.LLVM_VERSION }}-dev \
+            libclang-${{ env.LLVM_VERSION }}-dev \
+            libclang-cpp${{ env.LLVM_VERSION }}-dev \
+            libpolly-${{ env.LLVM_VERSION }}-dev \
             libzstd-dev \
             libedit-dev
 
       - name: Checkout SPIRV-LLVM-Translator sources
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
+          repository: KhronosGroup/SPIRV-LLVM-Translator
           path: SPIRV-LLVM-Translator
-          ref: ${{ env.ref }}
+          ref: main
 
       - name: Build SPIRV-LLVM-Translator
         run: |
@@ -81,7 +81,7 @@ jobs:
         run: |
           mkdir build && cd build
           cmake ${{ github.workspace }}/opencl-clang \
-            -DPREFERRED_LLVM_VERSION=${{ env.PREFERRED_LLVM_VERSION }} \
+            -DLLVM_VERSION_MINOR="${{ env.LLVM_VERSION }}.${{ env.LLVM_VERSION_MINOR }}" \
             -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
             -DSPIRV_TRANSLATOR_DIR=${{ env.spirv-translator-dir }} \
             -DCMAKE_BUILD_TYPE=Release
