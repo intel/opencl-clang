@@ -51,6 +51,11 @@ jobs:
             libzstd-dev \
             libedit-dev
 
+      - name: Checkout opencl-clang sources for action files
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          ref: ${{ github.ref }}
+
       - name: Checkout SPIRV-LLVM-Translator sources
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
@@ -69,11 +74,6 @@ jobs:
           cmake --build "$builddir" -j $(nproc)
           cmake --install "$builddir"
           echo "spirv-translator-dir=${builddir}/install" >> $GITHUB_ENV
-
-      - name: Checkout opencl-clang sources for action files
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
-        with:
-          ref: ${{ github.ref }}
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@f079b8493333aace61c81488f8bd40919487bd9f # v3.25.7
