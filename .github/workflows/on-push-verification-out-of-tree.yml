@@ -1,7 +1,5 @@
 # ===---
 # Running on push & pull_request.
-#   This workflow parses the destination branch
-#   to choose correct dependencies revisions
 # ===---
 
 name: Out-of-tree build
