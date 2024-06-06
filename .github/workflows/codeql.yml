@@ -1,9 +1,10 @@
-# ===---
-# Running on push & pull_request.
-# ===---
+name: "CodeQL"
 
-name: Out-of-tree build
-run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 permissions:
   contents: read
@@ -12,26 +13,26 @@ env:
   LLVM_VERSION: 19
   LLVM_VERSION_MINOR: 0
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-    types:
-      - opened
-      - reopened
-      - synchronize       # commit pushed to the PR
-      - ready_for_review  # moved from draft state
-
 jobs:
+  analyze:
+    name: Analyze
 
-  verify_default_branch:
-    name: linux
-    # ref_name for 'on: push'
-    # base_ref for 'on: pull_request'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+
+    permissions:
+      # required for all workflows
+      security-events: write
+
+      # required to fetch internal or private CodeQL packs
+      packages: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - language: c-cpp
+          build-mode: manual
+
     steps:
 
       - name: Install llvm and its dependencies
@@ -49,6 +50,11 @@ jobs:
             libpolly-${{ env.LLVM_VERSION }}-dev \
             libzstd-dev \
             libedit-dev
+
+      - name: Checkout opencl-clang sources for action files
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        with:
+          ref: ${{ github.ref }}
 
       - name: Checkout SPIRV-LLVM-Translator sources
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -69,18 +75,23 @@ jobs:
           cmake --install "$builddir"
           echo "spirv-translator-dir=${builddir}/install" >> $GITHUB_ENV
 
-      - name: Checkout opencl-clang sources
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f079b8493333aace61c81488f8bd40919487bd9f # v3.25.7
         with:
-          path: opencl-clang
-          ref: ${{ github.ref }}
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
 
       - name: Build opencl-clang
         run: |
           mkdir build && cd build
-          cmake ${{ github.workspace }}/opencl-clang \
+          cmake ${{ github.workspace }} \
             -DPREFERRED_LLVM_VERSION="${{ env.LLVM_VERSION }}.${{ env.LLVM_VERSION_MINOR }}" \
             -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
             -DSPIRV_TRANSLATOR_DIR=${{ env.spirv-translator-dir }} \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build . -j $(nproc)
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@f079b8493333aace61c81488f8bd40919487bd9f # v3.25.7
+        with:
+          category: "/language:${{matrix.language}}"
