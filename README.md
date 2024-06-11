@@ -1,4 +1,4 @@
-[![Scheduled Build](https://github.com/intel/opencl-clang/actions/workflows/scheduled-verification.yml/badge.svg)](https://github.com/intel/opencl-clang/actions/workflows/scheduled-verification.yml)
+[![Scheduled verification](https://github.com/intel/opencl-clang/actions/workflows/scheduled-verification.yml/badge.svg)](https://github.com/intel/opencl-clang/actions/workflows/scheduled-verification.yml)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/9059/badge)](https://www.bestpractices.dev/projects/9059)
 
 opencl-clang is a thin wrapper library around clang. The library has
