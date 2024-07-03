@@ -109,7 +109,8 @@ function(apply_patches repo_dir patches_dir base_revision target_branch ret)
         set(${ret} True PARENT_SCOPE)
         message(STATUS "[OPENCL-CLANG] ${repo_dir} is not a git repository")
         return()
-    elseif(patches_needed EQUAL 1) # The target branch doesn't exist
+    endif()
+    if(patches_needed EQUAL 1) # The target branch doesn't exist
         list(SORT patches)
         is_valid_revision(${repo_dir} ${base_revision} exists_base_rev)
 
