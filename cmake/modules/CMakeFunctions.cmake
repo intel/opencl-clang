@@ -107,7 +107,7 @@ function(apply_patches repo_dir patches_dir base_revision target_branch ret)
     )
     if(patches_needed EQUAL 128) # not a git repo
         set(${ret} True PARENT_SCOPE)
-        message(STATUS "[OPENCL-CLANG] ${repo_dir} is not a git repository")
+        message(STATUS "[OPENCL-CLANG][Warning] ${repo_dir} is not a git repository, therefore, local patches are not applied")
         return()
     endif()
     if(patches_needed EQUAL 1) # The target branch doesn't exist
