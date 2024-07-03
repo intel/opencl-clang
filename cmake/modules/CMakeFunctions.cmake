@@ -106,8 +106,10 @@ function(apply_patches repo_dir patches_dir base_revision target_branch ret)
         OUTPUT_QUIET
     )
     if(patches_needed EQUAL 128) # not a git repo
-        set(ret_not_git_repo 1)
-	elseif(patches_needed) # The target branch doesn't exist
+      set(${ret} True PARENT_SCOPE)
+      message(STATUS "[OPENCL-CLANG] ${repo_dir} is not a git repository")
+      return()
+    elseif(patches_needed EQUAL 1) # The target branch doesn't exist
         list(SORT patches)
         is_valid_revision(${repo_dir} ${base_revision} exists_base_rev)
 
@@ -147,7 +149,7 @@ function(apply_patches repo_dir patches_dir base_revision target_branch ret)
                 endif()
             endif()
         endforeach(patch)
-    else() # The target branch already exists
+    elseif(patches_needed EQUAL 0) # The target branch already exists
         execute_process( # Check it out
             COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}
             WORKING_DIRECTORY ${repo_dir}
@@ -155,7 +157,7 @@ function(apply_patches repo_dir patches_dir base_revision target_branch ret)
             RESULT_VARIABLE ret_check_out
         )
     endif()
-	if (NOT (ret_not_git_repo OR ret_check_out OR ret_apply_patch))
+	if (NOT (ret_check_out OR ret_apply_patch))
         set(${ret} True PARENT_SCOPE)
     else()
         message(FATAL_ERROR "[OPENCL-CLANG] Failed to apply patch!")
