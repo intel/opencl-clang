@@ -104,7 +104,11 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
         ERROR_QUIET
         OUTPUT_QUIET
     )
-    if(patches_needed) # The target branch doesn't exist
+    if(patches_needed EQUAL "128")
+      message(STATUS "[OPENCL-CLANG] ${repo_dir} is not a git repository")
+      return()
+    endif()
+    if(patches_needed EQUAL "1") # The target branch doesn't exist
         list(SORT patches)
         is_valid_revision(${repo_dir} ${base_revision} exists_base_rev)
 
@@ -142,7 +146,7 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
                 message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
             endif()
         endforeach(patch)
-    else() # The target branch already exists
+    elsef(patches_needed EQUAL "0") # The target branch already exists
         execute_process( # Check it out
             COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}
             WORKING_DIRECTORY ${repo_dir}
