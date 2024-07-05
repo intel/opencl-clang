@@ -155,13 +155,11 @@ if(NOT USE_PREBUILT_LLVM)
     apply_patches(${LLVM_MONOREPO_DIR}
                   "${LLVM_PATCHES_DIRS}"
                   ${LLVM_BASE_REVISION}
-                  ${TARGET_BRANCH}
-                  ret)
+                  ${TARGET_BRANCH})
     apply_patches(${SPIRV_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
                   ${SPIRV_BASE_REVISION}
-                  ${TARGET_BRANCH}
-                  ret)
+                  ${TARGET_BRANCH})
 endif(NOT USE_PREBUILT_LLVM)
 
 #
