@@ -42,7 +42,7 @@ endif()
 
 option(LLVMSPIRV_INCLUDED_IN_LLVM
   "Set to ON if libLLVMSPIRVLib is linked into libLLVM" ON)
-option(APPLY_PATCHES "option to apply patches" ON)
+option(APPLY_PATCHES "Apply local patches" ON)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(USE_PREBUILT_LLVM ON)
