@@ -40,6 +40,10 @@ if(LLVM_USE_HOST_TOOLS AND OPENCL_CLANG_BUILD_EXTERNAL)
   llvm_create_cross_target(${PROJECT_NAME} NATIVE "" Release)
 endif()
 
+option(LLVMSPIRV_INCLUDED_IN_LLVM
+  "Set to ON if libLLVMSPIRVLib is linked into libLLVM" ON)
+option(APPLY_PATCHES "Apply local patches" ON)
+
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(USE_PREBUILT_LLVM ON)
 
@@ -61,8 +65,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-    option(LLVMSPIRV_INCLUDED_IN_LLVM
-      "Set to ON if libLLVMSPIRVLib is linked into libLLVM" ON)
     if(LLVMSPIRV_INCLUDED_IN_LLVM)
         message(STATUS "[OPENCL-CLANG] Assuming that libLLVMSPIRVLib is linked into libLLVM")
     else(LLVMSPIRV_INCLUDED_IN_LLVM)
@@ -153,18 +155,26 @@ if(NOT USE_PREBUILT_LLVM)
         )
     endif()
 
-    set(CLANG_BASE_REVISION release/16.x)
+    set(LLVM_BASE_REVISION release/16.x)
     set(SPIRV_BASE_REVISION llvm_release_160)
     set(TARGET_BRANCH "ocl-open-160")
+    get_filename_component(LLVM_MONOREPO_DIR ${LLVM_SOURCE_DIR} DIRECTORY)
+    set(LLVM_PATCHES_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
+                          ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang)
 
-    apply_patches(${CLANG_SOURCE_DIR}
-                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
-                  ${CLANG_BASE_REVISION}
-                  ${TARGET_BRANCH})
-    apply_patches(${SPIRV_SOURCE_DIR}
-                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
-                  ${SPIRV_BASE_REVISION}
-                  ${TARGET_BRANCH})
+    if(APPLY_PATCHES)
+      message(STATUS "APPLY_PATCHES is enabled.")
+      apply_patches(${LLVM_MONOREPO_DIR}
+                    "${LLVM_PATCHES_DIRS}"
+                    ${LLVM_BASE_REVISION}
+                    ${TARGET_BRANCH})
+      apply_patches(${SPIRV_SOURCE_DIR}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/patches/spirv
+                    ${SPIRV_BASE_REVISION}
+                    ${TARGET_BRANCH})
+    else()
+      message(STATUS "APPLY_PATCHES is disabled, skip patch apply process.")
+    endif()
 endif(NOT USE_PREBUILT_LLVM)
 
 #
