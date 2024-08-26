@@ -117,8 +117,6 @@ endif()
 
 if(NOT USE_PREBUILT_LLVM)
 
-    set(LLVM_BASE_REVISION release/16.x)
-    set(CLANG_BASE_REVISION release_16)
     if(NOT LLVM_EXTERNAL_CLANG_SOURCE_DIR)
         set(CLANG_SOURCE_DIR ${LLVM_SOURCE_DIR}/tools/clang)
     elseif(EXISTS "${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/CMakeLists.txt")
@@ -157,6 +155,7 @@ if(NOT USE_PREBUILT_LLVM)
         )
     endif()
 
+    set(LLVM_BASE_REVISION release/16.x)
     set(SPIRV_BASE_REVISION llvm_release_160)
     set(TARGET_BRANCH "ocl-open-160")
     get_filename_component(LLVM_MONOREPO_DIR ${LLVM_SOURCE_DIR} DIRECTORY)
