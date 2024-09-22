@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  LLVM_VERSION: 19
+  LLVM_VERSION: 20
   LLVM_VERSION_MINOR: 0
 
 on:
