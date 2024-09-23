@@ -34,7 +34,7 @@ jobs:
     name: Verify `ocl-open-${{ matrix.llvm_version }}` release branch
     strategy:
       matrix:
-        llvm_version: [ 14, 15, 16, 17, 18 ]
+        llvm_version: [ 14, 15, 16, 17, 18, 19 ]
     runs-on: ubuntu-22.04
     steps:
 
