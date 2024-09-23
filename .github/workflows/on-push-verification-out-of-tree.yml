@@ -43,12 +43,15 @@ jobs:
           sudo apt-get update
           sudo apt-get -yq --no-install-suggests --no-install-recommends install \
             clang-${{ env.LLVM_VERSION }} \
+            clang-tools-${{ env.LLVM_VERSION }} \
             llvm-${{ env.LLVM_VERSION }}-dev \
+            libllvmlibc-${{ env.LLVM_VERSION }}-dev \
             libclang-${{ env.LLVM_VERSION }}-dev \
             libclang-cpp${{ env.LLVM_VERSION }}-dev \
             libpolly-${{ env.LLVM_VERSION }}-dev \
             libzstd-dev \
-            libedit-dev
+            libedit-dev \
+            mlir-${{ env.LLVM_VERSION }}-tools
 
       - name: Checkout SPIRV-LLVM-Translator sources
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
