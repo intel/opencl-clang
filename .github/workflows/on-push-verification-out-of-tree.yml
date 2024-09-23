@@ -10,7 +10,7 @@ permissions:
 
 env:
   LLVM_VERSION: 19
-  LLVM_VERSION_MINOR: 0
+  LLVM_VERSION_MINOR: 1
 
 on:
   push:
