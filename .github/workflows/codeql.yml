@@ -2,16 +2,16 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "ocl-open-190" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "ocl-open-190" ]
 
 permissions:
   contents: read
 
 env:
   LLVM_VERSION: 19
-  LLVM_VERSION_MINOR: 0
+  LLVM_VERSION_MINOR: 1
 
 jobs:
   analyze:
@@ -39,17 +39,18 @@ jobs:
         run: |
           curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
           curl -L "https://packages.lunarg.com/lunarg-signing-key-pub.asc" | sudo apt-key add -
-          echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy main" | sudo tee -a /etc/apt/sources.list
+          echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo tee -a /etc/apt/sources.list
           echo "deb https://packages.lunarg.com/vulkan jammy main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get -yq --no-install-suggests --no-install-recommends install \
             clang-${{ env.LLVM_VERSION }} \
+            clang-tools-${{ env.LLVM_VERSION }} \
             llvm-${{ env.LLVM_VERSION }}-dev \
             libclang-${{ env.LLVM_VERSION }}-dev \
             libclang-cpp${{ env.LLVM_VERSION }}-dev \
+            libllvmlibc-${{ env.LLVM_VERSION }}-dev \
             libpolly-${{ env.LLVM_VERSION }}-dev \
-            libzstd-dev \
-            libedit-dev
+            mlir-19-tools
 
       - name: Checkout opencl-clang sources for action files
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -61,7 +62,7 @@ jobs:
         with:
           repository: KhronosGroup/SPIRV-LLVM-Translator
           path: SPIRV-LLVM-Translator
-          ref: main
+          ref: llvm_release_190
 
       - name: Build SPIRV-LLVM-Translator
         run: |
