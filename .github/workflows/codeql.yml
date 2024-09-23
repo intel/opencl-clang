@@ -2,9 +2,9 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "ocl-open-190" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "ocl-open-190" ]
 
 permissions:
   contents: read

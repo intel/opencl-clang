@@ -15,10 +15,10 @@ env:
 on:
   push:
     branches:
-      - main
+      - ocl-open-190
   pull_request:
     branches:
-      - main
+      - ocl-open-190
     types:
       - opened
       - reopened
