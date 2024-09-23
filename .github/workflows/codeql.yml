@@ -61,7 +61,7 @@ jobs:
         with:
           repository: KhronosGroup/SPIRV-LLVM-Translator
           path: SPIRV-LLVM-Translator
-          ref: main
+          ref: llvm_release_190
 
       - name: Build SPIRV-LLVM-Translator
         run: |
