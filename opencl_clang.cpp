@@ -244,7 +244,8 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
           optionsParser.args(), *Diags);
 
       // Configure our handling of diagnostics.
-      ProcessWarningOptions(*Diags, compiler->getDiagnosticOpts());
+      ProcessWarningOptions(*Diags, compiler->getDiagnosticOpts(),
+                            compiler->getFileManager().getVirtualFileSystem());
 
       // Map memory buffers to a virtual file system
       MemFS->addFile(
