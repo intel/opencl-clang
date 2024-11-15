@@ -29,21 +29,21 @@ runs:
       shell: bash
 
     - name: Checkout LLVM
-      uses: actions/checkout@v3
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
       with:
         repository: llvm/llvm-project
         path: llvm-project
         ref: ${{ inputs.ref_llvm }}
 
     - name: Checkout SPIRV-LLVM-Translator
-      uses: actions/checkout@v3
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
       with:
         repository: KhronosGroup/SPIRV-LLVM-Translator
         path: llvm-project/SPIRV-LLVM-Translator
         ref: ${{ inputs.ref_translator }}
         
     - name: Checkout opencl-clang
-      uses: actions/checkout@v3
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
       with:
         path: llvm-project/opencl-clang
         ref: ${{ inputs.ref_opencl-clang }}
