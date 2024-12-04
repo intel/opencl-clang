@@ -300,8 +300,8 @@ add_llvm_library(${TARGET_NAME} SHARED
 if (WIN32)
     # Enable compiler generation of Control Flow Guard security checks.
     target_compile_options(${TARGET_NAME} PUBLIC "/guard:cf")
-    set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-        LINK_FLAGS "/DYNAMICBASE /GUARD:CF")
+    set_property(TARGET ${TARGET_NAME} APPEND PROPERTY
+        LINK_OPTIONS "LINKER:/DYNAMICBASE" "LINKER:/GUARD:CF")
 
 elseif(UNIX)
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
