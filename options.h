@@ -43,6 +43,14 @@ enum COMPILE_OPT_ID {
 #undef PREFIX
 };
 
+#define OPTTABLE_STR_TABLE_CODE
+#include "opencl_clang_options.inc"
+#undef OPTTABLE_STR_TABLE_CODE
+
+#define OPTTABLE_PREFIXES_TABLE_CODE
+#include "opencl_clang_options.inc"
+#undef OPTTABLE_PREFIXES_TABLE_CODE
+
 typedef std::list<std::string> ArgsVector;
 
 //
@@ -99,7 +107,7 @@ private:
 class OpenCLOptTable : public llvm::opt::GenericOptTable {
 public:
   OpenCLOptTable(llvm::ArrayRef<Info> pOptionInfos)
-      : llvm::opt::GenericOptTable(pOptionInfos) {}
+      : llvm::opt::GenericOptTable(OptionStrTable, OptionPrefixesTable, pOptionInfos) {}
 
   OpenCLArgList *ParseArgs(const char *szOptions, unsigned &missingArgIndex,
                            unsigned &missingArgCount) const;
