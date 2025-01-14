@@ -1,5 +1,8 @@
 name: Generate patch releases
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   schedule:
@@ -37,6 +40,9 @@ jobs:
           | xargs -0 -d"\n" printf 'branches_json={"branch":[%s]}' \
           >> $GITHUB_OUTPUT
   release:
+    permissions:
+      # required by softprops/action-gh-release to create a release
+      contents: write
     runs-on: ubuntu-latest
     needs: setup
     strategy:
