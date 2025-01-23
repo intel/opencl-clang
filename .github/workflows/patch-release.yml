@@ -17,7 +17,7 @@ jobs:
       branches_json: ${{steps.release_branches.outputs.branches_json}}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
             fetch-depth: 0
       - name: Get latest llvm_release branch
@@ -49,7 +49,7 @@ jobs:
       matrix: ${{fromJson(needs.setup.outputs.branches_json)}}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
             ref: ${{ matrix.branch }}
             fetch-depth: 0
