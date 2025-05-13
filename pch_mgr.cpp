@@ -123,9 +123,11 @@ bool ResourceManager::GetResourceWin32(const char *id, const char *pszType,
                                        const char *&res, size_t &size) {
   HMODULE hMod = NULL;
   // Get the handle to the current module
-  GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                    (LPCSTR)dummy, &hMod);
+  if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          (LPCSTR)dummy, &hMod))
+    return false;
+
   if (!hMod) {
     return false;
   }
