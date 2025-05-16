@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.13.4)
 
+if(NOT DEFINED BASE_LLVM_VERSION)
+  set(BASE_LLVM_VERSION 20.1)
+endif(NOT DEFINED BASE_LLVM_VERSION)
+set(OPENCL_CLANG_VERSION ${BASE_LLVM_VERSION}.0)
+
 if(NOT DEFINED OPENCL_CLANG_BUILD_EXTERNAL)
   # check if we build inside llvm or not
   if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -39,7 +44,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_definitions(-DUSE_PREBUILT_LLVM)
 
     if(NOT PREFERRED_LLVM_VERSION)
-        set(PREFERRED_LLVM_VERSION "20.0")
+        set(PREFERRED_LLVM_VERSION "20.1")
     endif(NOT PREFERRED_LLVM_VERSION)
     message(STATUS "[OPENCL-CLANG] Looking for LLVM version ${PREFERRED_LLVM_VERSION}")
     find_package(LLVM ${PREFERRED_LLVM_VERSION} REQUIRED)
@@ -152,9 +157,9 @@ if(NOT USE_PREBUILT_LLVM)
         )
     endif()
 
-    set(CLANG_BASE_REVISION master)
-    set(SPIRV_BASE_REVISION master)
-    set(TARGET_BRANCH "ocl-open-110")
+    set(CLANG_BASE_REVISION release/20.x)
+    set(SPIRV_BASE_REVISION llvm_release_200)
+    set(TARGET_BRANCH "ocl-open-200")
 
     apply_patches(${CLANG_SOURCE_DIR}
                   ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang

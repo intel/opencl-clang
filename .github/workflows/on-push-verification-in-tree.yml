@@ -13,12 +13,10 @@ permissions:
 on:
   push:
     branches:
-      - main
-      - ocl-open-*
+      - ocl-open-200
   pull_request:
     branches:
-      - main
-      - ocl-open-*
+      - ocl-open-200
     types:
       - opened
       - reopened
