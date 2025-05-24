@@ -213,13 +213,12 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       // Prepare our diagnostic client.
       llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(
           new clang::DiagnosticIDs());
-      llvm::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(
-          new clang::DiagnosticOptions());
-      DiagOpts->ShowPresumedLoc = true;
+      clang::DiagnosticOptions DiagOpts;
+      DiagOpts.ShowPresumedLoc = true;
       clang::TextDiagnosticPrinter *DiagsPrinter =
-        new clang::TextDiagnosticPrinter(err_ostream, &*DiagOpts);
+        new clang::TextDiagnosticPrinter(err_ostream, DiagOpts);
       llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags(
-          new clang::DiagnosticsEngine(DiagID, &*DiagOpts, DiagsPrinter));
+          new clang::DiagnosticsEngine(DiagID, DiagOpts, DiagsPrinter));
 
       // Prepare output buffer
       std::unique_ptr<llvm::raw_pwrite_stream>
