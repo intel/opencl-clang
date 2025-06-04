@@ -316,7 +316,6 @@ if (WIN32)
     endif(NOT DEFINED windows_resource_file)
 
     set(RC_CHAR_TM "\\231")
-    set(RC_CHAR_C "\\251")
     set(RC_CHAR_R "\\256")
 
     set(RC_FILE_VERSION "${PRODUCT_VER_MAJOR}.${PRODUCT_VER_MINOR}.${LLVM_VER_MAJOR}.${LLVM_VER_MINOR}")
@@ -336,7 +335,7 @@ if (WIN32)
             "RC_ORIGINAL_FILENAME=\"${TARGET_NAME}.dll\""
             "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
             "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
-            "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
+            "RC_COPYRIGHT=\"Copyright (C) 2018 Intel Corporation\"")
 
     # Enable compiler generation of Control Flow Guard security checks.
     target_compile_options(${TARGET_NAME} PUBLIC "/guard:cf")
