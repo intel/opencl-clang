@@ -336,7 +336,7 @@ if (WIN32)
             "RC_ORIGINAL_FILENAME=\"${TARGET_NAME}.dll\""
             "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
             "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
-            "RC_COPYRIGHT=\"Copyright ${RC_CHAR_C} 2018 Intel Corporation. All rights reserved.\"")
+            "RC_COPYRIGHT=\"Copyright (C) 2018 Intel Corporation\"")
 
     # Enable compiler generation of Control Flow Guard security checks.
     target_compile_options(${TARGET_NAME} PUBLIC "/guard:cf")
