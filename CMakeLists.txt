@@ -316,7 +316,6 @@ if (WIN32)
     endif(NOT DEFINED windows_resource_file)
 
     set(RC_CHAR_TM "\\231")
-    set(RC_CHAR_C "\\251")
     set(RC_CHAR_R "\\256")
 
     set(RC_FILE_VERSION "${PRODUCT_VER_MAJOR}.${PRODUCT_VER_MINOR}.${LLVM_VER_MAJOR}.${LLVM_VER_MINOR}")
