@@ -145,7 +145,7 @@ private:
 class CompileOptionsParser {
 public:
   CompileOptionsParser(const char *pszOpenCLVersion)
-      : m_commonFilter(pszOpenCLVersion), m_emitSPIRV(false), m_optDisable(false) {}
+      : m_commonFilter(pszOpenCLVersion), m_emitSPIRV(false), m_optDisable(false), m_opaquePointers(true) {}
 
   //
   // Validates and prepares the effective options to pass to clang upon
@@ -178,6 +178,7 @@ public:
 
   bool hasEmitSPIRV() const { return m_emitSPIRV; }
   bool hasOptDisable() const { return m_optDisable; }
+  bool hasOpaquePointers() const { return m_opaquePointers; }
 
 private:
   OpenCLCompileOptTable m_optTbl;
@@ -187,6 +188,7 @@ private:
   std::string m_sourceName;
   bool m_emitSPIRV;
   bool m_optDisable;
+  bool m_opaquePointers;
 };
 
 // Tokenize a string into tokens separated by any char in 'delims'.
