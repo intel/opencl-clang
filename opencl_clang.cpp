@@ -314,6 +314,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
           pResult->GetIRSize());
       std::unique_ptr<llvm::MemoryBuffer> MB = llvm::MemoryBuffer::getMemBuffer(LLVM_IR, pResult->GetIRName(), false);
       llvm::LLVMContext Context;
+      Context.setOpaquePointers(optionsParser.hasOpaquePointers());
       auto E = llvm::getOwningLazyBitcodeModule(std::move(MB), Context,
           /*ShouldLazyLoadMetadata=*/true);
       llvm::logAllUnhandledErrors(E.takeError(), err_ostream, "error: ");

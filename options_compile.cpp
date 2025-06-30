@@ -418,6 +418,9 @@ void CompileOptionsParser::processOptions(const char *pszOptions,
       m_emitSPIRV = true;
       continue;
     }
+    else if (it->compare("-no-opaque-pointers") == 0) {
+      m_opaquePointers = false;
+    }
     m_effectiveArgsRaw.push_back(it->c_str());
   }
 }
