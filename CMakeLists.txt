@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13.4)
+cmake_minimum_required(VERSION 3.20.0)
 
 if(NOT DEFINED OPENCL_CLANG_BUILD_EXTERNAL)
   # check if we build inside llvm or not
