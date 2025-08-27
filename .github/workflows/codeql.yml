@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  LLVM_VERSION: 21
+  LLVM_VERSION: 22
   LLVM_VERSION_MINOR: 0
 
 jobs:
