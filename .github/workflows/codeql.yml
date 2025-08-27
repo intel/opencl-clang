@@ -2,16 +2,16 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "ocl-open-210" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "ocl-open-210" ]
 
 permissions:
   contents: read
 
 env:
   LLVM_VERSION: 21
-  LLVM_VERSION_MINOR: 0
+  LLVM_VERSION_MINOR: 1
 
 jobs:
   analyze:
@@ -39,7 +39,7 @@ jobs:
         run: |
           curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
           curl -L "https://packages.lunarg.com/lunarg-signing-key-pub.asc" | sudo apt-key add -
-          echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy main" | sudo tee -a /etc/apt/sources.list
+          echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy-21 main" | sudo tee -a /etc/apt/sources.list
           echo "deb https://packages.lunarg.com/vulkan jammy main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get -yq --no-install-suggests --no-install-recommends install \
@@ -64,7 +64,7 @@ jobs:
         with:
           repository: KhronosGroup/SPIRV-LLVM-Translator
           path: SPIRV-LLVM-Translator
-          ref: main
+          ref: llvm_release_210
 
       - name: Build SPIRV-LLVM-Translator
         run: |
