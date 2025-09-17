@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4.3)
+cmake_minimum_required(VERSION 3.13.4)
 
 if(NOT DEFINED BASE_LLVM_VERSION)
   set(BASE_LLVM_VERSION 14.0.0)
