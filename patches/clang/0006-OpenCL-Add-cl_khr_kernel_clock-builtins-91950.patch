@@ -1,0 +1,80 @@
+From da6a0b7af29a222b2e16a10155b49d4fafe967f3 Mon Sep 17 00:00:00 2001
+From: Sven van Haastregt <sven.vanhaastregt@arm.com>
+Date: Mon, 20 May 2024 09:37:53 +0200
+Subject: [PATCH] [OpenCL] Add cl_khr_kernel_clock builtins (#91950)
+
+---
+ clang/lib/Headers/opencl-c-base.h |  4 ++++
+ clang/lib/Headers/opencl-c.h      | 15 +++++++++++++++
+ clang/lib/Sema/OpenCLBuiltins.td  | 14 ++++++++++++++
+ 3 files changed, 33 insertions(+)
+
+diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
+index 2494f6213fc5..786678b9d8a7 100644
+--- a/clang/lib/Headers/opencl-c-base.h
++++ b/clang/lib/Headers/opencl-c-base.h
+@@ -46,6 +46,10 @@
+ #define __opencl_c_ext_fp32_global_atomic_min_max 1
+ #define __opencl_c_ext_fp32_local_atomic_min_max 1
+ #define __opencl_c_ext_image_raw10_raw12 1
++#define cl_khr_kernel_clock 1
++#define __opencl_c_kernel_clock_scope_device 1
++#define __opencl_c_kernel_clock_scope_work_group 1
++#define __opencl_c_kernel_clock_scope_sub_group 1
+ 
+ #endif // defined(__SPIR__) || defined(__SPIRV__)
+ #endif // (defined(__OPENCL_CPP_VERSION__) || __OPENCL_C_VERSION__ >= 200)
+diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
+index 288bb18bc654..20719b74b6b8 100644
+--- a/clang/lib/Headers/opencl-c.h
++++ b/clang/lib/Headers/opencl-c.h
+@@ -17314,6 +17314,21 @@ half __ovld __conv sub_group_clustered_rotate(half, int, uint);
+ #endif // cl_khr_fp16
+ #endif // cl_khr_subgroup_rotate
+ 
++#if defined(cl_khr_kernel_clock)
++#if defined(__opencl_c_kernel_clock_scope_device)
++ulong __ovld clock_read_device();
++uint2 __ovld clock_read_hilo_device();
++#endif // __opencl_c_kernel_clock_scope_device
++#if defined(__opencl_c_kernel_clock_scope_work_group)
++ulong __ovld clock_read_work_group();
++uint2 __ovld clock_read_hilo_work_group();
++#endif // __opencl_c_kernel_clock_scope_work_group
++#if defined(__opencl_c_kernel_clock_scope_sub_group)
++ulong __ovld clock_read_sub_group();
++uint2 __ovld clock_read_hilo_sub_group();
++#endif // __opencl_c_kernel_clock_scope_sub_group
++#endif // cl_khr_kernel_clock
++
+ #if defined(cl_intel_subgroups)
+ // Intel-Specific Sub Group Functions
+ float   __ovld __conv intel_sub_group_shuffle( float , uint );
+diff --git a/clang/lib/Sema/OpenCLBuiltins.td b/clang/lib/Sema/OpenCLBuiltins.td
+index a7bdfe20b982..4da61429fcce 100644
+--- a/clang/lib/Sema/OpenCLBuiltins.td
++++ b/clang/lib/Sema/OpenCLBuiltins.td
+@@ -1852,6 +1852,20 @@ let Extension = FunctionExtension<"cl_khr_subgroup_rotate"> in {
+   def : Builtin<"sub_group_clustered_rotate", [AGenType1, AGenType1, Int, UInt], Attr.Convergent>;
+ }
+ 
++// cl_khr_kernel_clock
++let Extension = FunctionExtension<"cl_khr_kernel_clock __opencl_c_kernel_clock_scope_device"> in {
++  def : Builtin<"clock_read_device", [ULong]>;
++  def : Builtin<"clock_read_hilo_device", [VectorType<UInt, 2>]>;
++}
++let Extension = FunctionExtension<"cl_khr_kernel_clock __opencl_c_kernel_clock_scope_work_group"> in {
++  def : Builtin<"clock_read_work_group", [ULong]>;
++  def : Builtin<"clock_read_hilo_work_group", [VectorType<UInt, 2>]>;
++}
++let Extension = FunctionExtension<"cl_khr_kernel_clock __opencl_c_kernel_clock_scope_sub_group"> in {
++  def : Builtin<"clock_read_sub_group", [ULong]>;
++  def : Builtin<"clock_read_hilo_sub_group", [VectorType<UInt, 2>]>;
++}
++
+ //--------------------------------------------------------------------
+ // Arm extensions.
+ let Extension = ArmIntegerDotProductInt8 in {
+-- 
+2.39.1
+
