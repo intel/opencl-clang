@@ -237,7 +237,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
       compiler->setVirtualFileSystem(std::move(OverlayFS));
       compiler->createFileManager();
-      compiler->createSourceManager(compiler->getFileManager());
+      compiler->createSourceManager();
 
       // Create compiler invocation from user args before trickering with it
       clang::CompilerInvocation::CreateFromArgs(compiler->getInvocation(),
