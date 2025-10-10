@@ -35,7 +35,7 @@ enum COMPILE_OPT_ID {
 #define PREFIX(NAME, VALUE)
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
                VISIBILITY, PARAM, HELPTEXT, HELPTEXTSFORVARIANTS, METAVAR,     \
-               VALUES)                                                         \
+               VALUES, SUBCOMMANDIDS_OFFSET)                                   \
   OPT_COMPILE_##ID,
 #include "opencl_clang_options.inc"
   OPT_COMPILE_LAST_OPTION

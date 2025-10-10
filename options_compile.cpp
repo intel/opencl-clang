@@ -39,7 +39,7 @@ static constexpr OptTable::Info ClangOptionsInfoTable[] = {
 #define PREFIX(NAME, VALUE)
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
                VISIBILITY, PARAM, HELPTEXT, HELPTEXTSFORVARIANTS, METAVAR,     \
-               VALUES)                                                         \
+               VALUES, SUBCOMMANDIDS_OFFSET)                                   \
   {PREFIX,                                                                     \
    NAME,                                                                       \
    HELPTEXT,                                                                   \
@@ -53,7 +53,8 @@ static constexpr OptTable::Info ClangOptionsInfoTable[] = {
    OPT_COMPILE_##GROUP,                                                        \
    OPT_COMPILE_##ALIAS,                                                        \
    ALIASARGS,                                                                  \
-   VALUES},
+   VALUES,                                                                     \
+   SUBCOMMANDIDS_OFFSET},
 #include "opencl_clang_options.inc"
 };
 
