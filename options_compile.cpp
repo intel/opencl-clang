@@ -39,8 +39,6 @@ Copyright (c) Intel Corporation (2009-2017).
 
 using namespace llvm::opt;
 
-extern llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
-
 static const OptTable::Info ClangOptionsInfoTable[] = {
 #define PREFIX(NAME, VALUE)
 #define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM,  \
@@ -442,10 +440,6 @@ std::string CompileOptionsParser::getEffectiveOptionsAsString() const {
 extern "C" CC_DLL_EXPORT bool CheckCompileOptions(const char *pszOptions,
                                                   char *pszUnknownOptions,
                                                   size_t uiUnknownOptionsSize) {
-  // LLVM doesn't guarantee thread safety,
-  // therefore we serialize execution of LLVM code.
-  llvm::sys::SmartScopedLock<true> compileOptionsGuard{*compileMutex};
-
   try {
     CompileOptionsParser optionsParser("200");
     return optionsParser.checkOptions(pszOptions, pszUnknownOptions,
