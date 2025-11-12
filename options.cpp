@@ -18,9 +18,6 @@ Copyright (c) Intel Corporation (2009-2017).
 
 #include "options.h"
 
-#include "llvm/Option/Arg.h"
-#include "clang/Driver/Options.h"
-
 #include <iterator>
 #include <sstream>
 
