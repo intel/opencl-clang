@@ -19,11 +19,8 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "opencl_clang.h"
 #include "options.h"
 
-#include "clang/Driver/Options.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Option/Arg.h"
-#include "llvm/Option/ArgList.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
 
