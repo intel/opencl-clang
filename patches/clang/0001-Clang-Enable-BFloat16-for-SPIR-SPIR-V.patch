@@ -1,0 +1,36 @@
+From 7d12435d6724d1171a776db1929b2bdb5e1ac328 Mon Sep 17 00:00:00 2001
+From: Wenju He <wenju.he@intel.com>
+Date: Fri, 21 Nov 2025 05:46:37 +0100
+Subject: [PATCH] [Clang] Enable BFloat16 for SPIR/SPIR-V
+
+---
+ clang/lib/Basic/Targets/SPIR.h | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/clang/lib/Basic/Targets/SPIR.h b/clang/lib/Basic/Targets/SPIR.h
+index 1abf798d9312..084a119da4ee 100644
+--- a/clang/lib/Basic/Targets/SPIR.h
++++ b/clang/lib/Basic/Targets/SPIR.h
+@@ -108,6 +108,9 @@ protected:
+     UseAddrSpaceMapMangling = true;
+     HasLegalHalfType = true;
+     HasFloat16 = true;
++    HasBFloat16 = true;
++    BFloat16Width = BFloat16Align = 16;
++    BFloat16Format = &llvm::APFloat::BFloat();
+     // Define available target features
+     // These must be defined in sorted order!
+     NoAsmVariants = true;
+@@ -418,9 +421,6 @@ public:
+     resetDataLayout("e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-"
+                     "v256:256-v512:512-v1024:1024-n32:64-S32-G1-P4-A0");
+ 
+-    BFloat16Width = BFloat16Align = 16;
+-    BFloat16Format = &llvm::APFloat::BFloat();
+-
+     HasLegalHalfType = true;
+     HasFloat16 = true;
+     HalfArgsAndReturns = true;
+-- 
+2.39.1
+
