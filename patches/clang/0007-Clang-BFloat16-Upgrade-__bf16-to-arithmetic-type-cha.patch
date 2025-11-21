@@ -1,0 +1,1617 @@
+From d2d9d083a2f36b8ccbdd6d1803287031ddaffb22 Mon Sep 17 00:00:00 2001
+From: "M. Zeeshan Siddiqui" <mzs@microsoft.com>
+Date: Sat, 27 May 2023 11:45:12 +0800
+Subject: [PATCH 1/2] [Clang][BFloat16] Upgrade __bf16 to arithmetic type,
+ change mangling, and extend excess precision support
+
+Pursuant to discussions at
+https://discourse.llvm.org/t/rfc-c-23-p1467r9-extended-floating-point-types-and-standard-names/70033/22,
+this commit enhances the handling of the __bf16 type in Clang.
+- Firstly, it upgrades __bf16 from a storage-only type to an arithmetic
+  type.
+- Secondly, it changes the mangling of __bf16 to DF16b on all
+  architectures except ARM. This change has been made in
+  accordance with the finalization of the mangling for the
+  std::bfloat16_t type, as discussed at
+  https://github.com/itanium-cxx-abi/cxx-abi/pull/147.
+- Finally, this commit extends the existing excess precision support to
+  the __bf16 type. This applies to hardware architectures that do not
+  natively support bfloat16 arithmetic.
+Appropriate tests have been added to verify the effects of these
+changes and ensure no regressions in other areas of the compiler.
+
+Reviewed By: rjmccall, pengfei, zahiraam
+
+Differential Revision: https://reviews.llvm.org/D150913
+
+(cherry picked from commit e62175736551abf40a3410bc246f58e650eb8158)
+---
+ clang/docs/LanguageExtensions.rst             | 137 ++++---
+ .../clang/Basic/DiagnosticSemaKinds.td        |   2 -
+ clang/include/clang/Basic/FPOptions.def       |   1 +
+ clang/include/clang/Basic/LangOptions.def     |   3 +-
+ clang/include/clang/Basic/TargetInfo.h        |  15 +-
+ clang/include/clang/Driver/Options.td         |   9 +
+ clang/lib/AST/Type.cpp                        |  21 +-
+ clang/lib/Basic/TargetInfo.cpp                |   1 +
+ clang/lib/Basic/Targets/AMDGPU.h              |   1 -
+ clang/lib/Basic/Targets/ARM.cpp               |   3 +
+ clang/lib/Basic/Targets/NVPTX.h               |   1 -
+ clang/lib/Basic/Targets/X86.cpp               |  12 +
+ clang/lib/Basic/Targets/X86.h                 |   1 -
+ clang/lib/CodeGen/CGExprScalar.cpp            |  16 +-
+ clang/lib/Driver/ToolChains/Clang.cpp         |   5 +
+ clang/lib/Sema/SemaCast.cpp                   |  14 -
+ clang/lib/Sema/SemaExpr.cpp                   |   4 -
+ clang/lib/Sema/SemaOverload.cpp               |  10 +-
+ clang/test/CodeGen/X86/avx512bf16-error.c     |   1 -
+ clang/test/CodeGen/X86/bfloat-mangle.cpp      |   2 +-
+ clang/test/CodeGen/X86/bfloat16.cpp           | 145 +++++++
+ .../CodeGen/X86/fexcess-precision-bfloat16.c  | 360 ++++++++++++++++++
+ clang/test/CodeGenCUDA/amdgpu-bf16.cu         |  10 +-
+ clang/test/CodeGenCUDA/bf16.cu                |  22 +-
+ clang/test/Driver/fexcess-precision.c         |   4 +
+ clang/test/Sema/arm-bf16-forbidden-ops.c      |  72 ----
+ clang/test/Sema/arm-bf16-forbidden-ops.cpp    |  72 ----
+ clang/test/Sema/arm-bfloat.cpp                |  58 +--
+ clang/test/SemaCUDA/amdgpu-bf16.cu            |  44 +--
+ clang/test/SemaCUDA/bf16.cu                   |  30 +-
+ 30 files changed, 731 insertions(+), 345 deletions(-)
+ create mode 100644 clang/test/CodeGen/X86/bfloat16.cpp
+ create mode 100644 clang/test/CodeGen/X86/fexcess-precision-bfloat16.c
+ delete mode 100644 clang/test/Sema/arm-bf16-forbidden-ops.c
+ delete mode 100644 clang/test/Sema/arm-bf16-forbidden-ops.cpp
+
+diff --git a/clang/docs/LanguageExtensions.rst b/clang/docs/LanguageExtensions.rst
+index e5df4d524335..0b4fd0ddc038 100644
+--- a/clang/docs/LanguageExtensions.rst
++++ b/clang/docs/LanguageExtensions.rst
+@@ -768,61 +768,88 @@ The matrix type extension supports explicit casts. Implicit type conversion betw
+ Half-Precision Floating Point
+ =============================
+ 
+-Clang supports three half-precision (16-bit) floating point types: ``__fp16``,
+-``_Float16`` and ``__bf16``.  These types are supported in all language modes.
+-
+-``__fp16`` is supported on every target, as it is purely a storage format; see below.
+-``_Float16`` is currently only supported on the following targets, with further
+-targets pending ABI standardization:
+-
+-* 32-bit ARM
+-* 64-bit ARM (AArch64)
+-* AMDGPU
+-* SPIR
+-* X86 (see below)
+-
+-On X86 targets, ``_Float16`` is supported as long as SSE2 is available, which
+-includes all 64-bit and all recent 32-bit processors. When the target supports
+-AVX512-FP16, ``_Float16`` arithmetic is performed using that native support.
+-Otherwise, ``_Float16`` arithmetic is performed by promoting to ``float``,
+-performing the operation, and then truncating to ``_Float16``. When doing this
+-emulation, Clang defaults to following the C standard's rules for excess
+-precision arithmetic, which avoids intermediate truncations within statements
+-and may generate different results from a strict operation-by-operation
+-emulation.
+-
+-``_Float16`` will be supported on more targets as they define ABIs for it.
+-
+-``__bf16`` is purely a storage format; it is currently only supported on the following targets:
+-
+-* 32-bit ARM
+-* 64-bit ARM (AArch64)
+-* X86 (see below)
+-
+-On X86 targets, ``__bf16`` is supported as long as SSE2 is available, which
+-includes all 64-bit and all recent 32-bit processors.
+-
+-``__fp16`` is a storage and interchange format only.  This means that values of
+-``__fp16`` are immediately promoted to (at least) ``float`` when used in arithmetic
+-operations, so that e.g. the result of adding two ``__fp16`` values has type ``float``.
+-The behavior of ``__fp16`` is specified by the Arm C Language Extensions (`ACLE <https://github.com/ARM-software/acle/releases>`_).
+-Clang uses the ``binary16`` format from IEEE 754-2008 for ``__fp16``, not the ARM
+-alternative format.
+-
+-``_Float16`` is an interchange floating-point type.  This means that, just like arithmetic on
+-``float`` or ``double``, arithmetic on ``_Float16`` operands is formally performed in the
+-``_Float16`` type, so that e.g. the result of adding two ``_Float16`` values has type
+-``_Float16``.  The behavior of ``_Float16`` is specified by ISO/IEC TS 18661-3:2015
+-("Floating-point extensions for C").  As with ``__fp16``, Clang uses the ``binary16``
+-format from IEEE 754-2008 for ``_Float16``.
+-
+-``_Float16`` arithmetic will be performed using native half-precision support
+-when available on the target (e.g. on ARMv8.2a); otherwise it will be performed
+-at a higher precision (currently always ``float``) and then truncated down to
+-``_Float16``.  Note that C and C++ allow intermediate floating-point operands
+-of an expression to be computed with greater precision than is expressible in
+-their type, so Clang may avoid intermediate truncations in certain cases; this may
+-lead to results that are inconsistent with native arithmetic.
++Clang supports three half-precision (16-bit) floating point types:
++``__fp16``, ``_Float16`` and ``__bf16``. These types are supported
++in all language modes, but their support differs between targets.
++A target is said to have "native support" for a type if the target
++processor offers instructions for directly performing basic arithmetic
++on that type.  In the absence of native support, a type can still be
++supported if the compiler can emulate arithmetic on the type by promoting
++to ``float``; see below for more information on this emulation.
++
++* ``__fp16`` is supported on all targets. The special semantics of this
++type mean that no arithmetic is ever performed directly on ``__fp16`` values;
++see below.
++
++* ``_Float16`` is supported on the following targets:
++  * 32-bit ARM (natively on some architecture versions)
++  * 64-bit ARM (AArch64) (natively on ARMv8.2a and above)
++  * AMDGPU (natively)
++  * SPIR (natively)
++  * X86 (if SSE2 is available; natively if AVX512-FP16 is also available)
++
++* ``__bf16`` is supported on the following targets (currently never natively):
++  * 32-bit ARM
++  * 64-bit ARM (AArch64)
++  * X86 (when SSE2 is available)
++
++(For X86, SSE2 is available on 64-bit and all recent 32-bit processors.)
++
++``__fp16`` and ``_Float16`` both use the binary16 format from IEEE
++754-2008, which provides a 5-bit exponent and an 11-bit significand
++(counting the implicit leading 1). ``__bf16`` uses the `bfloat16
++<https://en.wikipedia.org/wiki/Bfloat16_floating-point_format>`_ format,
++which provides an 8-bit exponent and an 8-bit significand; this is the same
++exponent range as `float`, just with greatly reduced precision.
++
++``_Float16`` and ``__bf16`` follow the usual rules for arithmetic
++floating-point types.  Most importantly, this means that arithmetic operations
++on operands of these types are formally performed in the type and produce
++values of the type. ``__fp16`` does not follow those rules: most operations
++immediately promote operands of type ``__fp16`` to ``float``, and so
++arithmetic operations are defined to be performed in ``float`` and so result in
++a value of type ``float`` (unless further promoted because of other operands).
++See below for more information on the exact specifications of these types.
++
++When compiling arithmetic on ``_Float16`` and ``__bf16`` for a target without
++native support, Clang will perform the arithmetic in ``float``, inserting
++extensions and truncations as necessary. This can be done in a way that
++exactly matches the operation-by-operation behavior of native support,
++but that can require many extra truncations and extensions. By default,
++when emulating ``_Float16`` and ``__bf16`` arithmetic using ``float``, Clang
++does not truncate intermediate operands back to their true type unless the
++operand is the result of an explicit cast or assignment. This is generally
++much faster but can generate different results from strict operation-by-operation
++emulation. Usually the results are more precise. This is permitted by the
++C and C++ standards under the rules for excess precision in intermediate operands;
++see the discussion of evaluation formats in the C standard and [expr.pre] in
++the C++ standard.
++
++The use of excess precision can be independently controlled for these two
++types with the ``-ffloat16-excess-precision=`` and
++``-fbfloat16-excess-precision=`` options.  Valid values include:
++- ``none`` (meaning to perform strict operation-by-operation emulation)
++- ``standard`` (meaning that excess precision is permitted under the rules
++  described in the standard, i.e. never across explicit casts or statements)
++- ``fast`` (meaning that excess precision is permitted whenever the
++  optimizer sees an opportunity to avoid truncations; currently this has no
++  effect beyond ``standard``)
++
++The ``_Float16`` type is an interchange floating type specified in
++ ISO/IEC TS 18661-3:2015 ("Floating-point extensions for C").  It will
++be supported on more targets as they define ABIs for it.
++
++The ``__bf16`` type is a non-standard extension, but it generally follows
++the rules for arithmetic interchange floating types from ISO/IEC TS
++18661-3:2015.  In previous versions of Clang, it was a storage-only type
++that forbade arithmetic operations.  It will be supported on more targets
++as they define ABIs for it.
++
++The ``__fp16`` type was originally an ARM extension and is specified
++by the `ARM C Language Extensions <https://github.com/ARM-software/acle/releases>`_.
++Clang uses the ``binary16`` format from IEEE 754-2008 for ``__fp16``,
++not the ARM alternative format.  Operators that expect arithmetic operands
++immediately promote ``__fp16`` operands to ``float``.
+ 
+ It is recommended that portable code use ``_Float16`` instead of ``__fp16``,
+ as it has been defined by the C standards committee and has behavior that is
+diff --git a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+index 6d72040c4b87..d674c034ba91 100644
+--- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
++++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+@@ -8724,8 +8724,6 @@ def err_cast_pointer_to_non_pointer_int : Error<
+ def err_nullptr_cast : Error<
+   "cannot cast an object of type %select{'nullptr_t' to %1|%1 to 'nullptr_t'}0"
+ >;
+-def err_cast_to_bfloat16 : Error<"cannot type-cast to __bf16">;
+-def err_cast_from_bfloat16 : Error<"cannot type-cast from __bf16">;
+ def err_typecheck_expect_scalar_operand : Error<
+   "operand of type %0 where arithmetic or pointer type is required">;
+ def err_typecheck_cond_incompatible_operands : Error<
+diff --git a/clang/include/clang/Basic/FPOptions.def b/clang/include/clang/Basic/FPOptions.def
+index 0c687e3c3fa0..4517be6f178d 100644
+--- a/clang/include/clang/Basic/FPOptions.def
++++ b/clang/include/clang/Basic/FPOptions.def
+@@ -26,4 +26,5 @@ OPTION(AllowReciprocal, bool, 1, NoSignedZero)
+ OPTION(AllowApproxFunc, bool, 1, AllowReciprocal)
+ OPTION(FPEvalMethod, LangOptions::FPEvalMethodKind, 2, AllowApproxFunc)
+ OPTION(Float16ExcessPrecision, LangOptions::ExcessPrecisionKind, 2, FPEvalMethod)
++OPTION(BFloat16ExcessPrecision, LangOptions::ExcessPrecisionKind, 2, FPEvalMethod)
+ #undef OPTION
+diff --git a/clang/include/clang/Basic/LangOptions.def b/clang/include/clang/Basic/LangOptions.def
+index d1cbe4306439..20a01138f649 100644
+--- a/clang/include/clang/Basic/LangOptions.def
++++ b/clang/include/clang/Basic/LangOptions.def
+@@ -317,7 +317,8 @@ COMPATIBLE_LANGOPT(ExpStrictFP, 1, false, "Enable experimental strict floating p
+ BENIGN_LANGOPT(RoundingMath, 1, false, "Do not assume default floating-point rounding behavior")
+ BENIGN_ENUM_LANGOPT(FPExceptionMode, FPExceptionModeKind, 2, FPE_Default, "FP Exception Behavior Mode type")
+ BENIGN_ENUM_LANGOPT(FPEvalMethod, FPEvalMethodKind, 2, FEM_UnsetOnCommandLine, "FP type used for floating point arithmetic")
+-ENUM_LANGOPT(Float16ExcessPrecision, ExcessPrecisionKind, 2, FPP_Standard, "Intermediate truncation behavior for floating point arithmetic")
++ENUM_LANGOPT(Float16ExcessPrecision, ExcessPrecisionKind, 2, FPP_Standard, "Intermediate truncation behavior for Float16 arithmetic")
++ENUM_LANGOPT(BFloat16ExcessPrecision, ExcessPrecisionKind, 2, FPP_Standard, "Intermediate truncation behavior for BFloat16 arithmetic")
+ LANGOPT(NoBitFieldTypeAlign , 1, 0, "bit-field type alignment")
+ LANGOPT(HexagonQdsp6Compat , 1, 0, "hexagon-qdsp6 backward compatibility")
+ LANGOPT(ObjCAutoRefCount , 1, 0, "Objective-C automated reference counting")
+diff --git a/clang/include/clang/Basic/TargetInfo.h b/clang/include/clang/Basic/TargetInfo.h
+index bb2a453f4657..260895b63fe1 100644
+--- a/clang/include/clang/Basic/TargetInfo.h
++++ b/clang/include/clang/Basic/TargetInfo.h
+@@ -219,6 +219,9 @@ protected:
+   bool HasFloat128;
+   bool HasFloat16;
+   bool HasBFloat16;
++  bool HasFullBFloat16; // True if the backend supports native bfloat16
++                        // arithmetic. Used to determine excess precision
++                        // support in the frontend.
+   bool HasIbm128;
+   bool HasLongDouble;
+   bool HasFPReturn;
+@@ -649,7 +652,13 @@ public:
+   virtual bool hasFloat16Type() const { return HasFloat16; }
+ 
+   /// Determine whether the _BFloat16 type is supported on this target.
+-  virtual bool hasBFloat16Type() const { return HasBFloat16; }
++  virtual bool hasBFloat16Type() const {
++    return HasBFloat16 || HasFullBFloat16;
++  }
++
++  /// Determine whether the BFloat type is fully supported on this target, i.e
++  /// arithemtic operations.
++  virtual bool hasFullBFloat16Type() const { return HasFullBFloat16; }
+ 
+   /// Determine whether the __ibm128 type is supported on this target.
+   virtual bool hasIbm128Type() const { return HasIbm128; }
+@@ -757,9 +766,7 @@ public:
+   }
+ 
+   /// Return the mangled code of bfloat.
+-  virtual const char *getBFloat16Mangling() const {
+-    llvm_unreachable("bfloat not implemented on this target");
+-  }
++  virtual const char *getBFloat16Mangling() const { return "DF16b"; }
+ 
+   /// Return the value for the C99 FLT_EVAL_METHOD macro.
+   virtual LangOptions::FPEvalMethodKind getFPEvalMethod() const {
+diff --git a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
+index 652c15afcce8..f804eb633338 100644
+--- a/clang/include/clang/Driver/Options.td
++++ b/clang/include/clang/Driver/Options.td
+@@ -1595,6 +1595,15 @@ def ffloat16_excess_precision_EQ : Joined<["-"], "ffloat16-excess-precision=">,
+   Values<"standard,fast,none">, NormalizedValuesScope<"LangOptions">,
+   NormalizedValues<["FPP_Standard", "FPP_Fast", "FPP_None"]>,
+   MarshallingInfoEnum<LangOpts<"Float16ExcessPrecision">, "FPP_Standard">;
++def fbfloat16_excess_precision_EQ : Joined<["-"], "fbfloat16-excess-precision=">,
++  Group<f_Group>, Flags<[CC1Option, NoDriverOption]>,
++  HelpText<"Allows control over excess precision on targets where native "
++  "support for BFloat16 precision types is not available. By default, excess "
++  "precision is used to calculate intermediate results following the "
++  "rules specified in ISO C99.">,
++  Values<"standard,fast,none">, NormalizedValuesScope<"LangOptions">,
++  NormalizedValues<["FPP_Standard", "FPP_Fast", "FPP_None"]>,
++  MarshallingInfoEnum<LangOpts<"BFloat16ExcessPrecision">, "FPP_Standard">;
+ def : Flag<["-"], "fexpensive-optimizations">, Group<clang_ignored_gcc_optimization_f_Group>;
+ def : Flag<["-"], "fno-expensive-optimizations">, Group<clang_ignored_gcc_optimization_f_Group>;
+ def fextdirs_EQ : Joined<["-"], "fextdirs=">, Group<f_Group>;
+diff --git a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
+index 54e62a1939f7..01082ca5d790 100644
+--- a/clang/lib/AST/Type.cpp
++++ b/clang/lib/AST/Type.cpp
+@@ -1486,7 +1486,13 @@ struct StripObjCKindOfTypeVisitor
+ 
+ bool QualType::UseExcessPrecision(const ASTContext &Ctx) {
+   const BuiltinType *BT = getTypePtr()->getAs<BuiltinType>();
+-  if (BT) {
++  if (!BT) {
++    const VectorType *VT = getTypePtr()->getAs<VectorType>();
++    if (VT) {
++      QualType ElementType = VT->getElementType();
++      return ElementType.UseExcessPrecision(Ctx);
++    }
++  } else {
+     switch (BT->getKind()) {
+     case BuiltinType::Kind::Float16: {
+       const TargetInfo &TI = Ctx.getTargetInfo();
+@@ -1495,7 +1501,15 @@ bool QualType::UseExcessPrecision(const ASTContext &Ctx) {
+               Ctx.getLangOpts().ExcessPrecisionKind::FPP_None)
+         return true;
+       return false;
+-    }
++    } break;
++    case BuiltinType::Kind::BFloat16: {
++      const TargetInfo &TI = Ctx.getTargetInfo();
++      if (TI.hasBFloat16Type() && !TI.hasFullBFloat16Type() &&
++          Ctx.getLangOpts().getBFloat16ExcessPrecision() !=
++              Ctx.getLangOpts().ExcessPrecisionKind::FPP_None)
++        return true;
++      return false;
++    } break;
+     default:
+       return false;
+     }
+@@ -2176,8 +2190,7 @@ bool Type::isRealType() const {
+ bool Type::isArithmeticType() const {
+   if (const auto *BT = dyn_cast<BuiltinType>(CanonicalType))
+     return BT->getKind() >= BuiltinType::Bool &&
+-           BT->getKind() <= BuiltinType::Ibm128 &&
+-           BT->getKind() != BuiltinType::BFloat16;
++           BT->getKind() <= BuiltinType::Ibm128;
+   if (const auto *ET = dyn_cast<EnumType>(CanonicalType))
+     // GCC allows forward declaration of enum types (forbid by C99 6.7.2.3p2).
+     // If a body isn't seen by the time we get here, return false.
+diff --git a/clang/lib/Basic/TargetInfo.cpp b/clang/lib/Basic/TargetInfo.cpp
+index 8ee43261fc1d..031e1507fe43 100644
+--- a/clang/lib/Basic/TargetInfo.cpp
++++ b/clang/lib/Basic/TargetInfo.cpp
+@@ -63,6 +63,7 @@ TargetInfo::TargetInfo(const llvm::Triple &T) : Triple(T) {
+   HasIbm128 = false;
+   HasFloat16 = false;
+   HasBFloat16 = false;
++  HasFullBFloat16 = false;
+   HasLongDouble = true;
+   HasFPReturn = true;
+   HasStrictFP = false;
+diff --git a/clang/lib/Basic/Targets/AMDGPU.h b/clang/lib/Basic/Targets/AMDGPU.h
+index 576bcf9d5401..3ae4035b698c 100644
+--- a/clang/lib/Basic/Targets/AMDGPU.h
++++ b/clang/lib/Basic/Targets/AMDGPU.h
+@@ -115,7 +115,6 @@ public:
+   }
+ 
+   bool hasBFloat16Type() const override { return isAMDGCN(getTriple()); }
+-  const char *getBFloat16Mangling() const override { return "u6__bf16"; };
+ 
+   const char *getClobbers() const override { return ""; }
+ 
+diff --git a/clang/lib/Basic/Targets/ARM.cpp b/clang/lib/Basic/Targets/ARM.cpp
+index b85d5dc2d347..26eef79bc268 100644
+--- a/clang/lib/Basic/Targets/ARM.cpp
++++ b/clang/lib/Basic/Targets/ARM.cpp
+@@ -513,6 +513,7 @@ bool ARMTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
+   HasFloat16 = true;
+   ARMCDECoprocMask = 0;
+   HasBFloat16 = false;
++  HasFullBFloat16 = false;
+   FPRegsDisabled = false;
+ 
+   // This does not diagnose illegal cases like having both
+@@ -595,6 +596,8 @@ bool ARMTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
+     } else if (Feature == "+pacbti") {
+       HasPAC = 1;
+       HasBTI = 1;
++    } else if (Feature == "+fullbf16") {
++      HasFullBFloat16 = true;
+     }
+   }
+ 
+diff --git a/clang/lib/Basic/Targets/NVPTX.h b/clang/lib/Basic/Targets/NVPTX.h
+index aab3abfa6294..33fb56c0ae08 100644
+--- a/clang/lib/Basic/Targets/NVPTX.h
++++ b/clang/lib/Basic/Targets/NVPTX.h
+@@ -178,7 +178,6 @@ public:
+ 
+   bool hasBitIntType() const override { return true; }
+   bool hasBFloat16Type() const override { return true; }
+-  const char *getBFloat16Mangling() const override { return "u6__bf16"; };
+ };
+ } // namespace targets
+ } // namespace clang
+diff --git a/clang/lib/Basic/Targets/X86.cpp b/clang/lib/Basic/Targets/X86.cpp
+index 490e20ce4514..0486c13f695f 100644
+--- a/clang/lib/Basic/Targets/X86.cpp
++++ b/clang/lib/Basic/Targets/X86.cpp
+@@ -357,6 +357,8 @@ bool X86TargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
+       HasCRC32 = true;
+     } else if (Feature == "+x87") {
+       HasX87 = true;
++    } else if (Feature == "+fullbf16") {
++      HasFullBFloat16 = true;
+     }
+ 
+     X86SSEEnum Level = llvm::StringSwitch<X86SSEEnum>(Feature)
+@@ -374,6 +376,15 @@ bool X86TargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
+ 
+     HasFloat16 = SSELevel >= SSE2;
+ 
++    // X86 target has bfloat16 emulation support in the backend, where
++    // bfloat16 is treated as a 32-bit float, arithmetic operations are
++    // performed in 32-bit, and the result is converted back to bfloat16.
++    // Truncation and extension between bfloat16 and 32-bit float are supported
++    // by the compiler-rt library. However, native bfloat16 support is currently
++    // not available in the X86 target. Hence, HasFullBFloat16 will be false
++    // until native bfloat16 support is available. HasFullBFloat16 is used to
++    // determine whether to automatically use excess floating point precision
++    // for bfloat16 arithmetic operations in the front-end.
+     HasBFloat16 = SSELevel >= SSE2;
+ 
+     MMX3DNowEnum ThreeDNowLevel = llvm::StringSwitch<MMX3DNowEnum>(Feature)
+@@ -1114,6 +1125,7 @@ bool X86TargetInfo::hasFeature(StringRef Feature) const {
+       .Case("xsavec", HasXSAVEC)
+       .Case("xsaves", HasXSAVES)
+       .Case("xsaveopt", HasXSAVEOPT)
++      .Case("fullbf16", HasFullBFloat16)
+       .Default(false);
+ }
+ 
+diff --git a/clang/lib/Basic/Targets/X86.h b/clang/lib/Basic/Targets/X86.h
+index 5fcc97e95c2b..3a2823fc223b 100644
+--- a/clang/lib/Basic/Targets/X86.h
++++ b/clang/lib/Basic/Targets/X86.h
+@@ -413,7 +413,6 @@ public:
+     return getPointerWidthV(AddrSpace);
+   }
+ 
+-  const char *getBFloat16Mangling() const override { return "u6__bf16"; };
+ };
+ 
+ // X86-32 generic target
+diff --git a/clang/lib/CodeGen/CGExprScalar.cpp b/clang/lib/CodeGen/CGExprScalar.cpp
+index a0dcb978b1ac..c02ee0bbd30c 100644
+--- a/clang/lib/CodeGen/CGExprScalar.cpp
++++ b/clang/lib/CodeGen/CGExprScalar.cpp
+@@ -814,13 +814,21 @@ public:
+                             Value *(ScalarExprEmitter::*F)(const BinOpInfo &));
+ 
+   QualType getPromotionType(QualType Ty) {
++    const auto &Ctx = CGF.getContext();
+     if (auto *CT = Ty->getAs<ComplexType>()) {
+       QualType ElementType = CT->getElementType();
+-      if (ElementType.UseExcessPrecision(CGF.getContext()))
+-        return CGF.getContext().getComplexType(CGF.getContext().FloatTy);
++      if (ElementType.UseExcessPrecision(Ctx))
++        return Ctx.getComplexType(Ctx.FloatTy);
+     }
+-    if (Ty.UseExcessPrecision(CGF.getContext()))
+-      return CGF.getContext().FloatTy;
++
++    if (Ty.UseExcessPrecision(Ctx)) {
++      if (auto *VT = Ty->getAs<VectorType>()) {
++        unsigned NumElements = VT->getNumElements();
++        return Ctx.getVectorType(Ctx.FloatTy, NumElements, VT->getVectorKind());
++      }
++      return Ctx.FloatTy;
++    }
++
+     return QualType();
+   }
+ 
+diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+index 77554aa2c462..69177afeb486 100644
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -2703,6 +2703,7 @@ static void RenderFloatingPointOptions(const ToolChain &TC, const Driver &D,
+     FPContract = "on";
+   bool StrictFPModel = false;
+   StringRef Float16ExcessPrecision = "";
++  StringRef BFloat16ExcessPrecision = "";
+ 
+   if (const Arg *A = Args.getLastArg(options::OPT_flimited_precision_EQ)) {
+     CmdArgs.push_back("-mlimit-float-precision");
+@@ -2918,6 +2919,7 @@ static void RenderFloatingPointOptions(const ToolChain &TC, const Driver &D,
+           D.Diag(diag::err_drv_unsupported_option_argument)
+               << A->getSpelling() << Val;
+       }
++      BFloat16ExcessPrecision = Float16ExcessPrecision;
+       break;
+     }
+     case options::OPT_ffinite_math_only:
+@@ -3093,6 +3095,9 @@ static void RenderFloatingPointOptions(const ToolChain &TC, const Driver &D,
+   if (!Float16ExcessPrecision.empty())
+     CmdArgs.push_back(Args.MakeArgString("-ffloat16-excess-precision=" +
+                                          Float16ExcessPrecision));
++  if (!BFloat16ExcessPrecision.empty())
++    CmdArgs.push_back(Args.MakeArgString("-fbfloat16-excess-precision=" +
++                                         BFloat16ExcessPrecision));
+ 
+   ParseMRecip(D, Args, CmdArgs);
+ 
+diff --git a/clang/lib/Sema/SemaCast.cpp b/clang/lib/Sema/SemaCast.cpp
+index 9fd9369c9641..f5412e9c4044 100644
+--- a/clang/lib/Sema/SemaCast.cpp
++++ b/clang/lib/Sema/SemaCast.cpp
+@@ -3075,20 +3075,6 @@ void CastOperation::CheckCStyleCast() {
+     return;
+   }
+ 
+-  // Can't cast to or from bfloat
+-  if (DestType->isBFloat16Type() && !SrcType->isBFloat16Type()) {
+-    Self.Diag(SrcExpr.get()->getExprLoc(), diag::err_cast_to_bfloat16)
+-        << SrcExpr.get()->getSourceRange();
+-    SrcExpr = ExprError();
+-    return;
+-  }
+-  if (SrcType->isBFloat16Type() && !DestType->isBFloat16Type()) {
+-    Self.Diag(SrcExpr.get()->getExprLoc(), diag::err_cast_from_bfloat16)
+-        << SrcExpr.get()->getSourceRange();
+-    SrcExpr = ExprError();
+-    return;
+-  }
+-
+   // If either type is a pointer, the other type has to be either an
+   // integer or a pointer.
+   if (!DestType->isArithmeticType()) {
+diff --git a/clang/lib/Sema/SemaExpr.cpp b/clang/lib/Sema/SemaExpr.cpp
+index 9d865f487098..b80d39f4f78f 100644
+--- a/clang/lib/Sema/SemaExpr.cpp
++++ b/clang/lib/Sema/SemaExpr.cpp
+@@ -10677,10 +10677,6 @@ QualType Sema::CheckVectorOperands(ExprResult &LHS, ExprResult &RHS,
+   const VectorType *RHSVecType = RHSType->getAs<VectorType>();
+   assert(LHSVecType || RHSVecType);
+ 
+-  if ((LHSVecType && LHSVecType->getElementType()->isBFloat16Type()) ||
+-      (RHSVecType && RHSVecType->getElementType()->isBFloat16Type()))
+-    return ReportInvalid ? InvalidOperands(Loc, LHS, RHS) : QualType();
+-
+   // AltiVec-style "vector bool op vector bool" combinations are allowed
+   // for some operators but not others.
+   if (!AllowBothBool &&
+diff --git a/clang/lib/Sema/SemaOverload.cpp b/clang/lib/Sema/SemaOverload.cpp
+index d68337a26d97..50fbee71cd88 100644
+--- a/clang/lib/Sema/SemaOverload.cpp
++++ b/clang/lib/Sema/SemaOverload.cpp
+@@ -1979,8 +1979,11 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
+     // if their representation is different until there is back end support
+     // We of course allow this conversion if long double is really double.
+ 
+-    // Conversions between bfloat and other floats are not permitted.
+-    if (FromType == S.Context.BFloat16Ty || ToType == S.Context.BFloat16Ty)
++    // Conversions between bfloat16 and float16 are currently not supported.
++    if ((FromType->isBFloat16Type() &&
++         (ToType->isFloat16Type() || ToType->isHalfType())) ||
++        (ToType->isBFloat16Type() &&
++         (FromType->isFloat16Type() || FromType->isHalfType())))
+       return false;
+ 
+     // Conversions between IEEE-quad and IBM-extended semantics are not
+@@ -2001,9 +2004,6 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
+               ToType->isIntegralType(S.Context)) ||
+              (FromType->isIntegralOrUnscopedEnumerationType() &&
+               ToType->isRealFloatingType())) {
+-    // Conversions between bfloat and int are not permitted.
+-    if (FromType->isBFloat16Type() || ToType->isBFloat16Type())
+-      return false;
+ 
+     // Floating-integral conversions (C++ 4.9).
+     SCS.Second = ICK_Floating_Integral;
+diff --git a/clang/test/CodeGen/X86/avx512bf16-error.c b/clang/test/CodeGen/X86/avx512bf16-error.c
+index 8e0916539cab..af1de89c3722 100644
+--- a/clang/test/CodeGen/X86/avx512bf16-error.c
++++ b/clang/test/CodeGen/X86/avx512bf16-error.c
+@@ -7,7 +7,6 @@ __bfloat16 foo(__bfloat16 a, __bfloat16 b) {
+ 
+ #include <immintrin.h>
+ 
+-// expected-error@+4 {{invalid operands to binary expression ('__bfloat16' (aka '__bf16') and '__bfloat16')}}
+ // expected-warning@+2 3 {{'__bfloat16' is deprecated: use __bf16 instead}}
+ // expected-note@* 3 {{'__bfloat16' has been explicitly marked deprecated here}}
+ __bfloat16 bar(__bfloat16 a, __bfloat16 b) {
+diff --git a/clang/test/CodeGen/X86/bfloat-mangle.cpp b/clang/test/CodeGen/X86/bfloat-mangle.cpp
+index acc6c280f2e8..c88df46644f4 100644
+--- a/clang/test/CodeGen/X86/bfloat-mangle.cpp
++++ b/clang/test/CodeGen/X86/bfloat-mangle.cpp
+@@ -3,6 +3,6 @@
+ // RUN: %clang_cc1 -triple i386-windows-msvc -target-feature +sse2 -emit-llvm -o - %s | FileCheck %s --check-prefixes=WINDOWS
+ // RUN: %clang_cc1 -triple x86_64-windows-msvc -target-feature +sse2 -emit-llvm -o - %s | FileCheck %s --check-prefixes=WINDOWS
+ 
+-// LINUX: define {{.*}}void @_Z3foou6__bf16(bfloat noundef %b)
++// LINUX: define {{.*}}void @_Z3fooDF16b(bfloat noundef %b)
+ // WINDOWS: define {{.*}}void @"?foo@@YAXU__bf16@__clang@@@Z"(bfloat noundef %b)
+ void foo(__bf16 b) {}
+diff --git a/clang/test/CodeGen/X86/bfloat16.cpp b/clang/test/CodeGen/X86/bfloat16.cpp
+new file mode 100644
+index 000000000000..6726e42db133
+--- /dev/null
++++ b/clang/test/CodeGen/X86/bfloat16.cpp
+@@ -0,0 +1,145 @@
++// NOTE: Assertions have been autogenerated by utils/update_cc_test_checks.py UTC_ARGS: --version 2
++// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -target-feature +fullbf16 -S -emit-llvm %s -o - | FileCheck %s
++// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -S -emit-llvm %s -o - | FileCheck -check-prefix=CHECK-NBF16 %s
++
++// CHECK-LABEL: define dso_local void @_Z11test_scalarDF16bDF16b
++// CHECK-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK:         [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-NEXT:    [[C:%.*]] = alloca bfloat, align 2
++// CHECK-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NEXT:    [[ADD:%.*]] = fadd bfloat [[TMP0]], [[TMP1]]
++// CHECK-NEXT:    store bfloat [[ADD]], ptr [[C]], align 2
++// CHECK-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NEXT:    [[SUB:%.*]] = fsub bfloat [[TMP2]], [[TMP3]]
++// CHECK-NEXT:    store bfloat [[SUB]], ptr [[C]], align 2
++// CHECK-NEXT:    [[TMP4:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NEXT:    [[TMP5:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NEXT:    [[MUL:%.*]] = fmul bfloat [[TMP4]], [[TMP5]]
++// CHECK-NEXT:    store bfloat [[MUL]], ptr [[C]], align 2
++// CHECK-NEXT:    [[TMP6:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NEXT:    [[TMP7:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NEXT:    [[DIV:%.*]] = fdiv bfloat [[TMP6]], [[TMP7]]
++// CHECK-NEXT:    store bfloat [[DIV]], ptr [[C]], align 2
++// CHECK-NEXT:    ret void
++//
++// CHECK-NBF16-LABEL: define dso_local void @_Z11test_scalarDF16bDF16b
++// CHECK-NBF16-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-NBF16:         [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-NBF16-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-NBF16-NEXT:    [[C:%.*]] = alloca bfloat, align 2
++// CHECK-NBF16-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-NBF16-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[EXT:%.*]] = fpext bfloat [[TMP0]] to float
++// CHECK-NBF16-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[EXT1:%.*]] = fpext bfloat [[TMP1]] to float
++// CHECK-NBF16-NEXT:    [[ADD:%.*]] = fadd float [[EXT]], [[EXT1]]
++// CHECK-NBF16-NEXT:    [[UNPROMOTION:%.*]] = fptrunc float [[ADD]] to bfloat
++// CHECK-NBF16-NEXT:    store bfloat [[UNPROMOTION]], ptr [[C]], align 2
++// CHECK-NBF16-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[EXT2:%.*]] = fpext bfloat [[TMP2]] to float
++// CHECK-NBF16-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[EXT3:%.*]] = fpext bfloat [[TMP3]] to float
++// CHECK-NBF16-NEXT:    [[SUB:%.*]] = fsub float [[EXT2]], [[EXT3]]
++// CHECK-NBF16-NEXT:    [[UNPROMOTION4:%.*]] = fptrunc float [[SUB]] to bfloat
++// CHECK-NBF16-NEXT:    store bfloat [[UNPROMOTION4]], ptr [[C]], align 2
++// CHECK-NBF16-NEXT:    [[TMP4:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[EXT5:%.*]] = fpext bfloat [[TMP4]] to float
++// CHECK-NBF16-NEXT:    [[TMP5:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[EXT6:%.*]] = fpext bfloat [[TMP5]] to float
++// CHECK-NBF16-NEXT:    [[MUL:%.*]] = fmul float [[EXT5]], [[EXT6]]
++// CHECK-NBF16-NEXT:    [[UNPROMOTION7:%.*]] = fptrunc float [[MUL]] to bfloat
++// CHECK-NBF16-NEXT:    store bfloat [[UNPROMOTION7]], ptr [[C]], align 2
++// CHECK-NBF16-NEXT:    [[TMP6:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[EXT8:%.*]] = fpext bfloat [[TMP6]] to float
++// CHECK-NBF16-NEXT:    [[TMP7:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NBF16-NEXT:    [[EXT9:%.*]] = fpext bfloat [[TMP7]] to float
++// CHECK-NBF16-NEXT:    [[DIV:%.*]] = fdiv float [[EXT8]], [[EXT9]]
++// CHECK-NBF16-NEXT:    [[UNPROMOTION10:%.*]] = fptrunc float [[DIV]] to bfloat
++// CHECK-NBF16-NEXT:    store bfloat [[UNPROMOTION10]], ptr [[C]], align 2
++// CHECK-NBF16-NEXT:    ret void
++//
++void test_scalar(__bf16 a, __bf16 b) {
++    __bf16 c;
++    c = a + b;
++    c = a - b;
++    c = a * b;
++    c = a / b;
++}
++
++typedef __bf16 v8bfloat16 __attribute__((__vector_size__(16)));
++
++// CHECK-LABEL: define dso_local void @_Z11test_vectorDv8_DF16bS_
++// CHECK-SAME: (<8 x bfloat> noundef [[A:%.*]], <8 x bfloat> noundef [[B:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK:         [[A_ADDR:%.*]] = alloca <8 x bfloat>, align 16
++// CHECK-NEXT:    [[B_ADDR:%.*]] = alloca <8 x bfloat>, align 16
++// CHECK-NEXT:    [[C:%.*]] = alloca <8 x bfloat>, align 16
++// CHECK-NEXT:    store <8 x bfloat> [[A]], ptr [[A_ADDR]], align 16
++// CHECK-NEXT:    store <8 x bfloat> [[B]], ptr [[B_ADDR]], align 16
++// CHECK-NEXT:    [[TMP0:%.*]] = load <8 x bfloat>, ptr [[A_ADDR]], align 16
++// CHECK-NEXT:    [[TMP1:%.*]] = load <8 x bfloat>, ptr [[B_ADDR]], align 16
++// CHECK-NEXT:    [[ADD:%.*]] = fadd <8 x bfloat> [[TMP0]], [[TMP1]]
++// CHECK-NEXT:    store <8 x bfloat> [[ADD]], ptr [[C]], align 16
++// CHECK-NEXT:    [[TMP2:%.*]] = load <8 x bfloat>, ptr [[A_ADDR]], align 16
++// CHECK-NEXT:    [[TMP3:%.*]] = load <8 x bfloat>, ptr [[B_ADDR]], align 16
++// CHECK-NEXT:    [[SUB:%.*]] = fsub <8 x bfloat> [[TMP2]], [[TMP3]]
++// CHECK-NEXT:    store <8 x bfloat> [[SUB]], ptr [[C]], align 16
++// CHECK-NEXT:    [[TMP4:%.*]] = load <8 x bfloat>, ptr [[A_ADDR]], align 16
++// CHECK-NEXT:    [[TMP5:%.*]] = load <8 x bfloat>, ptr [[B_ADDR]], align 16
++// CHECK-NEXT:    [[MUL:%.*]] = fmul <8 x bfloat> [[TMP4]], [[TMP5]]
++// CHECK-NEXT:    store <8 x bfloat> [[MUL]], ptr [[C]], align 16
++// CHECK-NEXT:    [[TMP6:%.*]] = load <8 x bfloat>, ptr [[A_ADDR]], align 16
++// CHECK-NEXT:    [[TMP7:%.*]] = load <8 x bfloat>, ptr [[B_ADDR]], align 16
++// CHECK-NEXT:    [[DIV:%.*]] = fdiv <8 x bfloat> [[TMP6]], [[TMP7]]
++// CHECK-NEXT:    store <8 x bfloat> [[DIV]], ptr [[C]], align 16
++// CHECK-NEXT:    ret void
++//
++// CHECK-NBF16-LABEL: define dso_local void @_Z11test_vectorDv8_DF16bS_
++// CHECK-NBF16-SAME: (<8 x bfloat> noundef [[A:%.*]], <8 x bfloat> noundef [[B:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-NBF16:         [[A_ADDR:%.*]] = alloca <8 x bfloat>, align 16
++// CHECK-NBF16-NEXT:    [[B_ADDR:%.*]] = alloca <8 x bfloat>, align 16
++// CHECK-NBF16-NEXT:    [[C:%.*]] = alloca <8 x bfloat>, align 16
++// CHECK-NBF16-NEXT:    store <8 x bfloat> [[A]], ptr [[A_ADDR]], align 16
++// CHECK-NBF16-NEXT:    store <8 x bfloat> [[B]], ptr [[B_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[TMP0:%.*]] = load <8 x bfloat>, ptr [[A_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[EXT:%.*]] = fpext <8 x bfloat> [[TMP0]] to <8 x float>
++// CHECK-NBF16-NEXT:    [[TMP1:%.*]] = load <8 x bfloat>, ptr [[B_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[EXT1:%.*]] = fpext <8 x bfloat> [[TMP1]] to <8 x float>
++// CHECK-NBF16-NEXT:    [[ADD:%.*]] = fadd <8 x float> [[EXT]], [[EXT1]]
++// CHECK-NBF16-NEXT:    [[UNPROMOTION:%.*]] = fptrunc <8 x float> [[ADD]] to <8 x bfloat>
++// CHECK-NBF16-NEXT:    store <8 x bfloat> [[UNPROMOTION]], ptr [[C]], align 16
++// CHECK-NBF16-NEXT:    [[TMP2:%.*]] = load <8 x bfloat>, ptr [[A_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[EXT2:%.*]] = fpext <8 x bfloat> [[TMP2]] to <8 x float>
++// CHECK-NBF16-NEXT:    [[TMP3:%.*]] = load <8 x bfloat>, ptr [[B_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[EXT3:%.*]] = fpext <8 x bfloat> [[TMP3]] to <8 x float>
++// CHECK-NBF16-NEXT:    [[SUB:%.*]] = fsub <8 x float> [[EXT2]], [[EXT3]]
++// CHECK-NBF16-NEXT:    [[UNPROMOTION4:%.*]] = fptrunc <8 x float> [[SUB]] to <8 x bfloat>
++// CHECK-NBF16-NEXT:    store <8 x bfloat> [[UNPROMOTION4]], ptr [[C]], align 16
++// CHECK-NBF16-NEXT:    [[TMP4:%.*]] = load <8 x bfloat>, ptr [[A_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[EXT5:%.*]] = fpext <8 x bfloat> [[TMP4]] to <8 x float>
++// CHECK-NBF16-NEXT:    [[TMP5:%.*]] = load <8 x bfloat>, ptr [[B_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[EXT6:%.*]] = fpext <8 x bfloat> [[TMP5]] to <8 x float>
++// CHECK-NBF16-NEXT:    [[MUL:%.*]] = fmul <8 x float> [[EXT5]], [[EXT6]]
++// CHECK-NBF16-NEXT:    [[UNPROMOTION7:%.*]] = fptrunc <8 x float> [[MUL]] to <8 x bfloat>
++// CHECK-NBF16-NEXT:    store <8 x bfloat> [[UNPROMOTION7]], ptr [[C]], align 16
++// CHECK-NBF16-NEXT:    [[TMP6:%.*]] = load <8 x bfloat>, ptr [[A_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[EXT8:%.*]] = fpext <8 x bfloat> [[TMP6]] to <8 x float>
++// CHECK-NBF16-NEXT:    [[TMP7:%.*]] = load <8 x bfloat>, ptr [[B_ADDR]], align 16
++// CHECK-NBF16-NEXT:    [[EXT9:%.*]] = fpext <8 x bfloat> [[TMP7]] to <8 x float>
++// CHECK-NBF16-NEXT:    [[DIV:%.*]] = fdiv <8 x float> [[EXT8]], [[EXT9]]
++// CHECK-NBF16-NEXT:    [[UNPROMOTION10:%.*]] = fptrunc <8 x float> [[DIV]] to <8 x bfloat>
++// CHECK-NBF16-NEXT:    store <8 x bfloat> [[UNPROMOTION10]], ptr [[C]], align 16
++// CHECK-NBF16-NEXT:    ret void
++//
++void test_vector(v8bfloat16 a, v8bfloat16 b) {
++    v8bfloat16 c;
++    c = a + b;
++    c = a - b;
++    c = a * b;
++    c = a / b;
++}
+diff --git a/clang/test/CodeGen/X86/fexcess-precision-bfloat16.c b/clang/test/CodeGen/X86/fexcess-precision-bfloat16.c
+new file mode 100644
+index 000000000000..ceafa975d74b
+--- /dev/null
++++ b/clang/test/CodeGen/X86/fexcess-precision-bfloat16.c
+@@ -0,0 +1,360 @@
++// NOTE: Assertions have been autogenerated by utils/update_cc_test_checks.py UTC_ARGS: --version 2
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=fast -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=fast -target-feature +fullbf16 \
++// RUN: -emit-llvm -o - %s | FileCheck -check-prefixes=CHECK-NO-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=standard -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=standard -target-feature +fullbf16 \
++// RUN: -emit-llvm -o - %s | FileCheck -check-prefixes=CHECK-NO-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-NO-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-NO-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=fast \
++// RUN: -emit-llvm -ffp-eval-method=source -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=fast -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=source -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-NO-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=standard \
++// RUN: -emit-llvm -ffp-eval-method=source -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=standard  -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=source -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-NO-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none \
++// RUN: -emit-llvm -ffp-eval-method=source -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-NO-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=source -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-NO-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=fast \
++// RUN: -emit-llvm -ffp-eval-method=double -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-DBL %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=fast -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=double -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-DBL %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=standard \
++// RUN: -emit-llvm -ffp-eval-method=double -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-DBL %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=standard -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=double -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-DBL %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none \
++// RUN: -emit-llvm -ffp-eval-method=double -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-DBL %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=double -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-DBL %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=fast \
++// RUN: -emit-llvm -ffp-eval-method=extended -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-FP80 %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=fast -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=extended -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-FP80 %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=standard \
++// RUN: -emit-llvm -ffp-eval-method=extended -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-FP80 %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=standard -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=extended -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-FP80 %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none \
++// RUN: -emit-llvm -ffp-eval-method=extended -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-FP80 %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -emit-llvm -ffp-eval-method=extended -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-EXT-FP80 %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none \
++// RUN: -ffp-contract=on -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-CONTRACT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -ffp-contract=on -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-CONTRACT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none \
++// RUN: -fmath-errno -ffp-contract=on -fno-rounding-math \
++// RUN: -ffp-eval-method=source -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-CONTRACT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -fmath-errno -ffp-contract=on -fno-rounding-math \
++// RUN: -ffp-eval-method=source -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-CONTRACT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none \
++// RUN: -fmath-errno -ffp-contract=on -fno-rounding-math \
++// RUN: -ffp-eval-method=double -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-CONTRACT-DBL %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -fmath-errno -ffp-contract=on -fno-rounding-math \
++// RUN: -ffp-eval-method=double -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-CONTRACT-DBL %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none \
++// RUN: -fmath-errno -ffp-contract=on -fno-rounding-math \
++// RUN: -ffp-eval-method=extended -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-CONTRACT-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -fmath-errno -ffp-contract=on -fno-rounding-math \
++// RUN: -ffp-eval-method=extended -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-CONTRACT-EXT %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none \
++// RUN: -fapprox-func -fmath-errno -fno-signed-zeros -mreassociate \
++// RUN: -freciprocal-math -ffp-contract=on -fno-rounding-math \
++// RUN: -funsafe-math-optimizations -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-UNSAFE %s
++
++// RUN: %clang_cc1 -triple x86_64-unknown-unknown \
++// RUN: -fbfloat16-excess-precision=none -target-feature +fullbf16 \
++// RUN: -fapprox-func -fmath-errno -fno-signed-zeros -mreassociate \
++// RUN: -freciprocal-math -ffp-contract=on -fno-rounding-math \
++// RUN: -funsafe-math-optimizations -emit-llvm -o - %s \
++// RUN: | FileCheck -check-prefixes=CHECK-UNSAFE %s
++
++// CHECK-EXT-LABEL: define dso_local bfloat @f
++// CHECK-EXT-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]], bfloat noundef [[C:%.*]], bfloat noundef [[D:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-EXT-NEXT:  entry:
++// CHECK-EXT-NEXT:    [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-NEXT:    [[C_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-NEXT:    [[D_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-EXT-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-EXT-NEXT:    store bfloat [[C]], ptr [[C_ADDR]], align 2
++// CHECK-EXT-NEXT:    store bfloat [[D]], ptr [[D_ADDR]], align 2
++// CHECK-EXT-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-EXT-NEXT:    [[EXT:%.*]] = fpext bfloat [[TMP0]] to float
++// CHECK-EXT-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-EXT-NEXT:    [[EXT1:%.*]] = fpext bfloat [[TMP1]] to float
++// CHECK-EXT-NEXT:    [[MUL:%.*]] = fmul float [[EXT]], [[EXT1]]
++// CHECK-EXT-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[C_ADDR]], align 2
++// CHECK-EXT-NEXT:    [[EXT2:%.*]] = fpext bfloat [[TMP2]] to float
++// CHECK-EXT-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[D_ADDR]], align 2
++// CHECK-EXT-NEXT:    [[EXT3:%.*]] = fpext bfloat [[TMP3]] to float
++// CHECK-EXT-NEXT:    [[MUL4:%.*]] = fmul float [[EXT2]], [[EXT3]]
++// CHECK-EXT-NEXT:    [[ADD:%.*]] = fadd float [[MUL]], [[MUL4]]
++// CHECK-EXT-NEXT:    [[UNPROMOTION:%.*]] = fptrunc float [[ADD]] to bfloat
++// CHECK-EXT-NEXT:    ret bfloat [[UNPROMOTION]]
++//
++// CHECK-NO-EXT-LABEL: define dso_local bfloat @f
++// CHECK-NO-EXT-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]], bfloat noundef [[C:%.*]], bfloat noundef [[D:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-NO-EXT-NEXT:  entry:
++// CHECK-NO-EXT-NEXT:    [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-NO-EXT-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-NO-EXT-NEXT:    [[C_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-NO-EXT-NEXT:    [[D_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-NO-EXT-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-NO-EXT-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-NO-EXT-NEXT:    store bfloat [[C]], ptr [[C_ADDR]], align 2
++// CHECK-NO-EXT-NEXT:    store bfloat [[D]], ptr [[D_ADDR]], align 2
++// CHECK-NO-EXT-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-NO-EXT-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-NO-EXT-NEXT:    [[MUL:%.*]] = fmul bfloat [[TMP0]], [[TMP1]]
++// CHECK-NO-EXT-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[C_ADDR]], align 2
++// CHECK-NO-EXT-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[D_ADDR]], align 2
++// CHECK-NO-EXT-NEXT:    [[MUL1:%.*]] = fmul bfloat [[TMP2]], [[TMP3]]
++// CHECK-NO-EXT-NEXT:    [[ADD:%.*]] = fadd bfloat [[MUL]], [[MUL1]]
++// CHECK-NO-EXT-NEXT:    ret bfloat [[ADD]]
++//
++// CHECK-EXT-DBL-LABEL: define dso_local bfloat @f
++// CHECK-EXT-DBL-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]], bfloat noundef [[C:%.*]], bfloat noundef [[D:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-EXT-DBL-NEXT:  entry:
++// CHECK-EXT-DBL-NEXT:    [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-DBL-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-DBL-NEXT:    [[C_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-DBL-NEXT:    [[D_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-DBL-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-EXT-DBL-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-EXT-DBL-NEXT:    store bfloat [[C]], ptr [[C_ADDR]], align 2
++// CHECK-EXT-DBL-NEXT:    store bfloat [[D]], ptr [[D_ADDR]], align 2
++// CHECK-EXT-DBL-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-EXT-DBL-NEXT:    [[CONV:%.*]] = fpext bfloat [[TMP0]] to double
++// CHECK-EXT-DBL-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-EXT-DBL-NEXT:    [[CONV1:%.*]] = fpext bfloat [[TMP1]] to double
++// CHECK-EXT-DBL-NEXT:    [[MUL:%.*]] = fmul double [[CONV]], [[CONV1]]
++// CHECK-EXT-DBL-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[C_ADDR]], align 2
++// CHECK-EXT-DBL-NEXT:    [[CONV2:%.*]] = fpext bfloat [[TMP2]] to double
++// CHECK-EXT-DBL-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[D_ADDR]], align 2
++// CHECK-EXT-DBL-NEXT:    [[CONV3:%.*]] = fpext bfloat [[TMP3]] to double
++// CHECK-EXT-DBL-NEXT:    [[MUL4:%.*]] = fmul double [[CONV2]], [[CONV3]]
++// CHECK-EXT-DBL-NEXT:    [[ADD:%.*]] = fadd double [[MUL]], [[MUL4]]
++// CHECK-EXT-DBL-NEXT:    [[CONV5:%.*]] = fptrunc double [[ADD]] to bfloat
++// CHECK-EXT-DBL-NEXT:    ret bfloat [[CONV5]]
++//
++// CHECK-EXT-FP80-LABEL: define dso_local bfloat @f
++// CHECK-EXT-FP80-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]], bfloat noundef [[C:%.*]], bfloat noundef [[D:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-EXT-FP80-NEXT:  entry:
++// CHECK-EXT-FP80-NEXT:    [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-FP80-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-FP80-NEXT:    [[C_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-FP80-NEXT:    [[D_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-EXT-FP80-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-EXT-FP80-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-EXT-FP80-NEXT:    store bfloat [[C]], ptr [[C_ADDR]], align 2
++// CHECK-EXT-FP80-NEXT:    store bfloat [[D]], ptr [[D_ADDR]], align 2
++// CHECK-EXT-FP80-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-EXT-FP80-NEXT:    [[CONV:%.*]] = fpext bfloat [[TMP0]] to x86_fp80
++// CHECK-EXT-FP80-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-EXT-FP80-NEXT:    [[CONV1:%.*]] = fpext bfloat [[TMP1]] to x86_fp80
++// CHECK-EXT-FP80-NEXT:    [[MUL:%.*]] = fmul x86_fp80 [[CONV]], [[CONV1]]
++// CHECK-EXT-FP80-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[C_ADDR]], align 2
++// CHECK-EXT-FP80-NEXT:    [[CONV2:%.*]] = fpext bfloat [[TMP2]] to x86_fp80
++// CHECK-EXT-FP80-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[D_ADDR]], align 2
++// CHECK-EXT-FP80-NEXT:    [[CONV3:%.*]] = fpext bfloat [[TMP3]] to x86_fp80
++// CHECK-EXT-FP80-NEXT:    [[MUL4:%.*]] = fmul x86_fp80 [[CONV2]], [[CONV3]]
++// CHECK-EXT-FP80-NEXT:    [[ADD:%.*]] = fadd x86_fp80 [[MUL]], [[MUL4]]
++// CHECK-EXT-FP80-NEXT:    [[CONV5:%.*]] = fptrunc x86_fp80 [[ADD]] to bfloat
++// CHECK-EXT-FP80-NEXT:    ret bfloat [[CONV5]]
++//
++// CHECK-CONTRACT-LABEL: define dso_local bfloat @f
++// CHECK-CONTRACT-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]], bfloat noundef [[C:%.*]], bfloat noundef [[D:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-CONTRACT-NEXT:  entry:
++// CHECK-CONTRACT-NEXT:    [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-NEXT:    [[C_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-NEXT:    [[D_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-CONTRACT-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-CONTRACT-NEXT:    store bfloat [[C]], ptr [[C_ADDR]], align 2
++// CHECK-CONTRACT-NEXT:    store bfloat [[D]], ptr [[D_ADDR]], align 2
++// CHECK-CONTRACT-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-CONTRACT-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-CONTRACT-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[C_ADDR]], align 2
++// CHECK-CONTRACT-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[D_ADDR]], align 2
++// CHECK-CONTRACT-NEXT:    [[MUL1:%.*]] = fmul bfloat [[TMP2]], [[TMP3]]
++// CHECK-CONTRACT-NEXT:    [[TMP4:%.*]] = call bfloat @llvm.fmuladd.bf16(bfloat [[TMP0]], bfloat [[TMP1]], bfloat [[MUL1]])
++// CHECK-CONTRACT-NEXT:    ret bfloat [[TMP4]]
++//
++// CHECK-CONTRACT-DBL-LABEL: define dso_local bfloat @f
++// CHECK-CONTRACT-DBL-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]], bfloat noundef [[C:%.*]], bfloat noundef [[D:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-CONTRACT-DBL-NEXT:  entry:
++// CHECK-CONTRACT-DBL-NEXT:    [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-DBL-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-DBL-NEXT:    [[C_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-DBL-NEXT:    [[D_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-DBL-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-CONTRACT-DBL-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-CONTRACT-DBL-NEXT:    store bfloat [[C]], ptr [[C_ADDR]], align 2
++// CHECK-CONTRACT-DBL-NEXT:    store bfloat [[D]], ptr [[D_ADDR]], align 2
++// CHECK-CONTRACT-DBL-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-CONTRACT-DBL-NEXT:    [[CONV:%.*]] = fpext bfloat [[TMP0]] to double
++// CHECK-CONTRACT-DBL-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-CONTRACT-DBL-NEXT:    [[CONV1:%.*]] = fpext bfloat [[TMP1]] to double
++// CHECK-CONTRACT-DBL-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[C_ADDR]], align 2
++// CHECK-CONTRACT-DBL-NEXT:    [[CONV2:%.*]] = fpext bfloat [[TMP2]] to double
++// CHECK-CONTRACT-DBL-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[D_ADDR]], align 2
++// CHECK-CONTRACT-DBL-NEXT:    [[CONV3:%.*]] = fpext bfloat [[TMP3]] to double
++// CHECK-CONTRACT-DBL-NEXT:    [[MUL4:%.*]] = fmul double [[CONV2]], [[CONV3]]
++// CHECK-CONTRACT-DBL-NEXT:    [[TMP4:%.*]] = call double @llvm.fmuladd.f64(double [[CONV]], double [[CONV1]], double [[MUL4]])
++// CHECK-CONTRACT-DBL-NEXT:    [[CONV5:%.*]] = fptrunc double [[TMP4]] to bfloat
++// CHECK-CONTRACT-DBL-NEXT:    ret bfloat [[CONV5]]
++//
++// CHECK-CONTRACT-EXT-LABEL: define dso_local bfloat @f
++// CHECK-CONTRACT-EXT-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]], bfloat noundef [[C:%.*]], bfloat noundef [[D:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-CONTRACT-EXT-NEXT:  entry:
++// CHECK-CONTRACT-EXT-NEXT:    [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-EXT-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-EXT-NEXT:    [[C_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-EXT-NEXT:    [[D_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-CONTRACT-EXT-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-CONTRACT-EXT-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-CONTRACT-EXT-NEXT:    store bfloat [[C]], ptr [[C_ADDR]], align 2
++// CHECK-CONTRACT-EXT-NEXT:    store bfloat [[D]], ptr [[D_ADDR]], align 2
++// CHECK-CONTRACT-EXT-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-CONTRACT-EXT-NEXT:    [[CONV:%.*]] = fpext bfloat [[TMP0]] to x86_fp80
++// CHECK-CONTRACT-EXT-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-CONTRACT-EXT-NEXT:    [[CONV1:%.*]] = fpext bfloat [[TMP1]] to x86_fp80
++// CHECK-CONTRACT-EXT-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[C_ADDR]], align 2
++// CHECK-CONTRACT-EXT-NEXT:    [[CONV2:%.*]] = fpext bfloat [[TMP2]] to x86_fp80
++// CHECK-CONTRACT-EXT-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[D_ADDR]], align 2
++// CHECK-CONTRACT-EXT-NEXT:    [[CONV3:%.*]] = fpext bfloat [[TMP3]] to x86_fp80
++// CHECK-CONTRACT-EXT-NEXT:    [[MUL4:%.*]] = fmul x86_fp80 [[CONV2]], [[CONV3]]
++// CHECK-CONTRACT-EXT-NEXT:    [[TMP4:%.*]] = call x86_fp80 @llvm.fmuladd.f80(x86_fp80 [[CONV]], x86_fp80 [[CONV1]], x86_fp80 [[MUL4]])
++// CHECK-CONTRACT-EXT-NEXT:    [[CONV5:%.*]] = fptrunc x86_fp80 [[TMP4]] to bfloat
++// CHECK-CONTRACT-EXT-NEXT:    ret bfloat [[CONV5]]
++//
++// CHECK-UNSAFE-LABEL: define dso_local bfloat @f
++// CHECK-UNSAFE-SAME: (bfloat noundef [[A:%.*]], bfloat noundef [[B:%.*]], bfloat noundef [[C:%.*]], bfloat noundef [[D:%.*]]) #[[ATTR0:[0-9]+]] {
++// CHECK-UNSAFE-NEXT:  entry:
++// CHECK-UNSAFE-NEXT:    [[A_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-UNSAFE-NEXT:    [[B_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-UNSAFE-NEXT:    [[C_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-UNSAFE-NEXT:    [[D_ADDR:%.*]] = alloca bfloat, align 2
++// CHECK-UNSAFE-NEXT:    store bfloat [[A]], ptr [[A_ADDR]], align 2
++// CHECK-UNSAFE-NEXT:    store bfloat [[B]], ptr [[B_ADDR]], align 2
++// CHECK-UNSAFE-NEXT:    store bfloat [[C]], ptr [[C_ADDR]], align 2
++// CHECK-UNSAFE-NEXT:    store bfloat [[D]], ptr [[D_ADDR]], align 2
++// CHECK-UNSAFE-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[A_ADDR]], align 2
++// CHECK-UNSAFE-NEXT:    [[TMP1:%.*]] = load bfloat, ptr [[B_ADDR]], align 2
++// CHECK-UNSAFE-NEXT:    [[TMP2:%.*]] = load bfloat, ptr [[C_ADDR]], align 2
++// CHECK-UNSAFE-NEXT:    [[TMP3:%.*]] = load bfloat, ptr [[D_ADDR]], align 2
++// CHECK-UNSAFE-NEXT:    [[MUL1:%.*]] = fmul reassoc nsz arcp afn bfloat [[TMP2]], [[TMP3]]
++// CHECK-UNSAFE-NEXT:    [[TMP4:%.*]] = call reassoc nsz arcp afn bfloat @llvm.fmuladd.bf16(bfloat [[TMP0]], bfloat [[TMP1]], bfloat [[MUL1]])
++// CHECK-UNSAFE-NEXT:    ret bfloat [[TMP4]]
++//
++__bf16 f(__bf16 a, __bf16 b, __bf16 c, __bf16 d) {
++    return a * b + c * d;
++}
+diff --git a/clang/test/CodeGenCUDA/amdgpu-bf16.cu b/clang/test/CodeGenCUDA/amdgpu-bf16.cu
+index 64c8d1ba750f..4610b4ae3cbe 100644
+--- a/clang/test/CodeGenCUDA/amdgpu-bf16.cu
++++ b/clang/test/CodeGenCUDA/amdgpu-bf16.cu
+@@ -7,7 +7,7 @@
+ 
+ #include "Inputs/cuda.h"
+ 
+-// CHECK-LABEL: @_Z8test_argPu6__bf16u6__bf16(
++// CHECK-LABEL: @_Z8test_argPDF16bDF16b(
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[OUT_ADDR:%.*]] = alloca ptr, align 8, addrspace(5)
+ // CHECK-NEXT:    [[IN_ADDR:%.*]] = alloca bfloat, align 2, addrspace(5)
+@@ -29,7 +29,7 @@ __device__ void test_arg(__bf16 *out, __bf16 in) {
+   *out = bf16;
+ }
+ 
+-// CHECK-LABEL: @_Z9test_loadPu6__bf16S_(
++// CHECK-LABEL: @_Z9test_loadPDF16bS_(
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[OUT_ADDR:%.*]] = alloca ptr, align 8, addrspace(5)
+ // CHECK-NEXT:    [[IN_ADDR:%.*]] = alloca ptr, align 8, addrspace(5)
+@@ -52,7 +52,7 @@ __device__ void test_load(__bf16 *out, __bf16 *in) {
+   *out = bf16;
+ }
+ 
+-// CHECK-LABEL: @_Z8test_retu6__bf16(
++// CHECK-LABEL: @_Z8test_retDF16b(
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[RETVAL:%.*]] = alloca bfloat, align 2, addrspace(5)
+ // CHECK-NEXT:    [[IN_ADDR:%.*]] = alloca bfloat, align 2, addrspace(5)
+@@ -66,7 +66,7 @@ __device__ __bf16 test_ret( __bf16 in) {
+   return in;
+ }
+ 
+-// CHECK-LABEL: @_Z9test_callu6__bf16(
++// CHECK-LABEL: @_Z9test_callDF16b(
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[RETVAL:%.*]] = alloca bfloat, align 2, addrspace(5)
+ // CHECK-NEXT:    [[IN_ADDR:%.*]] = alloca bfloat, align 2, addrspace(5)
+@@ -74,7 +74,7 @@ __device__ __bf16 test_ret( __bf16 in) {
+ // CHECK-NEXT:    [[IN_ADDR_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[IN_ADDR]] to ptr
+ // CHECK-NEXT:    store bfloat [[IN:%.*]], ptr [[IN_ADDR_ASCAST]], align 2
+ // CHECK-NEXT:    [[TMP0:%.*]] = load bfloat, ptr [[IN_ADDR_ASCAST]], align 2
+-// CHECK-NEXT:    [[CALL:%.*]] = call contract noundef bfloat @_Z8test_retu6__bf16(bfloat noundef [[TMP0]]) #[[ATTR1:[0-9]+]]
++// CHECK-NEXT:    [[CALL:%.*]] = call contract noundef bfloat @_Z8test_retDF16b(bfloat noundef [[TMP0]]) #[[ATTR1:[0-9]+]]
+ // CHECK-NEXT:    ret bfloat [[CALL]]
+ //
+ __device__ __bf16 test_call( __bf16 in) {
+diff --git a/clang/test/CodeGenCUDA/bf16.cu b/clang/test/CodeGenCUDA/bf16.cu
+index 5097681fba50..0b4f375b9568 100644
+--- a/clang/test/CodeGenCUDA/bf16.cu
++++ b/clang/test/CodeGenCUDA/bf16.cu
+@@ -6,12 +6,12 @@
+ 
+ #include "Inputs/cuda.h"
+ 
+-// CHECK-LABEL: .visible .func _Z8test_argPu6__bf16u6__bf16(
+-// CHECK:        .param .b64 _Z8test_argPu6__bf16u6__bf16_param_0,
+-// CHECK:        .param .b16 _Z8test_argPu6__bf16u6__bf16_param_1
++// CHECK-LABEL: .visible .func _Z8test_argPDF16bDF16b(
++// CHECK:        .param .b64 _Z8test_argPDF16bDF16b_param_0,
++// CHECK:        .param .b16 _Z8test_argPDF16bDF16b_param_1
+ //
+ __device__ void test_arg(__bf16 *out, __bf16 in) {
+-// CHECK:         ld.param.b16    %{{h.*}}, [_Z8test_argPu6__bf16u6__bf16_param_1];
++// CHECK:         ld.param.b16    %{{h.*}}, [_Z8test_argPDF16bDF16b_param_1];
+   __bf16 bf16 = in;
+   *out = bf16;
+ // CHECK:         st.b16
+@@ -19,23 +19,23 @@ __device__ void test_arg(__bf16 *out, __bf16 in) {
+ }
+ 
+ 
+-// CHECK-LABEL: .visible .func (.param .b32 func_retval0) _Z8test_retu6__bf16(
+-// CHECK:         .param .b16 _Z8test_retu6__bf16_param_0
++// CHECK-LABEL: .visible .func (.param .b32 func_retval0) _Z8test_retDF16b(
++// CHECK:         .param .b16 _Z8test_retDF16b_param_0
+ __device__ __bf16 test_ret( __bf16 in) {
+-// CHECK:        ld.param.b16    %h{{.*}}, [_Z8test_retu6__bf16_param_0];
++// CHECK:        ld.param.b16    %h{{.*}}, [_Z8test_retDF16b_param_0];
+   return in;
+ // CHECK:        st.param.b16    [func_retval0+0], %h
+ // CHECK:        ret;
+ }
+ 
+-// CHECK-LABEL: .visible .func  (.param .b32 func_retval0) _Z9test_callu6__bf16(
+-// CHECK:        .param .b16 _Z9test_callu6__bf16_param_0
++// CHECK-LABEL: .visible .func  (.param .b32 func_retval0) _Z9test_callDF16b(
++// CHECK:        .param .b16 _Z9test_callDF16b_param_0
+ __device__ __bf16 test_call( __bf16 in) {
+-// CHECK:        ld.param.b16    %h{{.*}}, [_Z9test_callu6__bf16_param_0];
++// CHECK:        ld.param.b16    %h{{.*}}, [_Z9test_callDF16b_param_0];
+ // CHECK:        st.param.b16    [param0+0], %h2;
+ // CHECK:        .param .b32 retval0;
+ // CHECK:        call.uni (retval0),
+-// CHECK-NEXT:   _Z8test_retu6__bf16,
++// CHECK-NEXT:   _Z8test_retDF16b,
+ // CHECK-NEXT:   (
+ // CHECK-NEXT:   param0
+ // CHECK-NEXT    );
+diff --git a/clang/test/Driver/fexcess-precision.c b/clang/test/Driver/fexcess-precision.c
+index 4e8211e90d21..00350ab11000 100644
+--- a/clang/test/Driver/fexcess-precision.c
++++ b/clang/test/Driver/fexcess-precision.c
+@@ -62,9 +62,13 @@
+ // RUN:   | FileCheck --check-prefix=CHECK-ERR-NONE %s
+ 
+ // CHECK-FAST: "-ffloat16-excess-precision=fast"
++// CHECK-FAST: "-fbfloat16-excess-precision=fast"
+ // CHECK-STD: "-ffloat16-excess-precision=standard"
++// CHECK-STD: "-fbfloat16-excess-precision=standard"
+ // CHECK-NONE: "-ffloat16-excess-precision=none"
++// CHECK-NONE: "-fbfloat16-excess-precision=none"
+ // CHECK-ERR-NONE: unsupported argument 'none' to option '-fexcess-precision='
+ // CHECK: "-cc1"
+ // CHECK-NOT: "-ffloat16-excess-precision=fast"
++// CHECK-NOT: "-fbfloat16-excess-precision=fast"
+ // CHECK-ERR-16: unsupported argument '16' to option '-fexcess-precision='
+diff --git a/clang/test/Sema/arm-bf16-forbidden-ops.c b/clang/test/Sema/arm-bf16-forbidden-ops.c
+deleted file mode 100644
+index 0311e7bfb7b3..000000000000
+--- a/clang/test/Sema/arm-bf16-forbidden-ops.c
++++ /dev/null
+@@ -1,72 +0,0 @@
+-// RUN: %clang_cc1 -fsyntax-only -verify -triple aarch64 -target-feature +bf16 %s
+-// RUN: %clang_cc1 -fsyntax-only -verify -triple aarch64 -target-feature -bf16 %s
+-
+-__bf16 test_cast_from_float(float in) {
+-  return (__bf16)in; // expected-error {{cannot type-cast to __bf16}}
+-}
+-
+-__bf16 test_cast_from_float_literal(void) {
+-  return (__bf16)1.0f; // expected-error {{cannot type-cast to __bf16}}
+-}
+-
+-__bf16 test_cast_from_int(int in) {
+-  return (__bf16)in; // expected-error {{cannot type-cast to __bf16}}
+-}
+-
+-__bf16 test_cast_from_int_literal(void) {
+-  return (__bf16)1; // expected-error {{cannot type-cast to __bf16}}
+-}
+-
+-__bf16 test_cast_bfloat(__bf16 in) {
+-  return (__bf16)in; // this one should work
+-}
+-
+-float test_cast_to_float(__bf16 in) {
+-  return (float)in; // expected-error {{cannot type-cast from __bf16}}
+-}
+-
+-int test_cast_to_int(__bf16 in) {
+-  return (int)in; // expected-error {{cannot type-cast from __bf16}}
+-}
+-
+-__bf16 test_implicit_from_float(float in) {
+-  return in; // expected-error {{returning 'float' from a function with incompatible result type '__bf16'}}
+-}
+-
+-__bf16 test_implicit_from_float_literal(void) {
+-  return 1.0f; // expected-error {{returning 'float' from a function with incompatible result type '__bf16'}}
+-}
+-
+-__bf16 test_implicit_from_int(int in) {
+-  return in; // expected-error {{returning 'int' from a function with incompatible result type '__bf16'}}
+-}
+-
+-__bf16 test_implicit_from_int_literal(void) {
+-  return 1; // expected-error {{returning 'int' from a function with incompatible result type '__bf16'}}
+-}
+-
+-__bf16 test_implicit_bfloat(__bf16 in) {
+-  return in; // this one should work
+-}
+-
+-float test_implicit_to_float(__bf16 in) {
+-  return in; // expected-error {{returning '__bf16' from a function with incompatible result type 'float'}}
+-}
+-
+-int test_implicit_to_int(__bf16 in) {
+-  return in; // expected-error {{returning '__bf16' from a function with incompatible result type 'int'}}
+-}
+-
+-__bf16 test_cond(__bf16 a, __bf16 b, _Bool which) {
+-  // Conditional operator _should_ be supported, without nonsense
+-  // complaints like 'types __bf16 and __bf16 are not compatible'
+-  return which ? a : b;
+-}
+-
+-__bf16 test_cond_float(__bf16 a, __bf16 b, _Bool which) {
+-  return which ? a : 1.0f; // expected-error {{incompatible operand types ('__bf16' and 'float')}}
+-}
+-
+-__bf16 test_cond_int(__bf16 a, __bf16 b, _Bool which) {
+-  return which ? a : 1; // expected-error {{incompatible operand types ('__bf16' and 'int')}}
+-}
+diff --git a/clang/test/Sema/arm-bf16-forbidden-ops.cpp b/clang/test/Sema/arm-bf16-forbidden-ops.cpp
+deleted file mode 100644
+index 2a10fd1a95df..000000000000
+--- a/clang/test/Sema/arm-bf16-forbidden-ops.cpp
++++ /dev/null
+@@ -1,72 +0,0 @@
+-// RUN: %clang_cc1 -fsyntax-only -verify -triple aarch64 -target-feature +bf16 %s
+-// RUN: %clang_cc1 -fsyntax-only -verify -triple aarch64 -target-feature -bf16 %s
+-
+-__bf16 test_static_cast_from_float(float in) {
+-  return static_cast<__bf16>(in); // expected-error {{static_cast from 'float' to '__bf16' is not allowed}}
+-}
+-
+-__bf16 test_static_cast_from_float_literal(void) {
+-  return static_cast<__bf16>(1.0f); // expected-error {{static_cast from 'float' to '__bf16' is not allowed}}
+-}
+-
+-__bf16 test_static_cast_from_int(int in) {
+-  return static_cast<__bf16>(in); // expected-error {{static_cast from 'int' to '__bf16' is not allowed}}
+-}
+-
+-__bf16 test_static_cast_from_int_literal(void) {
+-  return static_cast<__bf16>(1); // expected-error {{static_cast from 'int' to '__bf16' is not allowed}}
+-}
+-
+-__bf16 test_static_cast_bfloat(__bf16 in) {
+-  return static_cast<__bf16>(in); // this one should work
+-}
+-
+-float test_static_cast_to_float(__bf16 in) {
+-  return static_cast<float>(in); // expected-error {{static_cast from '__bf16' to 'float' is not allowed}}
+-}
+-
+-int test_static_cast_to_int(__bf16 in) {
+-  return static_cast<int>(in); // expected-error {{static_cast from '__bf16' to 'int' is not allowed}}
+-}
+-
+-__bf16 test_implicit_from_float(float in) {
+-  return in; // expected-error {{cannot initialize return object of type '__bf16' with an lvalue of type 'float'}}
+-}
+-
+-__bf16 test_implicit_from_float_literal() {
+-  return 1.0f; // expected-error {{cannot initialize return object of type '__bf16' with an rvalue of type 'float'}}
+-}
+-
+-__bf16 test_implicit_from_int(int in) {
+-  return in; // expected-error {{cannot initialize return object of type '__bf16' with an lvalue of type 'int'}}
+-}
+-
+-__bf16 test_implicit_from_int_literal() {
+-  return 1; // expected-error {{cannot initialize return object of type '__bf16' with an rvalue of type 'int'}}
+-}
+-
+-__bf16 test_implicit_bfloat(__bf16 in) {
+-  return in; // this one should work
+-}
+-
+-float test_implicit_to_float(__bf16 in) {
+-  return in; // expected-error {{cannot initialize return object of type 'float' with an lvalue of type '__bf16'}}
+-}
+-
+-int test_implicit_to_int(__bf16 in) {
+-  return in; // expected-error {{cannot initialize return object of type 'int' with an lvalue of type '__bf16'}}
+-}
+-
+-__bf16 test_cond(__bf16 a, __bf16 b, bool which) {
+-  // Conditional operator _should_ be supported, without nonsense
+-  // complaints like 'types __bf16 and __bf16 are not compatible'
+-  return which ? a : b;
+-}
+-
+-__bf16 test_cond_float(__bf16 a, __bf16 b, bool which) {
+-  return which ? a : 1.0f; // expected-error {{incompatible operand types ('__bf16' and 'float')}}
+-}
+-
+-__bf16 test_cond_int(__bf16 a, __bf16 b, bool which) {
+-  return which ? a : 1; // expected-error {{incompatible operand types ('__bf16' and 'int')}}
+-}
+diff --git a/clang/test/Sema/arm-bfloat.cpp b/clang/test/Sema/arm-bfloat.cpp
+index df3cb8a1d0a0..7ea2a5dc8cb0 100644
+--- a/clang/test/Sema/arm-bfloat.cpp
++++ b/clang/test/Sema/arm-bfloat.cpp
+@@ -1,38 +1,38 @@
+ // RUN: %clang_cc1 -fsyntax-only -verify=scalar,neon -std=c++11 \
+ // RUN:   -triple aarch64-arm-none-eabi -target-cpu cortex-a75 \
+-// RUN:   -target-feature +bf16 -target-feature +neon %s
++// RUN:   -target-feature +bf16 -target-feature +neon -Wno-unused %s
+ // RUN: %clang_cc1 -fsyntax-only -verify=scalar,neon -std=c++11 \
+ // RUN:   -triple arm-arm-none-eabi -target-cpu cortex-a53 \
+-// RUN:   -target-feature +bf16 -target-feature +neon %s
++// RUN:   -target-feature +bf16 -target-feature +neon -Wno-unused %s
+ 
+ // The types should be available under AArch64 even without the bf16 feature
+ // RUN: %clang_cc1 -fsyntax-only -verify=scalar -DNONEON -std=c++11 \
+ // RUN:   -triple aarch64-arm-none-eabi -target-cpu cortex-a75 \
+-// RUN:   -target-feature -bf16 -target-feature +neon %s
++// RUN:   -target-feature -bf16 -target-feature +neon -Wno-unused %s
+ 
+ // REQUIRES: aarch64-registered-target || arm-registered-target
+ 
+ void test(bool b) {
+   __bf16 bf16;
+ 
+-  bf16 + bf16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 - bf16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 * bf16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 / bf16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
++  bf16 + bf16;
++  bf16 - bf16;
++  bf16 * bf16;
++  bf16 / bf16;
+ 
+   __fp16 fp16;
+ 
+-  bf16 + fp16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 + bf16; // scalar-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 - fp16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 - bf16; // scalar-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 * fp16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 * bf16; // scalar-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 / fp16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 / bf16; // scalar-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
++  bf16 + fp16;
++  fp16 + bf16;
++  bf16 - fp16;
++  fp16 - bf16;
++  bf16 * fp16;
++  fp16 * bf16;
++  bf16 / fp16;
++  fp16 / bf16;
+   bf16 = fp16; // scalar-error {{assigning to '__bf16' from incompatible type '__fp16'}}
+   fp16 = bf16; // scalar-error {{assigning to '__fp16' from incompatible type '__bf16'}}
+-  bf16 + (b ? fp16 : bf16); // scalar-error {{incompatible operand types ('__fp16' and '__bf16')}}
++  bf16 + (b ? fp16 : bf16);
+ }
+ 
+ #ifndef NONEON
+@@ -40,18 +40,18 @@ void test(bool b) {
+ #include <arm_neon.h>
+ 
+ void test_vector(bfloat16x4_t a, bfloat16x4_t b, float16x4_t c) {
+-  a + b; // neon-error {{invalid operands to binary expression ('bfloat16x4_t' (vector of 4 'bfloat16_t' values) and 'bfloat16x4_t')}}
+-  a - b; // neon-error {{invalid operands to binary expression ('bfloat16x4_t' (vector of 4 'bfloat16_t' values) and 'bfloat16x4_t')}}
+-  a * b; // neon-error {{invalid operands to binary expression ('bfloat16x4_t' (vector of 4 'bfloat16_t' values) and 'bfloat16x4_t')}}
+-  a / b; // neon-error {{invalid operands to binary expression ('bfloat16x4_t' (vector of 4 'bfloat16_t' values) and 'bfloat16x4_t')}}
+-
+-  a + c; // neon-error {{invalid operands to binary expression ('bfloat16x4_t' (vector of 4 'bfloat16_t' values) and 'float16x4_t' (vector of 4 'float16_t' values))}}
+-  a - c; // neon-error {{invalid operands to binary expression ('bfloat16x4_t' (vector of 4 'bfloat16_t' values) and 'float16x4_t' (vector of 4 'float16_t' values))}}
+-  a * c; // neon-error {{invalid operands to binary expression ('bfloat16x4_t' (vector of 4 'bfloat16_t' values) and 'float16x4_t' (vector of 4 'float16_t' values))}}
+-  a / c; // neon-error {{invalid operands to binary expression ('bfloat16x4_t' (vector of 4 'bfloat16_t' values) and 'float16x4_t' (vector of 4 'float16_t' values))}}
+-  c + b; // neon-error {{invalid operands to binary expression ('float16x4_t' (vector of 4 'float16_t' values) and 'bfloat16x4_t' (vector of 4 'bfloat16_t' values))}}
+-  c - b; // neon-error {{invalid operands to binary expression ('float16x4_t' (vector of 4 'float16_t' values) and 'bfloat16x4_t' (vector of 4 'bfloat16_t' values))}}
+-  c * b; // neon-error {{invalid operands to binary expression ('float16x4_t' (vector of 4 'float16_t' values) and 'bfloat16x4_t' (vector of 4 'bfloat16_t' values))}}
+-  c / b; // neon-error {{invalid operands to binary expression ('float16x4_t' (vector of 4 'float16_t' values) and 'bfloat16x4_t' (vector of 4 'bfloat16_t' values))}}
++  a + b;
++  a - b;
++  a * b;
++  a / b;
++
++  a + c;
++  a - c;
++  a * c;
++  a / c;
++  c + b;
++  c - b;
++  c * b;
++  c / b;
+ }
+ #endif
+\ No newline at end of file
+diff --git a/clang/test/SemaCUDA/amdgpu-bf16.cu b/clang/test/SemaCUDA/amdgpu-bf16.cu
+index c715bbac8458..0b5ce1a4f64c 100644
+--- a/clang/test/SemaCUDA/amdgpu-bf16.cu
++++ b/clang/test/SemaCUDA/amdgpu-bf16.cu
+@@ -1,13 +1,8 @@
+ // REQUIRES: amdgpu-registered-target
+ // REQUIRES: x86-registered-target
+ 
+-// RUN: %clang_cc1 "-triple" "x86_64-unknown-linux-gnu" "-aux-triple" "amdgcn-amd-amdhsa"\
+-// RUN:    "-target-cpu" "x86-64" -fsyntax-only -verify=amdgcn %s
+-// RUN: %clang_cc1 "-aux-triple" "x86_64-unknown-linux-gnu" "-triple" "amdgcn-amd-amdhsa"\
+-// RUN:    -fcuda-is-device "-aux-target-cpu" "x86-64" -fsyntax-only -verify=amdgcn %s
+-
+ // RUN: %clang_cc1 "-aux-triple" "x86_64-unknown-linux-gnu" "-triple" "r600-unknown-unknown"\
+-// RUN:    -fcuda-is-device "-aux-target-cpu" "x86-64" -fsyntax-only -verify=amdgcn,r600 %s
++// RUN:    -fcuda-is-device "-aux-target-cpu" "x86-64" -fsyntax-only -verify=r600 %s
+ 
+ // AMDGCN has storage-only support for bf16. R600 does not support it should error out when
+ // it's the main target.
+@@ -29,45 +24,8 @@ typedef __attribute__((ext_vector_type(16))) __bf16 bf16_x16;
+ // r600-error@+1 2 {{__bf16 is not supported on this target}}
+ __device__ void test(bool b, __bf16 *out, __bf16 in) {
+   __bf16 bf16 = in;  // r600-error {{__bf16 is not supported on this target}}
+-
+-  bf16 + bf16; // amdgcn-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 - bf16; // amdgcn-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 * bf16; // amdgcn-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 / bf16; // amdgcn-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-
+-  __fp16 fp16;
+-
+-  bf16 + fp16; // amdgcn-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 + bf16; // amdgcn-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 - fp16; // amdgcn-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 - bf16; // amdgcn-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 * fp16; // amdgcn-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 * bf16; // amdgcn-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 / fp16; // amdgcn-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 / bf16; // amdgcn-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 = fp16; // amdgcn-error {{assigning to '__bf16' from incompatible type '__fp16'}}
+-  fp16 = bf16; // amdgcn-error {{assigning to '__fp16' from incompatible type '__bf16'}}
+-  bf16 + (b ? fp16 : bf16); // amdgcn-error {{incompatible operand types ('__fp16' and '__bf16')}}
+   *out = bf16;
+ 
+-  // amdgcn-error@+1 {{static_cast from '__bf16' to 'unsigned short' is not allowed}}
+-  unsigned short u16bf16 = static_cast<unsigned short>(bf16);
+-  // amdgcn-error@+2 {{C-style cast from 'unsigned short' to '__bf16' is not allowed}}
+-  // r600-error@+1 {{__bf16 is not supported on this target}}
+-  bf16 = (__bf16)u16bf16;
+-
+-  // amdgcn-error@+1 {{static_cast from '__bf16' to 'float' is not allowed}}
+-  float f32bf16 = static_cast<float>(bf16);
+-  // amdgcn-error@+2 {{C-style cast from 'float' to '__bf16' is not allowed}}
+-  // r600-error@+1 {{__bf16 is not supported on this target}}
+-  bf16 = (__bf16)f32bf16;
+-
+-  // amdgcn-error@+1 {{static_cast from '__bf16' to 'double' is not allowed}}
+-  double f64bf16 = static_cast<double>(bf16);
+-  // amdgcn-error@+2 {{C-style cast from 'double' to '__bf16' is not allowed}}
+-  // r600-error@+1 {{__bf16 is not supported on this target}}
+-  bf16 = (__bf16)f64bf16;
+-
+   // r600-error@+1 {{__bf16 is not supported on this target}}
+   typedef __attribute__((ext_vector_type(2))) __bf16 bf16_x2;
+   bf16_x2 vec2_a, vec2_b;
+diff --git a/clang/test/SemaCUDA/bf16.cu b/clang/test/SemaCUDA/bf16.cu
+index 956ab36684a3..72ebf7a02752 100644
+--- a/clang/test/SemaCUDA/bf16.cu
++++ b/clang/test/SemaCUDA/bf16.cu
+@@ -2,32 +2,32 @@
+ // REQUIRES: x86-registered-target
+ 
+ // RUN: %clang_cc1 "-triple" "x86_64-unknown-linux-gnu" "-aux-triple" "nvptx64-nvidia-cuda" \
+-// RUN:    "-target-cpu" "x86-64" -fsyntax-only -verify=scalar %s
++// RUN:    "-target-cpu" "x86-64" -fsyntax-only -verify=scalar -Wno-unused %s
+ // RUN: %clang_cc1 "-aux-triple" "x86_64-unknown-linux-gnu" "-triple" "nvptx64-nvidia-cuda" \
+-// RUN:    -fcuda-is-device "-aux-target-cpu" "x86-64" -fsyntax-only -verify=scalar %s
++// RUN:    -fcuda-is-device "-aux-target-cpu" "x86-64" -fsyntax-only -verify=scalar -Wno-unused %s
+ 
+ #include "Inputs/cuda.h"
+ 
+ __device__ void test(bool b, __bf16 *out, __bf16 in) {
+   __bf16 bf16 = in; // No error on using the type itself.
+ 
+-  bf16 + bf16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 - bf16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 * bf16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
+-  bf16 / bf16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__bf16')}}
++  bf16 + bf16;
++  bf16 - bf16;
++  bf16 * bf16;
++  bf16 / bf16;
+ 
+   __fp16 fp16;
+ 
+-  bf16 + fp16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 + bf16; // scalar-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 - fp16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 - bf16; // scalar-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 * fp16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 * bf16; // scalar-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
+-  bf16 / fp16; // scalar-error {{invalid operands to binary expression ('__bf16' and '__fp16')}}
+-  fp16 / bf16; // scalar-error {{invalid operands to binary expression ('__fp16' and '__bf16')}}
++  bf16 + fp16;
++  fp16 + bf16;
++  bf16 - fp16;
++  fp16 - bf16;
++  bf16 * fp16;
++  fp16 * bf16;
++  bf16 / fp16;
++  fp16 / bf16;
+   bf16 = fp16; // scalar-error {{assigning to '__bf16' from incompatible type '__fp16'}}
+   fp16 = bf16; // scalar-error {{assigning to '__fp16' from incompatible type '__bf16'}}
+-  bf16 + (b ? fp16 : bf16); // scalar-error {{incompatible operand types ('__fp16' and '__bf16')}}
++  bf16 + (b ? fp16 : bf16);
+   *out = bf16;
+ }
+-- 
+2.39.1
+
