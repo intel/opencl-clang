@@ -46,7 +46,6 @@ add_custom_target (
 function(create_pcm DST MODULE HEADER OPTS DEPS)
     add_custom_command (
         OUTPUT ${DST}
-        MAIN_DEPENDENCY ${MODMAP}
         DEPENDS ${HEADER} ${DEPS} ${CLANG_COMMAND}
         COMMAND
         ${CLANG_COMMAND} -cc1 -x cl
