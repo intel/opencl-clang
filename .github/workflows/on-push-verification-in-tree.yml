@@ -41,12 +41,12 @@ jobs:
         run: |
           BRANCH="${{ github.base_ref }}"          # on: pull_request, otherwise null
           BRANCH=${BRANCH:-${{ github.ref_name }}} # on: push
-          LLVM_VERSION_LONG=$(echo $BRANCH | grep -oP 'ocl-open-\K\d+') # Eg. 190 for LLVM 19
+          LLVM_VERSION_LONG=$(echo $BRANCH | grep -oP 'ocl-open-\K\d+') # Eg. 200 for LLVM 20
           if [ -z "$LLVM_VERSION_LONG" ]; then
             echo "[OPENCL-CLANG] Error: Could not parse LLVM version from branch name '$BRANCH'"
             exit 1
           fi
-          LLVM_VERSION_SHORT=${LLVM_VERSION_LONG::-1}        # Eg. 19  for LLVM 19
+          LLVM_VERSION_SHORT=${LLVM_VERSION_LONG::-1}        # Eg. 20  for LLVM 20
           echo "llvm_version=$LLVM_VERSION_SHORT" >> $GITHUB_OUTPUT
 
       - name: Run build-opencl-clang action
