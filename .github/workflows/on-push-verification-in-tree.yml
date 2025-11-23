@@ -42,7 +42,7 @@ jobs:
           BRANCH="${{ github.base_ref }}"          # on: pull_request, otherwise null
           BRANCH=${BRANCH:-${{ github.ref_name }}} # on: push
           # Extract the padded LLVM version (e.g., 190 for LLVM 19)
-          LLVM_VERSION_PADDED=$(echo $BRANCH | grep -oP 'ocl-open-\K\d+')
+          LLVM_VERSION_PADDED=$(echo "$BRANCH" | sed -n 's/^ocl-open-\([0-9]\+\)$/\1/p')
           if [ -z "$LLVM_VERSION_PADDED" ]; then
             echo "[OPENCL-CLANG] Error: Could not parse LLVM version from branch name '$BRANCH'"
             exit 1
