@@ -41,12 +41,19 @@ jobs:
         run: |
           BRANCH="${{ github.base_ref }}"          # on: pull_request, otherwise null
           BRANCH=${BRANCH:-${{ github.ref_name }}} # on: push
-          LLVM_VERSION_LONG=$(echo $BRANCH | grep -oP 'ocl-open-\K\d+') # Eg. 200 for LLVM 20
-          if [ -z "$LLVM_VERSION_LONG" ]; then
+          # Extract the padded LLVM version (e.g., 200 for LLVM 20)
+          LLVM_VERSION_PADDED=$(echo "$BRANCH" | sed -n 's/^ocl-open-\([0-9]\+\)$/\1/p')
+          if [ -z "$LLVM_VERSION_PADDED" ]; then
             echo "[OPENCL-CLANG] Error: Could not parse LLVM version from branch name '$BRANCH'"
             exit 1
           fi
-          LLVM_VERSION_SHORT=${LLVM_VERSION_LONG::-1}        # Eg. 20  for LLVM 20
+          # Extract the actual LLVM version (e.g., 20 from 200)
+          if [[ "$LLVM_VERSION_PADDED" =~ ^([0-9]+)0$ ]]; then
+            LLVM_VERSION_SHORT="${BASH_REMATCH[1]}"
+          else
+            echo "[OPENCL-CLANG] Error: Unexpected LLVM version format '$LLVM_VERSION_PADDED' from branch name '$BRANCH'"
+            exit 1
+          fi
           echo "llvm_version=$LLVM_VERSION_SHORT" >> $GITHUB_OUTPUT
 
       - name: Run build-opencl-clang action
