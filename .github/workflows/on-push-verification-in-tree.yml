@@ -35,9 +35,30 @@ jobs:
       - name: Checkout opencl-clang sources for action files
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
 
+      # This step will fail when the branch naming scheme 'ocl-open-XXX' changes!
+      - name: Parse LLVM version from branch name
+        id: check-llvm-version
+        run: |
+          BRANCH="${{ github.base_ref }}"          # on: pull_request, otherwise null
+          BRANCH=${BRANCH:-${{ github.ref_name }}} # on: push
+          # Extract the padded LLVM version (e.g., 200 for LLVM 20)
+          LLVM_VERSION_PADDED=$(echo "$BRANCH" | sed -n 's/^ocl-open-\([0-9]\+\)$/\1/p')
+          if [ -z "$LLVM_VERSION_PADDED" ]; then
+            echo "[OPENCL-CLANG] Error: Could not parse LLVM version from branch name '$BRANCH'"
+            exit 1
+          fi
+          # Extract the actual LLVM version (e.g., 20 from 200)
+          if [[ "$LLVM_VERSION_PADDED" =~ ^([0-9]+)0$ ]]; then
+            LLVM_VERSION_SHORT="${BASH_REMATCH[1]}"
+          else
+            echo "[OPENCL-CLANG] Error: Unexpected LLVM version format '$LLVM_VERSION_PADDED' from branch name '$BRANCH'"
+            exit 1
+          fi
+          echo "llvm_version=$LLVM_VERSION_SHORT" >> $GITHUB_OUTPUT
+
       - name: Run build-opencl-clang action
         uses: ./.github/actions/build-opencl-clang
         with:
-          ref_llvm: main
-          ref_translator: main
+          ref_llvm: release/${{ steps.check-llvm-version.outputs.llvm_version }}.x
+          ref_translator: llvm_release_${{ steps.check-llvm-version.outputs.llvm_version }}0
           ref_opencl-clang: ${{ github.ref }}
