@@ -35,19 +35,9 @@ jobs:
       - name: Checkout opencl-clang sources for action files
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
 
-      # This step will fail when the branch naming scheme 'ocl-open-XXX' changes!
-      - name: Parse LLVM version from branch name
-        id: check-llvm-version
-        run: |
-          BRANCH="${{ github.base_ref }}"          # on: pull_request, otherwise null
-          BRANCH=${BRANCH:-${{ github.ref_name }}} # on: push
-          LLVM_VERSION_LONG=$(echo $BRANCH | grep -oP '\d+') # Eg. 190 for LLVM 19
-          LLVM_VERSION_SHORT=${LLVM_VERSION_LONG::-1}        # Eg. 19  for LLVM 19
-          echo "llvm_version=$LLVM_VERSION_SHORT" >> $GITHUB_OUTPUT
-
       - name: Run build-opencl-clang action
         uses: ./.github/actions/build-opencl-clang
         with:
-          ref_llvm: release/${{ steps.check-llvm-version.outputs.llvm_version }}.x
-          ref_translator: llvm_release_${{ steps.check-llvm-version.outputs.llvm_version }}0
+          ref_llvm: main
+          ref_translator: main
           ref_opencl-clang: ${{ github.ref }}
