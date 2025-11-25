@@ -134,14 +134,14 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
                 message(STATUS "[OPENCL-CLANG] Patch ${patch} is already in local branch - ignore patching")
             else()
                 execute_process( # Apply the patch
-                    COMMAND ${GIT_EXECUTABLE} am --3way --ignore-whitespace ${patch}
+                    COMMAND ${GIT_EXECUTABLE} am --3way --keep-non-patch --ignore-whitespace ${patch}
                     WORKING_DIRECTORY ${repo_dir}
                     OUTPUT_VARIABLE patching_log
                 )
                 message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
             endif()
         endforeach(patch)
-    elsef(patches_needed EQUAL 0) # The target branch already exists
+    elseif(patches_needed EQUAL 0) # The target branch already exists
         execute_process( # Check it out
             COMMAND ${GIT_EXECUTABLE} checkout ${target_branch}
             WORKING_DIRECTORY ${repo_dir}
