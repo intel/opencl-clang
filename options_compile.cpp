@@ -399,7 +399,6 @@ void CompileOptionsParser::processOptions(const char *pszOptions,
       m_optDisable = true;
     }
     else if (it->compare("-emit-spirv") == 0) {
-      m_effectiveArgsRaw.push_back("-emit-llvm-bc");
       m_emitSPIRV = true;
       continue;
     }
