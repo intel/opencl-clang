@@ -330,7 +330,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
 		    parsedOclCFeatures.insert(a);
                 });
 
-  // extension is enabled in PCH but disabled or not specifed in options =>
+  // extension is enabled in PCH but disabled or not specified in options =>
   // disable pch
   bool useModules =
       !std::any_of(extMap.begin(), extMap.end(),
