@@ -1,0 +1,54 @@
+From 25cfdaa4e9dcb4c6e2ef294763c3c4a635ccdd98 Mon Sep 17 00:00:00 2001
+From: Wenju He <wenju.he@intel.com>
+Date: Tue, 6 Jan 2026 09:19:26 +0800
+Subject: [PATCH] [OpenCL] Set cl_khr_gl_msaa_sharing minimum version to 1.0
+ (#174322)
+
+cl_khr_gl_msaa_sharing spec doesn't specify a required OpenCL version.
+
+Make the extension available in all OpenCL versions to avoid spurious
+'unsupported extension' warnings when implementations advertise it
+before 1.2 (e.g., intel compute-runtime 25.13.33276.16).
+
+See also https://github.com/KhronosGroup/OpenCL-CTS/pull/2376.
+---
+ clang/include/clang/Basic/OpenCLExtensions.def | 2 +-
+ clang/test/SemaOpenCL/extension-version.cl     | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/clang/include/clang/Basic/OpenCLExtensions.def b/clang/include/clang/Basic/OpenCLExtensions.def
+index d322c81b2a49..3abc0279de79 100644
+--- a/clang/include/clang/Basic/OpenCLExtensions.def
++++ b/clang/include/clang/Basic/OpenCLExtensions.def
+@@ -68,6 +68,7 @@ OPENCL_OPTIONALCOREFEATURE(cl_khr_fp64, true, 100, OCL_C_12P)
+ OPENCL_EXTENSION(cl_khr_fp16, true, 100)
+ OPENCL_EXTENSION(cl_khr_int64_base_atomics, true, 100)
+ OPENCL_EXTENSION(cl_khr_int64_extended_atomics, true, 100)
++OPENCL_EXTENSION(cl_khr_gl_msaa_sharing, true, 100)
+ OPENCL_GENERIC_EXTENSION(cl_khr_3d_image_writes, true, 100, OCL_C_20, OCL_C_30)
+ 
+ // EMBEDDED_PROFILE
+@@ -75,7 +76,6 @@ OPENCL_EXTENSION(cles_khr_int64, true, 110)
+ 
+ // OpenCL 1.2.
+ OPENCL_EXTENSION(cl_khr_depth_images, true, 120)
+-OPENCL_EXTENSION(cl_khr_gl_msaa_sharing,true, 120)
+ 
+ // OpenCL 2.0.
+ OPENCL_EXTENSION(cl_ext_float_atomics, false, 200)
+diff --git a/clang/test/SemaOpenCL/extension-version.cl b/clang/test/SemaOpenCL/extension-version.cl
+index 77531479d3a0..85d7aac0e0f2 100644
+--- a/clang/test/SemaOpenCL/extension-version.cl
++++ b/clang/test/SemaOpenCL/extension-version.cl
+@@ -111,7 +111,7 @@
+ #endif
+ #pragma OPENCL EXTENSION cles_khr_int64 : enable
+ 
+-#if (defined(__OPENCL_CPP_VERSION__) || __OPENCL_C_VERSION__ >= 120)
++#if (defined(__OPENCL_CPP_VERSION__) || __OPENCL_C_VERSION__ >= 100)
+ #ifndef cl_khr_gl_msaa_sharing
+ #error "Missing cl_khr_gl_msaa_sharing define"
+ #endif
+-- 
+2.39.1
+
