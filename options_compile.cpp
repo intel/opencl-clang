@@ -62,6 +62,70 @@ OpenCLCompileOptTable::OpenCLCompileOptTable()
 
 int EffectiveOptionsFilter::s_progID = 1;
 
+// This code was adopted from the SPIRV-LLVM-Translator repository.
+static int parseSPVExtOption(
+    llvm::StringRef SPVExt,
+    SPIRV::TranslatorOpts::ExtensionsStatusMap &ExtensionsStatus) {
+  // Map name -> id for known extensions
+  std::map<llvm::StringRef, SPIRV::ExtensionID> ExtensionNamesMap;
+#define _STRINGIFY(X) #X
+#define STRINGIFY(X) _STRINGIFY(X)
+#define EXT(X) ExtensionNamesMap[STRINGIFY(X)] = SPIRV::ExtensionID::X;
+#include "LLVMSPIRVExtensions.inc"
+#undef EXT
+#undef STRINGIFY
+#undef _STRINGIFY
+
+  // Set the initial state: assume that any known extension is disallowed.
+  std::optional<bool> DefaultVal;
+  for (const auto &It : ExtensionNamesMap)
+    ExtensionsStatus[It.second] = DefaultVal;
+
+  llvm::SmallVector<llvm::StringRef, 32> SPVExtList;
+  llvm::SplitString(SPVExt, SPVExtList, ",");
+
+  if (SPVExtList.empty())
+    return 0; // Nothing to do
+
+  for (unsigned i = 0; i < SPVExtList.size(); ++i) {
+    llvm::StringRef ExtString = SPVExtList[i];
+    if (ExtString.empty() ||
+        ('+' != ExtString.front() && '-' != ExtString.front())) {
+      llvm::errs() << "Invalid value of --spirv-ext, expected format is:\n"
+                   << "\t--spirv-ext=+EXT_NAME,-EXT_NAME\n";
+      return -1;
+    }
+
+    auto ExtName = ExtString.substr(1);
+
+    if (ExtName.empty()) {
+      llvm::errs() << "Invalid value of --spirv-ext, expected format is:\n"
+                   << "\t--spirv-ext=+EXT_NAME,-EXT_NAME\n";
+      return -1;
+    }
+
+    bool ExtStatus = ('+' == ExtString.front());
+    if ("all" == ExtName) {
+      // Update status for all known extensions
+      for (const auto &It : ExtensionNamesMap)
+        ExtensionsStatus[It.second] = ExtStatus;
+    } else {
+      // Reject unknown extensions
+      const auto &It = ExtensionNamesMap.find(ExtName);
+      if (ExtensionNamesMap.end() == It) {
+        llvm::errs() << "Unknown extension '" << ExtName
+                     << "' was specified via "
+                     << "--spirv-ext option\n";
+        return -1;
+      }
+
+      ExtensionsStatus[It->second] = ExtStatus;
+    }
+  }
+
+  return 0;
+}
+
 ///
 // Options filter that validates the opencl used options
 //
@@ -397,8 +461,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   return sourceName;
 }
 
-void CompileOptionsParser::processOptions(const char *pszOptions,
-                                          const char *pszOptionsEx) {
+int CompileOptionsParser::processOptions(const char *pszOptions,
+                                         const char *pszOptionsEx) {
   // parse options
   unsigned missingArgIndex, missingArgCount;
   std::unique_ptr<OpenCLArgList> pArgs(
@@ -412,16 +476,27 @@ void CompileOptionsParser::processOptions(const char *pszOptions,
   for (ArgsVector::iterator it = m_effectiveArgs.begin(),
                             end = m_effectiveArgs.end();
        it != end; ++it) {
-    if (it->compare("-cl-opt-disable") == 0) {
+    llvm::StringRef arg(*it);
+    (void)arg.consume_front("-");
+    // support -- prefix as well.
+    (void)arg.consume_front("-");
+    if (arg == "cl-opt-disable") {
       m_optDisable = true;
-    }
-    else if (it->compare("-emit-spirv") == 0) {
+    } else if (arg == "emit-spirv") {
       m_effectiveArgsRaw.push_back("-emit-llvm-bc");
       m_emitSPIRV = true;
+      continue;
+    } else if (arg.consume_front("spirv-ext=")) {
+      m_hasSPIRVExt = true;
+      // m_SPIRVExtStatusMap will be initialized and updated according to `arg`.
+      int ret = parseSPVExtOption(arg, m_SPIRVExtStatusMap);
+      if (0 != ret)
+        return ret;
       continue;
     }
     m_effectiveArgsRaw.push_back(it->c_str());
   }
+  return 0;
 }
 
 bool CompileOptionsParser::checkOptions(const char *pszOptions,
