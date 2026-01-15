@@ -21,12 +21,13 @@ Copyright (c) Intel Corporation (2009-2017).
 #ifndef COMMON_CLANG_OPTIONS_H
 #define COMMON_CLANG_OPTIONS_H
 
-#include "llvm/Option/Arg.h"
+#include "LLVMSPIRVOpts.h"
+#include "clang/Basic/OpenCLOptions.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
-#include "clang/Basic/OpenCLOptions.h"
 
 #include <list>
 
@@ -149,7 +150,7 @@ public:
   // Validates and prepares the effective options to pass to clang upon
   // compilation
   //
-  void processOptions(const char *pszOptions, const char *pszOptionsEx);
+  int processOptions(const char *pszOptions, const char *pszOptionsEx);
 
   //
   // Just validates the user supplied OpenCL compile options
@@ -175,6 +176,13 @@ public:
   std::string getEffectiveOptionsAsString() const;
 
   bool hasEmitSPIRV() const { return m_emitSPIRV; }
+
+  bool hasSPIRVExt() const { return m_hasSPIRVExt; }
+
+  SPIRV::TranslatorOpts::ExtensionsStatusMap getSPIRVExtStatusMap() const {
+    return m_SPIRVExtStatusMap;
+  }
+
   bool hasOptDisable() const { return m_optDisable; }
 
 private:
@@ -184,6 +192,8 @@ private:
   llvm::SmallVector<const char *, 16> m_effectiveArgsRaw;
   std::string m_sourceName;
   bool m_emitSPIRV;
+  bool m_hasSPIRVExt = false;
+  SPIRV::TranslatorOpts::ExtensionsStatusMap m_SPIRVExtStatusMap = {};
   bool m_optDisable;
 };
 
