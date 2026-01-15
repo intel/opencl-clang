@@ -60,6 +60,7 @@ Copyright (c) Intel Corporation (2009-2017).
 // in https://github.com/KhronosGroup/OpenCL-Headers/blob/master/CL/cl.h
 #define CL_SUCCESS 0
 #define CL_COMPILE_PROGRAM_FAILURE -15
+#define CL_INVALID_BUILD_OPTIONS -43
 #define CL_OUT_OF_HOST_MEMORY -6
 
 #include "assert.h"
@@ -222,7 +223,11 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
     llvm::raw_string_ostream err_ostream(pResult->getLogRef());
     {
       // Parse options
-      optionsParser.processOptions(pszOptions, pszOptionsEx);
+      if (optionsParser.processOptions(pszOptions, pszOptionsEx) != 0) {
+        if (pBinaryResult)
+          *pBinaryResult = nullptr;
+        return CL_INVALID_BUILD_OPTIONS;
+      }
 
       // Prepare our diagnostic client.
       llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(
@@ -328,8 +333,10 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       SmallVectorBuffer StreamBuf(pResult->getIRBufferRef());
       std::ostream OS(&StreamBuf);
       std::string Err;
-      SPIRV::TranslatorOpts SPIRVOpts;
-      SPIRVOpts.enableAllExtensions();
+      SPIRV::TranslatorOpts SPIRVOpts(SPIRV::VersionNumber::MaximumVersion,
+                                      optionsParser.getSPIRVExtStatusMap());
+      if (!optionsParser.hasSPIRVExt())
+        SPIRVOpts.enableAllExtensions();
       if (!optionsParser.hasOptDisable()) {
         SPIRVOpts.setMemToRegEnabled(true);
       }
