@@ -80,8 +80,11 @@ static int parseSPVExtOption(
   llvm::SmallVector<llvm::StringRef, 32> SPVExtList;
   llvm::SplitString(SPVExt, SPVExtList, ",");
 
-  if (SPVExtList.empty())
-    return 0; // Nothing to do
+  if (SPVExtList.empty()) {
+    llvm::errs() << "Invalid value of --spirv-ext, expected format is:\n"
+                 << "\t--spirv-ext=+EXT_NAME,-EXT_NAME\n";
+    return -1;
+  }
 
   for (unsigned i = 0; i < SPVExtList.size(); ++i) {
     llvm::StringRef ExtString = SPVExtList[i];
@@ -106,14 +109,11 @@ static int parseSPVExtOption(
       for (const auto &It : ExtensionNamesMap)
         ExtensionsStatus[It.second] = ExtStatus;
     } else {
-      // Reject unknown extensions
+      // Ignore unknown extensions, as targets may support non-standard SPIR-V
+      // extensions. Do not reject them; this approach is more tolerant.
       const auto &It = ExtensionNamesMap.find(ExtName);
-      if (ExtensionNamesMap.end() == It) {
-        llvm::errs() << "Unknown extension '" << ExtName
-                     << "' was specified via "
-                     << "--spirv-ext option\n";
-        return -1;
-      }
+      if (ExtensionNamesMap.end() == It)
+        continue;
 
       ExtensionsStatus[It->second] = ExtStatus;
     }
