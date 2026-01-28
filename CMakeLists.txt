@@ -120,7 +120,7 @@ if(NOT USE_PREBUILT_LLVM)
         set(CLANG_SOURCE_DIR "${LLVM_EXTERNAL_CLANG_SOURCE_DIR}")
     endif()
     if(EXISTS ${CLANG_SOURCE_DIR})
-        message(STATUS "[OPENCL-CLANG] Using Clang source code direcotry: ${CLANG_SOURCE_DIR}")
+        message(STATUS "[OPENCL-CLANG] Using Clang source code directory: ${CLANG_SOURCE_DIR}")
     else()
         message(FATAL_ERROR
             "[OPENCL-CLANG] Can't find Clang source code directory!\n"

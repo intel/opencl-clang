@@ -47,7 +47,7 @@ struct Resource
 
 // Singleton class for resource management
 // Its main purpose is to cache the buffers loaded from the resources
-// but it could be easely extended to support file based buffers as well
+// but it could be easily extended to support file based buffers as well
 class ResourceManager {
 public:
   static ResourceManager &instance() { return g_instance; }
