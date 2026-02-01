@@ -72,7 +72,7 @@ make all -j`nproc`
 ##### Preferred LLVM version
 
 By default, opencl-clang's cmake script is searching for LLVM which is built
-based on the latest verion of current branch. You can override target version of
+based on the latest version of current branch. You can override target version of
 LLVM by using the `PREFERRED_LLVM_VERSION` cmake option:
 
 Example:
