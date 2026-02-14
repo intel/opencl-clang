@@ -1,0 +1,55 @@
+From aca76d6c29c96ba1f64dd50dadc010d01d19c83c Mon Sep 17 00:00:00 2001
+From: Wenju He <wenju.he@intel.com>
+Date: Fri, 13 Feb 2026 14:09:49 +0100
+Subject: [PATCH] [OpenCL] Diagnose invalid conversion from pointer to vector
+ (#180318)
+
+Fix crash in clang PrepareScalarCast when compiling OpenCL source: void
+foo() {
+  int a[3] = {1, 2, 3};
+  int3 b = (int3)(a);
+}
+
+PrepareScalarCast requires scalar src, but the provided src is a
+pointer.
+
+Resolves https://github.com/intel/compute-runtime/issues/888
+---
+ clang/lib/Sema/SemaExpr.cpp                      | 7 +++++++
+ clang/test/SemaOpenCL/invalid-vector-literals.cl | 4 ++++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/clang/lib/Sema/SemaExpr.cpp b/clang/lib/Sema/SemaExpr.cpp
+index 687b1be94592..73ffd76ae80c 100644
+--- a/clang/lib/Sema/SemaExpr.cpp
++++ b/clang/lib/Sema/SemaExpr.cpp
+@@ -7796,6 +7796,13 @@ ExprResult Sema::BuildVectorLiteral(SourceLocation LParenLoc,
+     // it will be replicated to all components of the vector.
+     if (getLangOpts().OpenCL && VTy->getVectorKind() == VectorKind::Generic &&
+         numExprs == 1) {
++      QualType SrcTy = exprs[0]->getType();
++      if (!SrcTy->isArithmeticType()) {
++        Diag(exprs[0]->getBeginLoc(), diag::err_typecheck_convert_incompatible)
++            << Ty << SrcTy << AssignmentAction::AA_Initializing << /*elidable=*/0
++            << /*c_style=*/0 << /*cast_kind=*/"" << exprs[0]->getSourceRange();
++        return ExprError();
++      }
+       QualType ElemTy = VTy->getElementType();
+       ExprResult Literal = DefaultLvalueConversion(exprs[0]);
+       if (Literal.isInvalid())
+diff --git a/clang/test/SemaOpenCL/invalid-vector-literals.cl b/clang/test/SemaOpenCL/invalid-vector-literals.cl
+index 1d82fedf29de..0595256ef82f 100644
+--- a/clang/test/SemaOpenCL/invalid-vector-literals.cl
++++ b/clang/test/SemaOpenCL/invalid-vector-literals.cl
+@@ -10,4 +10,8 @@ void vector_literals_invalid()
+   int4 b = (int4)(1,2,3,4,5); // expected-error{{excess elements in vector}}
+   int8 d = (int8)(a,(float4)(1)); // expected-error{{initializing 'int' with an expression of incompatible type 'float4'}}
+   ((int4)(0)).x = 8; // expected-error{{expression is not assignable}}
++  int arr[4];
++  int4 e = (int4)(arr); // expected-error{{initializing 'int4' (vector of 4 'int' values) with an expression of incompatible type '__private int[4]'}}
++  int *p = arr;
++  int4 f = (int4)(p); // expected-error{{initializing 'int4' (vector of 4 'int' values) with an expression of incompatible type '__private int *__private'}}
+ }
+-- 
+2.39.1
+
