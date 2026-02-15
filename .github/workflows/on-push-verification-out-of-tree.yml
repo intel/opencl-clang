@@ -31,15 +31,13 @@ jobs:
     name: linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
 
       - name: Install llvm and its dependencies
         run: |
-          curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
-          curl -L "https://packages.lunarg.com/lunarg-signing-key-pub.asc" | sudo apt-key add -
-          echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main" | sudo tee -a /etc/apt/sources.list
-          echo "deb https://packages.lunarg.com/vulkan jammy main" | sudo tee -a /etc/apt/sources.list
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/llvm.gpg > /dev/null
+          echo "deb [signed-by=/etc/apt/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
           sudo apt-get -yq --no-install-suggests --no-install-recommends install \
             clang-${{ env.LLVM_VERSION }} \
@@ -70,7 +68,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build "$builddir" -j $(nproc)
           cmake --install "$builddir"
-          echo "spirv-translator-dir=${builddir}/install" >> $GITHUB_ENV
+          echo "spirv_translator_install_dir=${builddir}/install" >> $GITHUB_ENV
 
       - name: Checkout opencl-clang sources
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -84,6 +82,6 @@ jobs:
           cmake ${{ github.workspace }}/opencl-clang \
             -DPREFERRED_LLVM_VERSION="${{ env.LLVM_VERSION }}.${{ env.LLVM_VERSION_MINOR }}" \
             -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
-            -DSPIRV_TRANSLATOR_DIR=${{ env.spirv-translator-dir }} \
+            -DSPIRV_TRANSLATOR_DIR=${{ env.spirv_translator_install_dir }} \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build . -j $(nproc)
