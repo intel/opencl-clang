@@ -10,14 +10,14 @@ permissions:
   contents: read
 
 env:
-  LLVM_VERSION: 22
+  LLVM_VERSION: 23
   LLVM_VERSION_MINOR: 0
 
 jobs:
   analyze:
     name: Analyze
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       # required for all workflows
@@ -39,8 +39,8 @@ jobs:
         run: |
           curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
           curl -L "https://packages.lunarg.com/lunarg-signing-key-pub.asc" | sudo apt-key add -
-          echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy main" | sudo tee -a /etc/apt/sources.list
-          echo "deb https://packages.lunarg.com/vulkan jammy main" | sudo tee -a /etc/apt/sources.list
+          echo "deb https://apt.llvm.org/noble/ llvm-toolchain-noble main" | sudo tee -a /etc/apt/sources.list
+          echo "deb https://packages.lunarg.com/vulkan noble main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get -yq --no-install-suggests --no-install-recommends install \
             clang-${{ env.LLVM_VERSION }} \
@@ -53,6 +53,9 @@ jobs:
             libzstd-dev \
             libedit-dev \
             mlir-${{ env.LLVM_VERSION }}-tools
+          # Linux systems in GitHub Actions already have older versions of clang
+          # pre-installed. Make sure to override these with the relevant version.
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ env.LLVM_VERSION }} 1000
 
       - name: Checkout opencl-clang sources for action files
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
