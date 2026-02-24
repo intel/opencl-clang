@@ -29,6 +29,12 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
 
+#ifdef USE_PREBUILT_LLVM
+#include "LLVMSPIRVLib/LLVMSPIRVOpts.h"
+#else // USE_PREBUILT_LLVM
+#include "LLVMSPIRVOpts.h"
+#endif // USE_PREBUILT_LLVM
+
 #include <list>
 
 enum COMPILE_OPT_ID {
