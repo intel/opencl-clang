@@ -10,14 +10,14 @@ permissions:
   contents: read
 
 env:
-  LLVM_VERSION: 22
+  LLVM_VERSION: 23
   LLVM_VERSION_MINOR: 0
 
 jobs:
   analyze:
     name: Analyze
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       # required for all workflows
@@ -37,10 +37,8 @@ jobs:
 
       - name: Install llvm and its dependencies
         run: |
-          curl -L "https://apt.llvm.org/llvm-snapshot.gpg.key" | sudo apt-key add -
-          curl -L "https://packages.lunarg.com/lunarg-signing-key-pub.asc" | sudo apt-key add -
-          echo "deb https://apt.llvm.org/jammy/ llvm-toolchain-jammy main" | sudo tee -a /etc/apt/sources.list
-          echo "deb https://packages.lunarg.com/vulkan jammy main" | sudo tee -a /etc/apt/sources.list
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/llvm.gpg > /dev/null
+          echo "deb [signed-by=/etc/apt/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
           sudo apt-get -yq --no-install-suggests --no-install-recommends install \
             clang-${{ env.LLVM_VERSION }} \
@@ -53,6 +51,9 @@ jobs:
             libzstd-dev \
             libedit-dev \
             mlir-${{ env.LLVM_VERSION }}-tools
+          # Linux systems in GitHub Actions already have older versions of clang
+          # pre-installed. Make sure to override these with the relevant version.
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ env.LLVM_VERSION }} 1000
 
       - name: Checkout opencl-clang sources for action files
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -76,7 +77,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build "$builddir" -j $(nproc)
           cmake --install "$builddir"
-          echo "spirv-translator-dir=${builddir}/install" >> $GITHUB_ENV
+          echo "spirv_translator_install_dir=${builddir}/install" >> $GITHUB_ENV
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@f079b8493333aace61c81488f8bd40919487bd9f # v3.25.7
@@ -90,7 +91,7 @@ jobs:
           cmake ${{ github.workspace }} \
             -DPREFERRED_LLVM_VERSION="${{ env.LLVM_VERSION }}.${{ env.LLVM_VERSION_MINOR }}" \
             -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
-            -DSPIRV_TRANSLATOR_DIR=${{ env.spirv-translator-dir }} \
+            -DSPIRV_TRANSLATOR_DIR=${{ env.spirv_translator_install_dir }} \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build . -j $(nproc)
 
