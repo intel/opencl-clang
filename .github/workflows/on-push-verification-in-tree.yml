@@ -14,11 +14,11 @@ on:
   push:
     branches:
       - main
-      - ocl-open-*
+      - ocl-open-220
   pull_request:
     branches:
       - main
-      - ocl-open-*
+      - ocl-open-220
     types:
       - opened
       - reopened
