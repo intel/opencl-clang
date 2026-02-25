@@ -36,7 +36,7 @@ on:
 jobs:
 
   verify_on_demand:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
 
       - name: Checkout opencl-clang sources for action files availabilty

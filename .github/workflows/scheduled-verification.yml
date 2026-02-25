@@ -17,7 +17,7 @@ jobs:
 
   verify-default-branches:
     name: Verify `main` branch
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
 
       - name: Checkout opencl-clang sources for action files availabilty
@@ -35,7 +35,7 @@ jobs:
     strategy:
       matrix:
         llvm_version: [ 14, 15, 16, 17, 18, 19, 20, 21 ]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
 
       - name: Checkout opencl-clang sources for action files availabilty
