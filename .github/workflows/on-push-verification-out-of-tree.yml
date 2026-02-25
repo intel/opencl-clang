@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 env:
-  LLVM_VERSION: 23
-  LLVM_VERSION_MINOR: 0
+  LLVM_VERSION: 22
+  LLVM_VERSION_MINOR: 1
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
       - name: Install llvm and its dependencies
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/llvm.gpg > /dev/null
-          echo "deb [signed-by=/etc/apt/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          echo "deb [signed-by=/etc/apt/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
           sudo apt-get -yq --no-install-suggests --no-install-recommends install \
             clang-${{ env.LLVM_VERSION }} \
@@ -59,7 +59,7 @@ jobs:
         with:
           repository: KhronosGroup/SPIRV-LLVM-Translator
           path: SPIRV-LLVM-Translator
-          ref: main
+          ref: llvm_release_220
 
       - name: Build SPIRV-LLVM-Translator
         run: |
