@@ -21,7 +21,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #ifndef OPENCL_CLANG_OPTIONS_H
 #define OPENCL_CLANG_OPTIONS_H
 
-#include "LLVMSPIRVOpts.h"
 #include "clang/Basic/OpenCLOptions.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
