@@ -72,7 +72,11 @@ static int parseSPVExtOption(
 #define _STRINGIFY(X) #X
 #define STRINGIFY(X) _STRINGIFY(X)
 #define EXT(X) ExtensionNamesMap[STRINGIFY(X)] = SPIRV::ExtensionID::X;
+#ifdef USE_PREBUILT_LLVM
+#include "LLVMSPIRVLib/LLVMSPIRVExtensions.inc"
+#else // USE_PREBUILT_LLVM
 #include "LLVMSPIRVExtensions.inc"
+#endif // USE_PREBUILT_LLVM
 #undef EXT
 #undef STRINGIFY
 #undef _STRINGIFY
