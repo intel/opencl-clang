@@ -21,7 +21,7 @@ jobs:
     steps:
 
       - name: Checkout opencl-clang sources for action files availabilty
-        uses: actions/checkout@4363294c730e200388a1005a761e5df15e714652 # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run build-opencl-clang action
         uses: ./.github/actions/build-opencl-clang
@@ -39,7 +39,7 @@ jobs:
     steps:
 
       - name: Checkout opencl-clang sources for action files availabilty
-        uses: actions/checkout@4363294c730e200388a1005a761e5df15e714652 # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run build-opencl-clang action
         uses: ./.github/actions/build-opencl-clang

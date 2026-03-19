@@ -55,7 +55,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ env.LLVM_VERSION }} 1000
 
       - name: Checkout SPIRV-LLVM-Translator sources
-        uses: actions/checkout@4363294c730e200388a1005a761e5df15e714652 # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: KhronosGroup/SPIRV-LLVM-Translator
           path: SPIRV-LLVM-Translator
@@ -74,7 +74,7 @@ jobs:
           echo "spirv_translator_install_dir=${builddir}/install" >> $GITHUB_ENV
 
       - name: Checkout opencl-clang sources
-        uses: actions/checkout@4363294c730e200388a1005a761e5df15e714652 # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: opencl-clang
           ref: ${{ github.ref }}
