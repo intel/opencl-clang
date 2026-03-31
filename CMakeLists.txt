@@ -148,17 +148,18 @@ if(NOT USE_PREBUILT_LLVM)
             "out at `llvm/projects/llvm-spirv`"
         )
     endif()
-    
+
     set(SPIRV_BASE_REVISION llvm_release_150)
     set(TARGET_BRANCH "ocl-open-150")
     get_filename_component(LLVM_MONOREPO_DIR ${LLVM_SOURCE_DIR} DIRECTORY)
-    set(LLVM_PATCHES_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
-                          ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang)
-
-    if(APPLY_PATCHES)
+   if(APPLY_PATCHES)
       message(STATUS "APPLY_PATCHES is enabled.")
       apply_patches(${LLVM_MONOREPO_DIR}
-                    "${LLVM_PATCHES_DIRS}"
+                    ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
+                    ${LLVM_BASE_REVISION}
+                    ${TARGET_BRANCH})
+      apply_patches(${LLVM_MONOREPO_DIR}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
                     ${LLVM_BASE_REVISION}
                     ${TARGET_BRANCH})
       apply_patches(${SPIRV_SOURCE_DIR}
