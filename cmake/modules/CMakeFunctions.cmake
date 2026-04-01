@@ -84,16 +84,18 @@ endfunction()
 
 #
 # Creates `target_branch` starting at the `base_revision` in the `repo_dir`.
-# Then all patches from the `patches_dir` are committed to the `target_branch`.
+# Then all patches from the `patches_dirs` are committed to the `target_branch`.
+# `patches_dirs` can be a single directory or a semicolon-separated list.
 # Does nothing if the `target_branch` is already checked out in the `repo_dir`.
 #
-function(apply_patches repo_dir patches_dir base_revision target_branch)
-    foreach(patches_dir ${patches_dir})
-        file(GLOB patches_in_dir ${patches_dir}/*.patch)
-        list(APPEND patches ${patches_in_dir})
+function(apply_patches repo_dir patches_dirs base_revision target_branch)
+    set(patches)
+    foreach(dir ${patches_dirs})
+        file(GLOB dir_patches ${dir}/*.patch)
+        list(APPEND patches ${dir_patches})
     endforeach()
     if(NOT patches)
-        message(STATUS "[OPENCL-CLANG] No patches in ${patches_dir}")
+        message(STATUS "[OPENCL-CLANG] No patches in ${patches_dirs}")
         return()
     endif()
 
