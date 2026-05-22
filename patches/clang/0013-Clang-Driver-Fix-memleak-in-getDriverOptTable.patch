@@ -1,0 +1,63 @@
+From 13eb0e246a246b68fdcf61ee69380e49fc7f32a2 Mon Sep 17 00:00:00 2001
+From: Wenju He <wenju.he@intel.com>
+Date: Fri, 22 May 2026 09:07:24 +0200
+Subject: [PATCH] [Clang][Driver] Fix memleak in getDriverOptTable
+
+Result.release() was called deliberately: it strips ownership from the
+unique_ptr and stores the raw const DriverOptTable* in the function-local
+static Table. Because Table is a raw pointer, its destructor is a no-op:
+when opencl_clang264.dll unloads, the static pointer variable is
+destroyed but the DriverOptTable object on the heap is never deleted.
+
+The issue was already fixed by d9ab3e82f30d and bbe463d6ba268 in LLVM 16
+branch. bbe463d6ba268 replaces release() memleak pattern with static
+DriverOptTable Table. However, it is very difficult to cherry them to
+LLVM 14 branch because they touches many files and bad cherry-pick could
+introduce regression.
+
+This PR makes minimal correct fix: apply the static instance pattern but
+move OPTTABLE_ARG_INIT into DriverOptTable's constructor.
+---
+ clang/lib/Driver/DriverOptions.cpp | 23 +++++++++--------------
+ 1 file changed, 9 insertions(+), 14 deletions(-)
+
+diff --git a/clang/lib/Driver/DriverOptions.cpp b/clang/lib/Driver/DriverOptions.cpp
+index 67d4198d222a..42b0a46d9337 100644
+--- a/clang/lib/Driver/DriverOptions.cpp
++++ b/clang/lib/Driver/DriverOptions.cpp
+@@ -33,23 +33,18 @@ namespace {
+ 
+ class DriverOptTable : public OptTable {
+ public:
+-  DriverOptTable()
+-    : OptTable(InfoTable) {}
++  DriverOptTable() : OptTable(InfoTable) {
++    // Opt is a variable used in the code fragment in Options.inc.
++    OptTable &Opt = *this;
++#define OPTTABLE_ARG_INIT
++#include "clang/Driver/Options.inc"
++#undef OPTTABLE_ARG_INIT
++  }
+ };
+ 
+ }
+ 
+ const llvm::opt::OptTable &clang::driver::getDriverOptTable() {
+-  static const DriverOptTable *Table = []() {
+-    auto Result = std::make_unique<DriverOptTable>();
+-    // Options.inc is included in DriverOptions.cpp, and calls OptTable's
+-    // addValues function.
+-    // Opt is a variable used in the code fragment in Options.inc.
+-    OptTable &Opt = *Result;
+-#define OPTTABLE_ARG_INIT
+-#include "clang/Driver/Options.inc"
+-#undef OPTTABLE_ARG_INIT
+-    return Result.release();
+-  }();
+-  return *Table;
++  static DriverOptTable Table;
++  return Table;
+ }
+-- 
+2.53.0
+
