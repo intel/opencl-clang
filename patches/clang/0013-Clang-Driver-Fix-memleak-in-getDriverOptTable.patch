@@ -12,7 +12,7 @@ destroyed but the DriverOptTable object on the heap is never deleted.
 The issue was already fixed by d9ab3e82f30d and bbe463d6ba268 in LLVM 16
 branch. bbe463d6ba268 replaces release() memleak pattern with static
 DriverOptTable Table. However, it is very difficult to cherry them to
-LLVM 15 branch because they touches many files and bad cherry-pick could
+LLVM 14 branch because they touches many files and bad cherry-pick could
 introduce regression.
 
 This PR makes minimal correct fix: apply the static instance pattern but
