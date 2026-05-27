@@ -94,7 +94,7 @@ void CommonClangInitialize() {
   // multi-threaded envirounment and LLVM libraries user is expected call
   // llvm_shutdown before static object are destroyed, so we use atexit to
   // satisfy this requirement.
-  llvm::once_flag OnceFlag;
+  static llvm::once_flag OnceFlag;
   llvm::call_once(OnceFlag, []() { atexit(CommonClangTerminate); });
 }
 
