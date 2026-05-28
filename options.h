@@ -151,7 +151,6 @@ public:
 
 private:
   std::string m_opencl_ver;
-  static int s_progID;
 };
 
 ///
