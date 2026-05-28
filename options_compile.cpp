@@ -58,6 +58,8 @@ static constexpr OptTable::Info ClangOptionsInfoTable[] = {
 OpenCLCompileOptTable::OpenCLCompileOptTable()
     : OpenCLOptTable(ClangOptionsInfoTable) {}
 
+std::atomic<int> EffectiveOptionsFilter::s_progID{1};
+
 // This code was adopted from the SPIRV-LLVM-Translator repository.
 static int parseSPVExtOption(
     llvm::StringRef SPVExt,
@@ -137,7 +139,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   bool isCpp = false;
   bool fp64Enabled = false;
   std::string szTriple;
-  std::string sourceName("input.cl");
+  std::string sourceName(llvm::Twine(s_progID++).str());
 
   for (OpenCLArgList::const_iterator it = args.begin(), ie = args.end();
        it != ie; ++it) {
