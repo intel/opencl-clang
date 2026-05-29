@@ -38,7 +38,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/Mutex.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticIDs.h"
@@ -76,8 +75,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #endif
 
 using namespace Intel::OpenCL::ClangFE;
-
-llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 void CommonClangTerminate() { llvm::llvm_shutdown(); }
 
