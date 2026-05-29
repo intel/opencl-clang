@@ -34,6 +34,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "LLVMSPIRVOpts.h"
 #endif // USE_PREBUILT_LLVM
 
+#include <atomic>
 #include <list>
 
 enum COMPILE_OPT_ID {
@@ -151,7 +152,7 @@ public:
 
 private:
   std::string m_opencl_ver;
-  static int s_progID;
+  static std::atomic<int> s_progID;
 };
 
 ///
