@@ -37,7 +37,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/Mutex.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticIDs.h"
@@ -73,8 +72,6 @@ Copyright (c) Intel Corporation (2009-2017).
 #endif
 
 using namespace Intel::OpenCL::ClangFE;
-
-llvm::ManagedStatic<llvm::sys::SmartMutex<true>> compileMutex;
 
 void OpenCLClangTerminate() { llvm::llvm_shutdown(); }
 
@@ -191,9 +188,6 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
   OpenCLClangInitialize();
 
   try {
-#ifdef _WIN32
-    llvm::sys::SmartScopedLock<true> compileGuard{*compileMutex};
-#endif
     std::unique_ptr<OCLFEBinaryResult> pResult(new OCLFEBinaryResult());
 
     // Create the clang compiler
@@ -204,80 +198,77 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
     // Prepare error log
     llvm::raw_string_ostream err_ostream(pResult->getLogRef());
-    {
-#ifndef _WIN32
-      llvm::sys::SmartScopedLock<true> compileGuard{*compileMutex};
-#endif
-      // Parse options
-      if (optionsParser.processOptions(pszOptions, pszOptionsEx) != 0) {
-        if (pBinaryResult)
-          *pBinaryResult = nullptr;
-        return CL_INVALID_BUILD_OPTIONS;
-      }
 
-      // Prepare our diagnostic client.
-      llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(
-          new clang::DiagnosticIDs());
-      clang::DiagnosticOptions DiagOpts;
-      DiagOpts.ShowPresumedLoc = true;
-      clang::TextDiagnosticPrinter *DiagsPrinter =
-        new clang::TextDiagnosticPrinter(err_ostream, DiagOpts);
-      llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags(
-          new clang::DiagnosticsEngine(DiagID, DiagOpts, DiagsPrinter));
-
-      // Prepare output buffer
-      std::unique_ptr<llvm::raw_pwrite_stream>
-        ir_ostream(new llvm::raw_svector_ostream(pResult->getIRBufferRef()));
-      // Set buffers
-      // CompilerInstance takes ownership over output stream
-      compiler->setOutputStream(std::move(ir_ostream));
-
-      compiler->setDiagnostics(&*Diags);
-
-      llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS(
-          new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
-      llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> MemFS(
-          new llvm::vfs::InMemoryFileSystem);
-      OverlayFS->pushOverlay(MemFS);
-
-      compiler->createFileManager(std::move(OverlayFS));
-      compiler->createSourceManager(compiler->getFileManager());
-
-      // Create compiler invocation from user args before trickering with it
-      clang::CompilerInvocation::CreateFromArgs(compiler->getInvocation(),
-          optionsParser.args(), *Diags);
-
-      // Configure our handling of diagnostics.
-      ProcessWarningOptions(*Diags, compiler->getDiagnosticOpts(),
-                            compiler->getFileManager().getVirtualFileSystem());
-
-      // Map memory buffers to a virtual file system
-      MemFS->addFile(
-          optionsParser.getSourceName(), (time_t)0,
-          llvm::MemoryBuffer::getMemBuffer(
-            llvm::StringRef(pszProgramSource), optionsParser.getSourceName()));
-
-      // Input header with OpenCL defines.
-      std::vector<Resource> vHeaderWithDefs;
-      if (!GetHeaders(vHeaderWithDefs)) {
-        return CL_COMPILE_PROGRAM_FAILURE;
-      }
-
-      for (const auto &Header:vHeaderWithDefs) {
-        auto Buf = llvm::MemoryBuffer::getMemBuffer(
-            llvm::StringRef(Header.m_data, Header.m_size),
-            Header.m_name);
-
-        MemFS->addFile(Header.m_name,(time_t)0, std::move(Buf));
-      }
-
-      // Input Headers
-      for (unsigned int i = 0; i < uiNumInputHeaders; ++i) {
-        auto Header = llvm::MemoryBuffer::getMemBuffer(
-            pInputHeaders[i], pInputHeadersNames[i]);
-        MemFS->addFile(pInputHeadersNames[i], (time_t)0, std::move(Header));
-      }
+    // Parse options
+    if (optionsParser.processOptions(pszOptions, pszOptionsEx) != 0) {
+      if (pBinaryResult)
+        *pBinaryResult = nullptr;
+      return CL_INVALID_BUILD_OPTIONS;
     }
+
+    // Prepare our diagnostic client.
+    llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(
+        new clang::DiagnosticIDs());
+    clang::DiagnosticOptions DiagOpts;
+    DiagOpts.ShowPresumedLoc = true;
+    clang::TextDiagnosticPrinter *DiagsPrinter =
+      new clang::TextDiagnosticPrinter(err_ostream, DiagOpts);
+    llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags(
+        new clang::DiagnosticsEngine(DiagID, DiagOpts, DiagsPrinter));
+
+    // Prepare output buffer
+    std::unique_ptr<llvm::raw_pwrite_stream>
+      ir_ostream(new llvm::raw_svector_ostream(pResult->getIRBufferRef()));
+    // Set buffers
+    // CompilerInstance takes ownership over output stream
+    compiler->setOutputStream(std::move(ir_ostream));
+
+    compiler->setDiagnostics(&*Diags);
+
+    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS(
+        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
+    llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> MemFS(
+        new llvm::vfs::InMemoryFileSystem);
+    OverlayFS->pushOverlay(MemFS);
+
+    compiler->createFileManager(std::move(OverlayFS));
+    compiler->createSourceManager(compiler->getFileManager());
+
+    // Create compiler invocation from user args before trickering with it
+    clang::CompilerInvocation::CreateFromArgs(compiler->getInvocation(),
+        optionsParser.args(), *Diags);
+
+    // Configure our handling of diagnostics.
+    ProcessWarningOptions(*Diags, compiler->getDiagnosticOpts(),
+                          compiler->getFileManager().getVirtualFileSystem());
+
+    // Map memory buffers to a virtual file system
+    MemFS->addFile(
+        optionsParser.getSourceName(), (time_t)0,
+        llvm::MemoryBuffer::getMemBuffer(
+          llvm::StringRef(pszProgramSource), optionsParser.getSourceName()));
+
+    // Input header with OpenCL defines.
+    std::vector<Resource> vHeaderWithDefs;
+    if (!GetHeaders(vHeaderWithDefs)) {
+      return CL_COMPILE_PROGRAM_FAILURE;
+    }
+
+    for (const auto &Header:vHeaderWithDefs) {
+      auto Buf = llvm::MemoryBuffer::getMemBuffer(
+          llvm::StringRef(Header.m_data, Header.m_size),
+          Header.m_name);
+
+      MemFS->addFile(Header.m_name,(time_t)0, std::move(Buf));
+    }
+
+    // Input Headers
+    for (unsigned int i = 0; i < uiNumInputHeaders; ++i) {
+      auto Header = llvm::MemoryBuffer::getMemBuffer(
+          pInputHeaders[i], pInputHeadersNames[i]);
+      MemFS->addFile(pInputHeadersNames[i], (time_t)0, std::move(Header));
+    }
+
     // Execute the frontend actions.
     bool success = false;
     try {
@@ -329,14 +320,11 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       err_ostream << Err.c_str();
       err_ostream.flush();
     }
-    {
-#ifndef _WIN32
-      llvm::sys::SmartScopedLock<true> compileGuard{*compileMutex};
-#endif
-      if (pBinaryResult) {
-        *pBinaryResult = pResult.release();
-      }
+
+    if (pBinaryResult) {
+      *pBinaryResult = pResult.release();
     }
+
     return success ? CL_SUCCESS : CL_COMPILE_PROGRAM_FAILURE;
   } catch (std::bad_alloc &) {
     if (pBinaryResult) {
