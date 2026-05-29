@@ -56,7 +56,7 @@ static const OptTable::Info ClangOptionsInfoTable[] = {
 OpenCLCompileOptTable::OpenCLCompileOptTable()
     : OpenCLOptTable(ClangOptionsInfoTable) {}
 
-int EffectiveOptionsFilter::s_progID = 1;
+std::atomic<int> EffectiveOptionsFilter::s_progID{1};
 
 // This code was adopted from the SPIRV-LLVM-Translator repository.
 static int parseSPVExtOption(
