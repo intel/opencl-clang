@@ -28,6 +28,10 @@ runs:
         git config --global user.name "Action Bot"
       shell: bash
 
+    - name: Install dependencies
+      shell: bash
+      run: sudo apt-get update -y && sudo apt-get install -y cmake build-essential ninja-build
+
     - name: Checkout LLVM
       uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
       with:
@@ -59,10 +63,10 @@ runs:
           -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR=${{ github.workspace }}/llvm-project/opencl-clang        \
           -DCMAKE_BUILD_TYPE=${{ inputs.build_type }}  \
           -DLLVM_TARGETS_TO_BUILD="X86" \
-          -G "Unix Makefiles"
+          -G Ninja
 
     - name: Build
       shell: bash
       run: |
         cd build
-        make opencl-clang -j8
+        ninja opencl-clang
