@@ -71,9 +71,10 @@ jobs:
             ${{ github.workspace }}/SPIRV-LLVM-Translator \
             -DLLVM_INCLUDE_TESTS=OFF \
             -DCMAKE_INSTALL_PREFIX="$builddir"/install \
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build "$builddir" -j $(nproc)
-          cmake --install "$builddir"
+            -DCMAKE_BUILD_TYPE=Release \
+            -GNinja
+          ninja -C "$builddir"
+          ninja -C "$builddir" install
           echo "spirv_translator_install_dir=${builddir}/install" >> $GITHUB_ENV
 
       - name: Checkout opencl-clang sources
@@ -89,5 +90,6 @@ jobs:
             -DPREFERRED_LLVM_VERSION="${{ env.LLVM_VERSION }}.${{ env.LLVM_VERSION_MINOR }}" \
             -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
             -DSPIRV_TRANSLATOR_DIR=${{ env.spirv_translator_install_dir }} \
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build . -j $(nproc)
+            -DCMAKE_BUILD_TYPE=Release \
+            -GNinja
+          ninja -C build
