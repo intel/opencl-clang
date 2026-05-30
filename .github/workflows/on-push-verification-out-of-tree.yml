@@ -31,7 +31,7 @@ jobs:
     name: linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, rss-ubuntu-2404]
     steps:
 
       - name: Install llvm and its dependencies

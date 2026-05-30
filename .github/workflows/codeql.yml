@@ -17,7 +17,7 @@ jobs:
   analyze:
     name: Analyze
 
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, rss-ubuntu-2404]
 
     permissions:
       # required for all workflows

@@ -27,11 +27,21 @@ on:
 
 jobs:
 
+  check-cpu:
+    runs-on: [self-hosted, rss-ubuntu-2404]
+    steps:
+      - name: Print CPU Core and Thread Count
+        run: |
+          echo "=== Total Logical CPU Cores/Threads ==="
+          nproc
+          echo "=== CPU Hardware Details ==="
+          lscpu | egrep 'Model name|Socket|Thread|NUMA|CPU\(s\)'
+
   verify_default_branch:
     name: Linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, rss-ubuntu-2404]
     steps:
 
       - name: Checkout opencl-clang sources for action files
