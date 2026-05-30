@@ -85,11 +85,12 @@ jobs:
 
       - name: Build opencl-clang
         run: |
-          mkdir build && cd build
-          cmake ${{ github.workspace }}/opencl-clang \
+          builddir=${{ github.workspace }}/build
+          cmake  -B "$builddir" \
+            ${{ github.workspace }}/opencl-clang \
             -DPREFERRED_LLVM_VERSION="${{ env.LLVM_VERSION }}.${{ env.LLVM_VERSION_MINOR }}" \
             -DLLVMSPIRV_INCLUDED_IN_LLVM=OFF \
             -DSPIRV_TRANSLATOR_DIR=${{ env.spirv_translator_install_dir }} \
             -DCMAKE_BUILD_TYPE=Release \
             -GNinja
-          ninja -C build -j$(nproc)
+          ninja -C "$builddir" -j$(nproc)

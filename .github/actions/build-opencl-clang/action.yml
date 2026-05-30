@@ -55,8 +55,9 @@ runs:
     - name: Configure
       shell: bash
       run: |
-        mkdir build && cd build
-        cmake ${{ github.workspace }}/llvm-project/llvm      \
+        builddir=${{ github.workspace }}/build
+        cmake -B "$builddir" \
+          ${{ github.workspace }}/llvm-project/llvm      \
           -DLLVM_ENABLE_PROJECTS="clang"                     \
           -DLLVM_EXTERNAL_PROJECTS="llvm-spirv;opencl-clang" \
           -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR=${{ github.workspace }}/llvm-project/SPIRV-LLVM-Translator \
@@ -68,5 +69,5 @@ runs:
     - name: Build
       shell: bash
       run: |
-        cd build
-        ninja opencl-clang -j$(nproc)
+        builddir=${{ github.workspace }}/build
+        ninja -C "$builddir" opencl-clang -j$(nproc)
