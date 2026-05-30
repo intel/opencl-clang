@@ -28,7 +28,7 @@ on:
 jobs:
 
   check-cpu:
-    runs-on: [self-hosted, rss-ubuntu-2404]
+    runs-on: rss-ubuntu-2404
     steps:
       - name: Print CPU Core and Thread Count
         run: |
@@ -41,7 +41,7 @@ jobs:
     name: Linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
-    runs-on: [self-hosted, rss-ubuntu-2404]
+    runs-on: rss-ubuntu-2404
     steps:
 
       - name: Checkout opencl-clang sources for action files
