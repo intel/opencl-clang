@@ -73,7 +73,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="$builddir"/install \
             -DCMAKE_BUILD_TYPE=Release \
             -GNinja
-          ninja -C "$builddir"
+          ninja -C "$builddir" -j$(nproc)
           ninja -C "$builddir" install
           echo "spirv_translator_install_dir=${builddir}/install" >> $GITHUB_ENV
 
@@ -92,4 +92,4 @@ jobs:
             -DSPIRV_TRANSLATOR_DIR=${{ env.spirv_translator_install_dir }} \
             -DCMAKE_BUILD_TYPE=Release \
             -GNinja
-          ninja -C build
+          ninja -C build -j$(nproc)

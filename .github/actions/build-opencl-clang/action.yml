@@ -69,4 +69,4 @@ runs:
       shell: bash
       run: |
         cd build
-        ninja opencl-clang
+        ninja opencl-clang -j$(nproc)
