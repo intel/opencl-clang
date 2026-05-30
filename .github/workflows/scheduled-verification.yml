@@ -29,6 +29,7 @@ jobs:
           ref_llvm: main
           ref_translator: main
           ref_opencl-clang: main
+          run_tests: 'true'
 
   verify-release-branches:
     name: Verify `ocl-open-${{ matrix.llvm_version }}` release branch
@@ -47,3 +48,4 @@ jobs:
           ref_llvm: release/${{ matrix.llvm_version }}.x
           ref_translator: llvm_release_${{ matrix.llvm_version }}0
           ref_opencl-clang: ocl-open-${{ matrix.llvm_version }}0
+          run_tests: 'true'

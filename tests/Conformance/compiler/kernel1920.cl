@@ -1,0 +1,70 @@
+// Can't test in-memory-headers using lit
+// XFAIL: *
+
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+#include "foo/bar/baz/simple_header11.h"
+#include "foo/bar/baz/simple_header15.h"
+#include "foo/bar/baz/simple_header19.h"
+#include "foo/bar/baz/simple_header23.h"
+#include "foo/bar/baz/simple_header27.h"
+#include "foo/bar/baz/simple_header3.h"
+#include "foo/bar/baz/simple_header31.h"
+#include "foo/bar/baz/simple_header7.h"
+#include "foo/bar/simple_header10.h"
+#include "foo/bar/simple_header14.h"
+#include "foo/bar/simple_header18.h"
+#include "foo/bar/simple_header2.h"
+#include "foo/bar/simple_header22.h"
+#include "foo/bar/simple_header26.h"
+#include "foo/bar/simple_header30.h"
+#include "foo/bar/simple_header6.h"
+#include "foo/simple_header1.h"
+#include "foo/simple_header13.h"
+#include "foo/simple_header17.h"
+#include "foo/simple_header21.h"
+#include "foo/simple_header25.h"
+#include "foo/simple_header29.h"
+#include "foo/simple_header5.h"
+#include "foo/simple_header9.h"
+#include "simple_header0.h"
+#include "simple_header12.h"
+#include "simple_header16.h"
+#include "simple_header20.h"
+#include "simple_header24.h"
+#include "simple_header28.h"
+#include "simple_header4.h"
+#include "simple_header8.h"
+__kernel void CompositeKernel(__global float *src, __global float *dst) {
+  CopyBuffer0(src, dst);
+  CopyBuffer1(src, dst);
+  CopyBuffer2(src, dst);
+  CopyBuffer3(src, dst);
+  CopyBuffer4(src, dst);
+  CopyBuffer5(src, dst);
+  CopyBuffer6(src, dst);
+  CopyBuffer7(src, dst);
+  CopyBuffer8(src, dst);
+  CopyBuffer9(src, dst);
+  CopyBuffer10(src, dst);
+  CopyBuffer11(src, dst);
+  CopyBuffer12(src, dst);
+  CopyBuffer13(src, dst);
+  CopyBuffer14(src, dst);
+  CopyBuffer15(src, dst);
+  CopyBuffer16(src, dst);
+  CopyBuffer17(src, dst);
+  CopyBuffer18(src, dst);
+  CopyBuffer19(src, dst);
+  CopyBuffer20(src, dst);
+  CopyBuffer21(src, dst);
+  CopyBuffer22(src, dst);
+  CopyBuffer23(src, dst);
+  CopyBuffer24(src, dst);
+  CopyBuffer25(src, dst);
+  CopyBuffer26(src, dst);
+  CopyBuffer27(src, dst);
+  CopyBuffer28(src, dst);
+  CopyBuffer29(src, dst);
+  CopyBuffer30(src, dst);
+  CopyBuffer31(src, dst);
+}

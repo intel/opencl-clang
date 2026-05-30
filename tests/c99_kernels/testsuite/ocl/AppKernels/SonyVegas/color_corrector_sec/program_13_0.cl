@@ -1,0 +1,4 @@
+__constant sampler_t v0 = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST ; __kernel void ke399d9cb0 ( __read_only image2d_t v1 , __write_only image2d_t v2 , const float v3 , const int v4 , const int v5 ) { int x = get_global_id ( 0 ) ; int y = get_global_id ( 1 ) ; if ( x < v4 && y < v5 ) { float4 v6 , v7 = read_imagef ( v1 , v0 , ( int2 ) ( x , y ) ) ; if ( fabs ( 1.0f - v3 ) > 0.000001f ) { float v8 = ( v7 . x + v7 . y + v7 . z ) / 3.0f ; v6 = fmin ( v8 , v7 . w ) ; v6 . x = v8 ; v6 . y = v8 ; v6 . z = v8 ; v6 . w = v7 . w ; v6 = mix ( v6 , v7 , v3 ) ; } else { v6 = v7 ; } write_imagef ( v2 , ( int2 ) ( x , y ) , v6 ) ; } }
+
+// buildOptions= -w -cl-single-precision-constant -cl-denorms-are-zero -cl-fast-relaxed-math -DfHWBL=0
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%S  -w -cl-single-precision-constant -cl-denorms-are-zero -cl-fast-relaxed-math -DfHWBL=0" %cfg_path --cl-device=%cl_device 2>&1

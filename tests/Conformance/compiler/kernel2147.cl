@@ -1,0 +1,518 @@
+// Can't test in-memory-headers using lit
+// XFAIL: *
+
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+#include "foo/bar/baz/simple_header103.h"
+#include "foo/bar/baz/simple_header107.h"
+#include "foo/bar/baz/simple_header11.h"
+#include "foo/bar/baz/simple_header111.h"
+#include "foo/bar/baz/simple_header115.h"
+#include "foo/bar/baz/simple_header119.h"
+#include "foo/bar/baz/simple_header123.h"
+#include "foo/bar/baz/simple_header127.h"
+#include "foo/bar/baz/simple_header131.h"
+#include "foo/bar/baz/simple_header135.h"
+#include "foo/bar/baz/simple_header139.h"
+#include "foo/bar/baz/simple_header143.h"
+#include "foo/bar/baz/simple_header147.h"
+#include "foo/bar/baz/simple_header15.h"
+#include "foo/bar/baz/simple_header151.h"
+#include "foo/bar/baz/simple_header155.h"
+#include "foo/bar/baz/simple_header159.h"
+#include "foo/bar/baz/simple_header163.h"
+#include "foo/bar/baz/simple_header167.h"
+#include "foo/bar/baz/simple_header171.h"
+#include "foo/bar/baz/simple_header175.h"
+#include "foo/bar/baz/simple_header179.h"
+#include "foo/bar/baz/simple_header183.h"
+#include "foo/bar/baz/simple_header187.h"
+#include "foo/bar/baz/simple_header19.h"
+#include "foo/bar/baz/simple_header191.h"
+#include "foo/bar/baz/simple_header195.h"
+#include "foo/bar/baz/simple_header199.h"
+#include "foo/bar/baz/simple_header203.h"
+#include "foo/bar/baz/simple_header207.h"
+#include "foo/bar/baz/simple_header211.h"
+#include "foo/bar/baz/simple_header215.h"
+#include "foo/bar/baz/simple_header219.h"
+#include "foo/bar/baz/simple_header223.h"
+#include "foo/bar/baz/simple_header227.h"
+#include "foo/bar/baz/simple_header23.h"
+#include "foo/bar/baz/simple_header231.h"
+#include "foo/bar/baz/simple_header235.h"
+#include "foo/bar/baz/simple_header239.h"
+#include "foo/bar/baz/simple_header243.h"
+#include "foo/bar/baz/simple_header247.h"
+#include "foo/bar/baz/simple_header251.h"
+#include "foo/bar/baz/simple_header255.h"
+#include "foo/bar/baz/simple_header27.h"
+#include "foo/bar/baz/simple_header3.h"
+#include "foo/bar/baz/simple_header31.h"
+#include "foo/bar/baz/simple_header35.h"
+#include "foo/bar/baz/simple_header39.h"
+#include "foo/bar/baz/simple_header43.h"
+#include "foo/bar/baz/simple_header47.h"
+#include "foo/bar/baz/simple_header51.h"
+#include "foo/bar/baz/simple_header55.h"
+#include "foo/bar/baz/simple_header59.h"
+#include "foo/bar/baz/simple_header63.h"
+#include "foo/bar/baz/simple_header67.h"
+#include "foo/bar/baz/simple_header7.h"
+#include "foo/bar/baz/simple_header71.h"
+#include "foo/bar/baz/simple_header75.h"
+#include "foo/bar/baz/simple_header79.h"
+#include "foo/bar/baz/simple_header83.h"
+#include "foo/bar/baz/simple_header87.h"
+#include "foo/bar/baz/simple_header91.h"
+#include "foo/bar/baz/simple_header95.h"
+#include "foo/bar/baz/simple_header99.h"
+#include "foo/bar/simple_header10.h"
+#include "foo/bar/simple_header102.h"
+#include "foo/bar/simple_header106.h"
+#include "foo/bar/simple_header110.h"
+#include "foo/bar/simple_header114.h"
+#include "foo/bar/simple_header118.h"
+#include "foo/bar/simple_header122.h"
+#include "foo/bar/simple_header126.h"
+#include "foo/bar/simple_header130.h"
+#include "foo/bar/simple_header134.h"
+#include "foo/bar/simple_header138.h"
+#include "foo/bar/simple_header14.h"
+#include "foo/bar/simple_header142.h"
+#include "foo/bar/simple_header146.h"
+#include "foo/bar/simple_header150.h"
+#include "foo/bar/simple_header154.h"
+#include "foo/bar/simple_header158.h"
+#include "foo/bar/simple_header162.h"
+#include "foo/bar/simple_header166.h"
+#include "foo/bar/simple_header170.h"
+#include "foo/bar/simple_header174.h"
+#include "foo/bar/simple_header178.h"
+#include "foo/bar/simple_header18.h"
+#include "foo/bar/simple_header182.h"
+#include "foo/bar/simple_header186.h"
+#include "foo/bar/simple_header190.h"
+#include "foo/bar/simple_header194.h"
+#include "foo/bar/simple_header198.h"
+#include "foo/bar/simple_header2.h"
+#include "foo/bar/simple_header202.h"
+#include "foo/bar/simple_header206.h"
+#include "foo/bar/simple_header210.h"
+#include "foo/bar/simple_header214.h"
+#include "foo/bar/simple_header218.h"
+#include "foo/bar/simple_header22.h"
+#include "foo/bar/simple_header222.h"
+#include "foo/bar/simple_header226.h"
+#include "foo/bar/simple_header230.h"
+#include "foo/bar/simple_header234.h"
+#include "foo/bar/simple_header238.h"
+#include "foo/bar/simple_header242.h"
+#include "foo/bar/simple_header246.h"
+#include "foo/bar/simple_header250.h"
+#include "foo/bar/simple_header254.h"
+#include "foo/bar/simple_header26.h"
+#include "foo/bar/simple_header30.h"
+#include "foo/bar/simple_header34.h"
+#include "foo/bar/simple_header38.h"
+#include "foo/bar/simple_header42.h"
+#include "foo/bar/simple_header46.h"
+#include "foo/bar/simple_header50.h"
+#include "foo/bar/simple_header54.h"
+#include "foo/bar/simple_header58.h"
+#include "foo/bar/simple_header6.h"
+#include "foo/bar/simple_header62.h"
+#include "foo/bar/simple_header66.h"
+#include "foo/bar/simple_header70.h"
+#include "foo/bar/simple_header74.h"
+#include "foo/bar/simple_header78.h"
+#include "foo/bar/simple_header82.h"
+#include "foo/bar/simple_header86.h"
+#include "foo/bar/simple_header90.h"
+#include "foo/bar/simple_header94.h"
+#include "foo/bar/simple_header98.h"
+#include "foo/simple_header1.h"
+#include "foo/simple_header101.h"
+#include "foo/simple_header105.h"
+#include "foo/simple_header109.h"
+#include "foo/simple_header113.h"
+#include "foo/simple_header117.h"
+#include "foo/simple_header121.h"
+#include "foo/simple_header125.h"
+#include "foo/simple_header129.h"
+#include "foo/simple_header13.h"
+#include "foo/simple_header133.h"
+#include "foo/simple_header137.h"
+#include "foo/simple_header141.h"
+#include "foo/simple_header145.h"
+#include "foo/simple_header149.h"
+#include "foo/simple_header153.h"
+#include "foo/simple_header157.h"
+#include "foo/simple_header161.h"
+#include "foo/simple_header165.h"
+#include "foo/simple_header169.h"
+#include "foo/simple_header17.h"
+#include "foo/simple_header173.h"
+#include "foo/simple_header177.h"
+#include "foo/simple_header181.h"
+#include "foo/simple_header185.h"
+#include "foo/simple_header189.h"
+#include "foo/simple_header193.h"
+#include "foo/simple_header197.h"
+#include "foo/simple_header201.h"
+#include "foo/simple_header205.h"
+#include "foo/simple_header209.h"
+#include "foo/simple_header21.h"
+#include "foo/simple_header213.h"
+#include "foo/simple_header217.h"
+#include "foo/simple_header221.h"
+#include "foo/simple_header225.h"
+#include "foo/simple_header229.h"
+#include "foo/simple_header233.h"
+#include "foo/simple_header237.h"
+#include "foo/simple_header241.h"
+#include "foo/simple_header245.h"
+#include "foo/simple_header249.h"
+#include "foo/simple_header25.h"
+#include "foo/simple_header253.h"
+#include "foo/simple_header29.h"
+#include "foo/simple_header33.h"
+#include "foo/simple_header37.h"
+#include "foo/simple_header41.h"
+#include "foo/simple_header45.h"
+#include "foo/simple_header49.h"
+#include "foo/simple_header5.h"
+#include "foo/simple_header53.h"
+#include "foo/simple_header57.h"
+#include "foo/simple_header61.h"
+#include "foo/simple_header65.h"
+#include "foo/simple_header69.h"
+#include "foo/simple_header73.h"
+#include "foo/simple_header77.h"
+#include "foo/simple_header81.h"
+#include "foo/simple_header85.h"
+#include "foo/simple_header89.h"
+#include "foo/simple_header9.h"
+#include "foo/simple_header93.h"
+#include "foo/simple_header97.h"
+#include "simple_header0.h"
+#include "simple_header100.h"
+#include "simple_header104.h"
+#include "simple_header108.h"
+#include "simple_header112.h"
+#include "simple_header116.h"
+#include "simple_header12.h"
+#include "simple_header120.h"
+#include "simple_header124.h"
+#include "simple_header128.h"
+#include "simple_header132.h"
+#include "simple_header136.h"
+#include "simple_header140.h"
+#include "simple_header144.h"
+#include "simple_header148.h"
+#include "simple_header152.h"
+#include "simple_header156.h"
+#include "simple_header16.h"
+#include "simple_header160.h"
+#include "simple_header164.h"
+#include "simple_header168.h"
+#include "simple_header172.h"
+#include "simple_header176.h"
+#include "simple_header180.h"
+#include "simple_header184.h"
+#include "simple_header188.h"
+#include "simple_header192.h"
+#include "simple_header196.h"
+#include "simple_header20.h"
+#include "simple_header200.h"
+#include "simple_header204.h"
+#include "simple_header208.h"
+#include "simple_header212.h"
+#include "simple_header216.h"
+#include "simple_header220.h"
+#include "simple_header224.h"
+#include "simple_header228.h"
+#include "simple_header232.h"
+#include "simple_header236.h"
+#include "simple_header24.h"
+#include "simple_header240.h"
+#include "simple_header244.h"
+#include "simple_header248.h"
+#include "simple_header252.h"
+#include "simple_header28.h"
+#include "simple_header32.h"
+#include "simple_header36.h"
+#include "simple_header4.h"
+#include "simple_header40.h"
+#include "simple_header44.h"
+#include "simple_header48.h"
+#include "simple_header52.h"
+#include "simple_header56.h"
+#include "simple_header60.h"
+#include "simple_header64.h"
+#include "simple_header68.h"
+#include "simple_header72.h"
+#include "simple_header76.h"
+#include "simple_header8.h"
+#include "simple_header80.h"
+#include "simple_header84.h"
+#include "simple_header88.h"
+#include "simple_header92.h"
+#include "simple_header96.h"
+__kernel void CompositeKernel(__global float *src, __global float *dst) {
+  CopyBuffer0(src, dst);
+  CopyBuffer1(src, dst);
+  CopyBuffer2(src, dst);
+  CopyBuffer3(src, dst);
+  CopyBuffer4(src, dst);
+  CopyBuffer5(src, dst);
+  CopyBuffer6(src, dst);
+  CopyBuffer7(src, dst);
+  CopyBuffer8(src, dst);
+  CopyBuffer9(src, dst);
+  CopyBuffer10(src, dst);
+  CopyBuffer11(src, dst);
+  CopyBuffer12(src, dst);
+  CopyBuffer13(src, dst);
+  CopyBuffer14(src, dst);
+  CopyBuffer15(src, dst);
+  CopyBuffer16(src, dst);
+  CopyBuffer17(src, dst);
+  CopyBuffer18(src, dst);
+  CopyBuffer19(src, dst);
+  CopyBuffer20(src, dst);
+  CopyBuffer21(src, dst);
+  CopyBuffer22(src, dst);
+  CopyBuffer23(src, dst);
+  CopyBuffer24(src, dst);
+  CopyBuffer25(src, dst);
+  CopyBuffer26(src, dst);
+  CopyBuffer27(src, dst);
+  CopyBuffer28(src, dst);
+  CopyBuffer29(src, dst);
+  CopyBuffer30(src, dst);
+  CopyBuffer31(src, dst);
+  CopyBuffer32(src, dst);
+  CopyBuffer33(src, dst);
+  CopyBuffer34(src, dst);
+  CopyBuffer35(src, dst);
+  CopyBuffer36(src, dst);
+  CopyBuffer37(src, dst);
+  CopyBuffer38(src, dst);
+  CopyBuffer39(src, dst);
+  CopyBuffer40(src, dst);
+  CopyBuffer41(src, dst);
+  CopyBuffer42(src, dst);
+  CopyBuffer43(src, dst);
+  CopyBuffer44(src, dst);
+  CopyBuffer45(src, dst);
+  CopyBuffer46(src, dst);
+  CopyBuffer47(src, dst);
+  CopyBuffer48(src, dst);
+  CopyBuffer49(src, dst);
+  CopyBuffer50(src, dst);
+  CopyBuffer51(src, dst);
+  CopyBuffer52(src, dst);
+  CopyBuffer53(src, dst);
+  CopyBuffer54(src, dst);
+  CopyBuffer55(src, dst);
+  CopyBuffer56(src, dst);
+  CopyBuffer57(src, dst);
+  CopyBuffer58(src, dst);
+  CopyBuffer59(src, dst);
+  CopyBuffer60(src, dst);
+  CopyBuffer61(src, dst);
+  CopyBuffer62(src, dst);
+  CopyBuffer63(src, dst);
+  CopyBuffer64(src, dst);
+  CopyBuffer65(src, dst);
+  CopyBuffer66(src, dst);
+  CopyBuffer67(src, dst);
+  CopyBuffer68(src, dst);
+  CopyBuffer69(src, dst);
+  CopyBuffer70(src, dst);
+  CopyBuffer71(src, dst);
+  CopyBuffer72(src, dst);
+  CopyBuffer73(src, dst);
+  CopyBuffer74(src, dst);
+  CopyBuffer75(src, dst);
+  CopyBuffer76(src, dst);
+  CopyBuffer77(src, dst);
+  CopyBuffer78(src, dst);
+  CopyBuffer79(src, dst);
+  CopyBuffer80(src, dst);
+  CopyBuffer81(src, dst);
+  CopyBuffer82(src, dst);
+  CopyBuffer83(src, dst);
+  CopyBuffer84(src, dst);
+  CopyBuffer85(src, dst);
+  CopyBuffer86(src, dst);
+  CopyBuffer87(src, dst);
+  CopyBuffer88(src, dst);
+  CopyBuffer89(src, dst);
+  CopyBuffer90(src, dst);
+  CopyBuffer91(src, dst);
+  CopyBuffer92(src, dst);
+  CopyBuffer93(src, dst);
+  CopyBuffer94(src, dst);
+  CopyBuffer95(src, dst);
+  CopyBuffer96(src, dst);
+  CopyBuffer97(src, dst);
+  CopyBuffer98(src, dst);
+  CopyBuffer99(src, dst);
+  CopyBuffer100(src, dst);
+  CopyBuffer101(src, dst);
+  CopyBuffer102(src, dst);
+  CopyBuffer103(src, dst);
+  CopyBuffer104(src, dst);
+  CopyBuffer105(src, dst);
+  CopyBuffer106(src, dst);
+  CopyBuffer107(src, dst);
+  CopyBuffer108(src, dst);
+  CopyBuffer109(src, dst);
+  CopyBuffer110(src, dst);
+  CopyBuffer111(src, dst);
+  CopyBuffer112(src, dst);
+  CopyBuffer113(src, dst);
+  CopyBuffer114(src, dst);
+  CopyBuffer115(src, dst);
+  CopyBuffer116(src, dst);
+  CopyBuffer117(src, dst);
+  CopyBuffer118(src, dst);
+  CopyBuffer119(src, dst);
+  CopyBuffer120(src, dst);
+  CopyBuffer121(src, dst);
+  CopyBuffer122(src, dst);
+  CopyBuffer123(src, dst);
+  CopyBuffer124(src, dst);
+  CopyBuffer125(src, dst);
+  CopyBuffer126(src, dst);
+  CopyBuffer127(src, dst);
+  CopyBuffer128(src, dst);
+  CopyBuffer129(src, dst);
+  CopyBuffer130(src, dst);
+  CopyBuffer131(src, dst);
+  CopyBuffer132(src, dst);
+  CopyBuffer133(src, dst);
+  CopyBuffer134(src, dst);
+  CopyBuffer135(src, dst);
+  CopyBuffer136(src, dst);
+  CopyBuffer137(src, dst);
+  CopyBuffer138(src, dst);
+  CopyBuffer139(src, dst);
+  CopyBuffer140(src, dst);
+  CopyBuffer141(src, dst);
+  CopyBuffer142(src, dst);
+  CopyBuffer143(src, dst);
+  CopyBuffer144(src, dst);
+  CopyBuffer145(src, dst);
+  CopyBuffer146(src, dst);
+  CopyBuffer147(src, dst);
+  CopyBuffer148(src, dst);
+  CopyBuffer149(src, dst);
+  CopyBuffer150(src, dst);
+  CopyBuffer151(src, dst);
+  CopyBuffer152(src, dst);
+  CopyBuffer153(src, dst);
+  CopyBuffer154(src, dst);
+  CopyBuffer155(src, dst);
+  CopyBuffer156(src, dst);
+  CopyBuffer157(src, dst);
+  CopyBuffer158(src, dst);
+  CopyBuffer159(src, dst);
+  CopyBuffer160(src, dst);
+  CopyBuffer161(src, dst);
+  CopyBuffer162(src, dst);
+  CopyBuffer163(src, dst);
+  CopyBuffer164(src, dst);
+  CopyBuffer165(src, dst);
+  CopyBuffer166(src, dst);
+  CopyBuffer167(src, dst);
+  CopyBuffer168(src, dst);
+  CopyBuffer169(src, dst);
+  CopyBuffer170(src, dst);
+  CopyBuffer171(src, dst);
+  CopyBuffer172(src, dst);
+  CopyBuffer173(src, dst);
+  CopyBuffer174(src, dst);
+  CopyBuffer175(src, dst);
+  CopyBuffer176(src, dst);
+  CopyBuffer177(src, dst);
+  CopyBuffer178(src, dst);
+  CopyBuffer179(src, dst);
+  CopyBuffer180(src, dst);
+  CopyBuffer181(src, dst);
+  CopyBuffer182(src, dst);
+  CopyBuffer183(src, dst);
+  CopyBuffer184(src, dst);
+  CopyBuffer185(src, dst);
+  CopyBuffer186(src, dst);
+  CopyBuffer187(src, dst);
+  CopyBuffer188(src, dst);
+  CopyBuffer189(src, dst);
+  CopyBuffer190(src, dst);
+  CopyBuffer191(src, dst);
+  CopyBuffer192(src, dst);
+  CopyBuffer193(src, dst);
+  CopyBuffer194(src, dst);
+  CopyBuffer195(src, dst);
+  CopyBuffer196(src, dst);
+  CopyBuffer197(src, dst);
+  CopyBuffer198(src, dst);
+  CopyBuffer199(src, dst);
+  CopyBuffer200(src, dst);
+  CopyBuffer201(src, dst);
+  CopyBuffer202(src, dst);
+  CopyBuffer203(src, dst);
+  CopyBuffer204(src, dst);
+  CopyBuffer205(src, dst);
+  CopyBuffer206(src, dst);
+  CopyBuffer207(src, dst);
+  CopyBuffer208(src, dst);
+  CopyBuffer209(src, dst);
+  CopyBuffer210(src, dst);
+  CopyBuffer211(src, dst);
+  CopyBuffer212(src, dst);
+  CopyBuffer213(src, dst);
+  CopyBuffer214(src, dst);
+  CopyBuffer215(src, dst);
+  CopyBuffer216(src, dst);
+  CopyBuffer217(src, dst);
+  CopyBuffer218(src, dst);
+  CopyBuffer219(src, dst);
+  CopyBuffer220(src, dst);
+  CopyBuffer221(src, dst);
+  CopyBuffer222(src, dst);
+  CopyBuffer223(src, dst);
+  CopyBuffer224(src, dst);
+  CopyBuffer225(src, dst);
+  CopyBuffer226(src, dst);
+  CopyBuffer227(src, dst);
+  CopyBuffer228(src, dst);
+  CopyBuffer229(src, dst);
+  CopyBuffer230(src, dst);
+  CopyBuffer231(src, dst);
+  CopyBuffer232(src, dst);
+  CopyBuffer233(src, dst);
+  CopyBuffer234(src, dst);
+  CopyBuffer235(src, dst);
+  CopyBuffer236(src, dst);
+  CopyBuffer237(src, dst);
+  CopyBuffer238(src, dst);
+  CopyBuffer239(src, dst);
+  CopyBuffer240(src, dst);
+  CopyBuffer241(src, dst);
+  CopyBuffer242(src, dst);
+  CopyBuffer243(src, dst);
+  CopyBuffer244(src, dst);
+  CopyBuffer245(src, dst);
+  CopyBuffer246(src, dst);
+  CopyBuffer247(src, dst);
+  CopyBuffer248(src, dst);
+  CopyBuffer249(src, dst);
+  CopyBuffer250(src, dst);
+  CopyBuffer251(src, dst);
+  CopyBuffer252(src, dst);
+  CopyBuffer253(src, dst);
+  CopyBuffer254(src, dst);
+  CopyBuffer255(src, dst);
+}

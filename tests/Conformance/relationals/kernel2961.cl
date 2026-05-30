@@ -1,0 +1,264 @@
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+__kernel void sample_test(__global ulong16 *secondSource,
+                          __global ulong16 *source, __global ulong2 *dest) {
+  if (get_global_id(0) != 0)
+    return;
+  // ulong16 src1 , src2;
+  ulong2 tmp;
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[0];
+    ulong16 src2 = secondSource[0];
+    ulong2 mask = (ulong2)(9, 17);
+    tmp = shuffle2(src1, src2, mask);
+    dest[0] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[1];
+    ulong16 src2 = secondSource[1];
+    ulong2 mask = (ulong2)(25, 22);
+    tmp = shuffle2(src1, src2, mask);
+    dest[1] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[2];
+    ulong16 src2 = secondSource[2];
+    ulong2 mask = (ulong2)(28, 19);
+    tmp = shuffle2(src1, src2, mask);
+    dest[2] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[3];
+    ulong16 src2 = secondSource[3];
+    ulong2 mask = (ulong2)(19, 19);
+    tmp = shuffle2(src1, src2, mask);
+    dest[3] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[4];
+    ulong16 src2 = secondSource[4];
+    ulong2 mask = (ulong2)(20, 28);
+    tmp = shuffle2(src1, src2, mask);
+    dest[4] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[5];
+    ulong16 src2 = secondSource[5];
+    ulong2 mask = (ulong2)(27, 9);
+    tmp = shuffle2(src1, src2, mask);
+    dest[5] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[6];
+    ulong16 src2 = secondSource[6];
+    ulong2 mask = (ulong2)(18, 20);
+    tmp = shuffle2(src1, src2, mask);
+    dest[6] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[7];
+    ulong16 src2 = secondSource[7];
+    ulong2 mask = (ulong2)(31, 14);
+    tmp = shuffle2(src1, src2, mask);
+    dest[7] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[8];
+    ulong16 src2 = secondSource[8];
+    ulong2 mask = (ulong2)(15, 23);
+    tmp = shuffle2(src1, src2, mask);
+    dest[8] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[9];
+    ulong16 src2 = secondSource[9];
+    ulong2 mask = (ulong2)(18, 0);
+    tmp = shuffle2(src1, src2, mask);
+    dest[9] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[10];
+    ulong16 src2 = secondSource[10];
+    ulong2 mask = (ulong2)(23, 29);
+    tmp = shuffle2(src1, src2, mask);
+    dest[10] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[11];
+    ulong16 src2 = secondSource[11];
+    ulong2 mask = (ulong2)(11, 20);
+    tmp = shuffle2(src1, src2, mask);
+    dest[11] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[12];
+    ulong16 src2 = secondSource[12];
+    ulong2 mask = (ulong2)(22, 0);
+    tmp = shuffle2(src1, src2, mask);
+    dest[12] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[13];
+    ulong16 src2 = secondSource[13];
+    ulong2 mask = (ulong2)(18, 1);
+    tmp = shuffle2(src1, src2, mask);
+    dest[13] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[14];
+    ulong16 src2 = secondSource[14];
+    ulong2 mask = (ulong2)(14, 26);
+    tmp = shuffle2(src1, src2, mask);
+    dest[14] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[15];
+    ulong16 src2 = secondSource[15];
+    ulong2 mask = (ulong2)(8, 11);
+    tmp = shuffle2(src1, src2, mask);
+    dest[15] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[16];
+    ulong16 src2 = secondSource[16];
+    ulong2 mask = (ulong2)(8, 11);
+    tmp = shuffle2(src1, src2, mask);
+    dest[16] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[17];
+    ulong16 src2 = secondSource[17];
+    ulong2 mask = (ulong2)(29, 30);
+    tmp = shuffle2(src1, src2, mask);
+    dest[17] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[18];
+    ulong16 src2 = secondSource[18];
+    ulong2 mask = (ulong2)(15, 27);
+    tmp = shuffle2(src1, src2, mask);
+    dest[18] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[19];
+    ulong16 src2 = secondSource[19];
+    ulong2 mask = (ulong2)(16, 0);
+    tmp = shuffle2(src1, src2, mask);
+    dest[19] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[20];
+    ulong16 src2 = secondSource[20];
+    ulong2 mask = (ulong2)(15, 21);
+    tmp = shuffle2(src1, src2, mask);
+    dest[20] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[21];
+    ulong16 src2 = secondSource[21];
+    ulong2 mask = (ulong2)(0, 29);
+    tmp = shuffle2(src1, src2, mask);
+    dest[21] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[22];
+    ulong16 src2 = secondSource[22];
+    ulong2 mask = (ulong2)(4, 30);
+    tmp = shuffle2(src1, src2, mask);
+    dest[22] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[23];
+    ulong16 src2 = secondSource[23];
+    ulong2 mask = (ulong2)(20, 29);
+    tmp = shuffle2(src1, src2, mask);
+    dest[23] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[24];
+    ulong16 src2 = secondSource[24];
+    ulong2 mask = (ulong2)(27, 13);
+    tmp = shuffle2(src1, src2, mask);
+    dest[24] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[25];
+    ulong16 src2 = secondSource[25];
+    ulong2 mask = (ulong2)(29, 25);
+    tmp = shuffle2(src1, src2, mask);
+    dest[25] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[26];
+    ulong16 src2 = secondSource[26];
+    ulong2 mask = (ulong2)(19, 16);
+    tmp = shuffle2(src1, src2, mask);
+    dest[26] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[27];
+    ulong16 src2 = secondSource[27];
+    ulong2 mask = (ulong2)(8, 12);
+    tmp = shuffle2(src1, src2, mask);
+    dest[27] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[28];
+    ulong16 src2 = secondSource[28];
+    ulong2 mask = (ulong2)(31, 13);
+    tmp = shuffle2(src1, src2, mask);
+    dest[28] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[29];
+    ulong16 src2 = secondSource[29];
+    ulong2 mask = (ulong2)(31, 23);
+    tmp = shuffle2(src1, src2, mask);
+    dest[29] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[30];
+    ulong16 src2 = secondSource[30];
+    ulong2 mask = (ulong2)(7, 14);
+    tmp = shuffle2(src1, src2, mask);
+    dest[30] = tmp;
+  }
+  tmp = (ulong2)((ulong)0);
+  {
+    ulong16 src1 = source[31];
+    ulong16 src2 = secondSource[31];
+    ulong2 mask = (ulong2)(21, 20);
+    tmp = shuffle2(src1, src2, mask);
+    dest[31] = tmp;
+  }
+}

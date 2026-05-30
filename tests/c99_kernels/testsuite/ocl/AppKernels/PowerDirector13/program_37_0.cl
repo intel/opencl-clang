@@ -1,0 +1,83 @@
+
+__kernel void Rocking_Global(__global const uchar4* src, __global uchar4* dst, int width, int height, int srcStartIndex, int nFXStep, int nFYStep, unsigned char getAlphaType)
+{
+	int index = get_global_id(0);
+
+	int j = index / width;
+	int i = index - width * j;
+
+	uchar4 tempSrc = src[index];
+	uchar4 tempDst = dst[index];
+	uchar4 prgbP_lb, prgbP_rb, prgbP_lt, prgbP_rt;
+	uchar4 tempRGB1;
+	uchar4 tempRGB2;
+	uchar4 temp;
+
+	//else if( (100 < nEnlargeRate) && (200 >= nEnlargeRate) )
+
+	int nFX = 0, nFY = 0;
+	int fxX, fxY;
+
+	// j loop
+	nFY = j * nFYStep;
+	srcStartIndex +=  ( nFY >> 16 ) * width;
+	fxY = nFY & 0x0000ffff;
+
+	// i loop
+	nFX = i * nFXStep;
+	srcStartIndex +=  ( nFX >> 16 );
+	fxX = nFX & 0x0000ffff;
+
+	prgbP_lb = src[srcStartIndex];
+	prgbP_rb = src[srcStartIndex+1];
+	prgbP_lt = src[srcStartIndex+width];
+	prgbP_rt = src[srcStartIndex+width+1];
+
+	tempRGB1.x = prgbP_lb.x + ((( prgbP_rb.x - prgbP_lb.x ) * fxX) >> 16);
+	tempRGB1.y = prgbP_lb.y + ((( prgbP_rb.y - prgbP_lb.y ) * fxX) >> 16);
+	tempRGB1.z = prgbP_lb.z + ((( prgbP_rb.z - prgbP_lb.z ) * fxX) >> 16);
+	tempRGB1.w = prgbP_lb.w + ((( prgbP_rb.w - prgbP_lb.w ) * fxX) >> 16);
+
+	tempRGB2.x = prgbP_lt.x + ((( prgbP_rt.x - prgbP_lt.x ) * fxX) >> 16);
+	tempRGB2.y = prgbP_lt.y + ((( prgbP_rt.y - prgbP_lt.y ) * fxX) >> 16);
+	tempRGB2.z = prgbP_lt.z + ((( prgbP_rt.z - prgbP_lt.z ) * fxX) >> 16);
+	tempRGB2.w = prgbP_lt.w + ((( prgbP_rt.w - prgbP_lt.w ) * fxX) >> 16);
+
+	temp.x = tempRGB1.x + ((( tempRGB2.x - tempRGB1.x ) * fxY) >> 16);
+	temp.y = tempRGB1.y + ((( tempRGB2.y - tempRGB1.y ) * fxY) >> 16);
+	temp.z = tempRGB1.z + ((( tempRGB2.z - tempRGB1.z ) * fxY) >> 16);
+	temp.w = tempRGB1.w + ((( tempRGB2.w - tempRGB1.w ) * fxY) >> 16);
+
+	tempDst.x = (temp.x + tempDst.x) >> 1;
+	tempDst.y = (temp.y + tempDst.y) >> 1;
+	tempDst.z = (temp.z + tempDst.z) >> 1;
+	tempDst.w = (temp.w + tempDst.w) >> 1;
+
+	dst[index] = tempDst;
+}
+
+
+__kernel void Rocking_SpecialCase_Global(__global const uchar4* src, __global uchar4* dst, int width, int height, unsigned char getAlphaType)
+{
+	int index = get_global_id(0);
+
+	int j = index / width;
+	int i = index - width * j;
+
+	uchar4 tempSrc = src[index];
+	uchar4 tempDst = dst[index];
+
+	// The special case is nEnlargeRate == 100
+	tempDst.w = (tempDst.w + tempSrc.w)/2;
+	tempDst.x = (tempDst.x + tempSrc.x)/2;
+	tempDst.y = (tempDst.y + tempSrc.y)/2;
+	tempDst.z = (tempDst.z + tempSrc.z)/2;
+
+	//tempDst.w = (getAlphaType == 1) ? tempSrc.w : tempDst.w;
+    //tempDst.w = (getAlphaType == 2) ? 255 : tempDst.w;
+
+	dst[index] = tempDst;
+}
+
+// buildOptions=
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%S " %cfg_path --cl-device=%cl_device 2>&1

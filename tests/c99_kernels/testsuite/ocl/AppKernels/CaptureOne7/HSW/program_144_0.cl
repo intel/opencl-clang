@@ -1,0 +1,203 @@
+typedef uint za6c557b086;int z04a9540cbb(float z2dd09f3226,float za3158292ce,
+float z758719f481){float z593fa3cb41=z2dd09f3226-za3158292ce;z593fa3cb41*=sign(
+z593fa3cb41);return z593fa3cb41<z758719f481;}float4 ze796b120ff(float4
+z205d564e2f){
+
+
+float z99cf4fd6fe,z5083031dab,z88dce4da4d;float zff400e9e97=z205d564e2f.x;float
+z305d891f1d=z205d564e2f.y;float za3158292ce=z205d564e2f.z;const float
+z997ede1cab=0.0001f;float z5599ea8cc5=min(zff400e9e97,min(z305d891f1d,
+za3158292ce));float zdb21e9209f=max(zff400e9e97,max(z305d891f1d,za3158292ce));
+z88dce4da4d=zdb21e9209f;float z48c7a50fca=zdb21e9209f-z5599ea8cc5;if(!
+z04a9540cbb(zdb21e9209f,0.0f,z997ede1cab))
+{z5083031dab=z48c7a50fca/zdb21e9209f;
+}else{
+z5083031dab=0;z99cf4fd6fe=-1;return(float4)(z99cf4fd6fe,z5083031dab,z88dce4da4d,
+z205d564e2f.w);}if(z04a9540cbb(zff400e9e97,zdb21e9209f,z997ede1cab))
+z99cf4fd6fe=(z305d891f1d-za3158292ce)/z48c7a50fca;
+else if(z04a9540cbb(z305d891f1d,zdb21e9209f,z997ede1cab))
+z99cf4fd6fe=2.0f+(za3158292ce-zff400e9e97)/z48c7a50fca;
+else z99cf4fd6fe=4.0f+(zff400e9e97-z305d891f1d)/z48c7a50fca;
+z99cf4fd6fe*=60;
+if(z99cf4fd6fe<0)z99cf4fd6fe+=360;return(float4)(z99cf4fd6fe,z5083031dab,
+z88dce4da4d,z205d564e2f.w);}float4 za68156bd05(float4 z2d1fad4f44){
+
+
+float zff400e9e97,z305d891f1d,za3158292ce;float z99cf4fd6fe=z2d1fad4f44.x;float
+z5083031dab=z2d1fad4f44.y;float z88dce4da4d=z2d1fad4f44.z;const float
+z997ede1cab=0.0001f;int z1d8bd19892;float z90e1a42944,z493deefb55,z11fc704ac4,
+z52ab5b652a;if(z04a9540cbb(z5083031dab,0.0f,z997ede1cab))
+{
+zff400e9e97=z305d891f1d=za3158292ce=z88dce4da4d;return(float4)(zff400e9e97,
+z305d891f1d,za3158292ce,z2d1fad4f44.w);}z99cf4fd6fe/=60.0f;
+z1d8bd19892=floor(z99cf4fd6fe);z90e1a42944=z99cf4fd6fe-z1d8bd19892;
+z493deefb55=z88dce4da4d*(1-z5083031dab);z11fc704ac4=z88dce4da4d*(1-z5083031dab*
+z90e1a42944);z52ab5b652a=z88dce4da4d*(1-z5083031dab*(1-z90e1a42944));switch(
+z1d8bd19892){case 0:zff400e9e97=z88dce4da4d;z305d891f1d=z52ab5b652a;za3158292ce=
+z493deefb55;break;case 1:zff400e9e97=z11fc704ac4;z305d891f1d=z88dce4da4d;
+za3158292ce=z493deefb55;break;case 2:zff400e9e97=z493deefb55;z305d891f1d=
+z88dce4da4d;za3158292ce=z52ab5b652a;break;case 3:zff400e9e97=z493deefb55;
+z305d891f1d=z11fc704ac4;za3158292ce=z88dce4da4d;break;case 4:zff400e9e97=
+z52ab5b652a;z305d891f1d=z493deefb55;za3158292ce=z88dce4da4d;break;default:
+zff400e9e97=z88dce4da4d;z305d891f1d=z493deefb55;za3158292ce=z11fc704ac4;break;}
+return(float4)(zff400e9e97,z305d891f1d,za3158292ce,z2d1fad4f44.w);}int
+z07f76dfe04(float X,int z7d07bb3247,int zbf32ff9ae0,__global float4*zcb1b02776b)
+{while(zbf32ff9ae0-z7d07bb3247>1){int z1409a29adb=(z7d07bb3247+zbf32ff9ae0)/2;
+float z6624dbc6f0=zcb1b02776b[z1409a29adb].x;
+if(fabs(X-z6624dbc6f0)<0.0001f)return z1409a29adb;
+if(X<z6624dbc6f0)zbf32ff9ae0=z1409a29adb;else z7d07bb3247=z1409a29adb;}return
+z7d07bb3247;}float z9369a44638(float X,__global float4*zcb1b02776b,int
+zd5275ae723){
+int z7d07bb3247=z07f76dfe04(X,0,zd5275ae723-1,zcb1b02776b);int zbf32ff9ae0=
+z7d07bb3247+1;float4 za851db5bb7=zcb1b02776b[z7d07bb3247];float4 z9aac9b026f=
+zcb1b02776b[zbf32ff9ae0];float zc180b9cdc9=za851db5bb7.x,za3584c0652=za851db5bb7
+.y,z16e127a2c9=za851db5bb7.z;float z35bf29e99b=z9aac9b026f.x,z1a6f4c4c08=
+z9aac9b026f.y,z635f0a0757=z9aac9b026f.z;
+float z52ab5b652a=z35bf29e99b-zc180b9cdc9;if(fabs(z52ab5b652a)<0.0001f)return((
+za3584c0652+z1a6f4c4c08)+(X-zc180b9cdc9)*(z16e127a2c9+z635f0a0757))*0.5f;
+float z56807b5599=(X-zc180b9cdc9)/z52ab5b652a;float z3e7daabbc6=z56807b5599-1.0f
+;
+float z99cf4fd6fe=z56807b5599*z56807b5599*(z1a6f4c4c08-za3584c0652)*(3.0f-2.0f*
+z56807b5599)+za3584c0652;float z593fa3cb41=(z16e127a2c9*z3e7daabbc6+z635f0a0757*
+z56807b5599)*z56807b5599*z3e7daabbc6*z52ab5b652a;float Y=z99cf4fd6fe+z593fa3cb41
+;return Y;}
+#define z38c913a03a 10
+float z6d7333005c(float16 z2dd09f3226,float16 za3158292ce){
+#if (z38c913a03a==10)
+return dot(z2dd09f3226.s0123,za3158292ce.s0123)+dot(z2dd09f3226.s4567,
+za3158292ce.s4567)+dot(z2dd09f3226.s89,za3158292ce.s89);
+#endif
+#if (z38c913a03a==2)
+return dot(z2dd09f3226.s01,za3158292ce.s01);
+#endif
+float z51eadf1cec=dot(z2dd09f3226.s0123,za3158292ce.s0123);
+#if z38c913a03a>4
+z51eadf1cec+=dot(z2dd09f3226.s4567,za3158292ce.s4567);
+#endif
+#if z38c913a03a>8
+z51eadf1cec+=dot(z2dd09f3226.s89,za3158292ce.s89);
+#endif
+return z51eadf1cec;}__kernel void zefe087aadc(__global float4*zf8d9fd6cb8,
+__global ushort4*z718a062ddd,int4 z30eaaf69b7,uint z021babbfad,uint z745057f086,
+__global ushort4*z177ff829d3,float16 z4c3d81cb02,float z86dd029962,__global
+float4*z671bb71270,int zd2a4f31fb5,float z5252c1704c,__global uchar*zec145e35cf,
+int16 z3576e84f20,float16 zd8b21bfb9c,float16 z41f391612d,float16 zb273728874,
+float16 za999b48c18){int2 zba94ee46da=(int2)(get_global_id(0),get_global_id(1));
+if(zba94ee46da.x>=z30eaaf69b7.z||zba94ee46da.y>=z30eaaf69b7.w)return;zba94ee46da
++=z30eaaf69b7.xy;int2 z83640e5796=zba94ee46da;float4 z493deefb55=zf8d9fd6cb8[
+z83640e5796.x+z83640e5796.y*(z021babbfad/4)];z493deefb55.w=0.0f;int2 z9b046bc3a1
+=z83640e5796;
+int zfcaa177308=z3576e84f20.sa;int2 ze2c89cc3be=(int2)(z3576e84f20.sb,
+z3576e84f20.sc);int z98cd6733c3=z9b046bc3a1.x+z9b046bc3a1.y*zfcaa177308;
+#if 0
+int z6016b79538[z38c913a03a]={z3576e84f20.s0,z3576e84f20.s1,z3576e84f20.s2,
+z3576e84f20.s3,z3576e84f20.s4,z3576e84f20.s5,z3576e84f20.s6,z3576e84f20.s7,
+z3576e84f20.s8,z3576e84f20.s9};
+#else
+int*z6016b79538=(int*)&z3576e84f20;
+#endif
+float16 z305c8a97dc;float*zbd7b15dc4f=(float*)&z305c8a97dc;for(int z1d8bd19892=0
+;z1d8bd19892<z38c913a03a;z1d8bd19892++)zbd7b15dc4f[z1d8bd19892]=convert_float(
+z6016b79538[z1d8bd19892]>=0?zec145e35cf[z98cd6733c3+z6016b79538[z1d8bd19892]]:0)
+;float zec2cea3690=z6d7333005c(zd8b21bfb9c,z305c8a97dc);z493deefb55*=exp(
+zec2cea3690);float4 zaaa7fd862e=(float4)(0.0f,0.0f,0.0f,0.0f);zaaa7fd862e.x=dot(
+z4c3d81cb02.s0123,z493deefb55);zaaa7fd862e.y=dot(z4c3d81cb02.s4567,z493deefb55);
+zaaa7fd862e.z=dot(z4c3d81cb02.s89ab,z493deefb55);if(zd2a4f31fb5>0){
+
+float4 z2d1fad4f44=ze796b120ff(zaaa7fd862e/65535.0f);
+z2d1fad4f44.y=z9369a44638(z2d1fad4f44.y,z671bb71270,zd2a4f31fb5);
+
+zaaa7fd862e=za68156bd05(z2d1fad4f44)*65535.0f;z5252c1704c=0.0f;}zaaa7fd862e*=
+z86dd029962;
+float z1c19617292=z6d7333005c(z41f391612d,z305c8a97dc);bool z37e372661a=(fabs(
+z1c19617292)>0.0f);if(z37e372661a){z5252c1704c=z1c19617292;zaaa7fd862e=
+zaaa7fd862e/65535.0f;if(z5252c1704c>0.0f){
+
+
+
+
+float4 z2d1fad4f44=ze796b120ff(zaaa7fd862e);float z3987adcbb1=z2d1fad4f44.y;
+
+float zccb7f8e67f=0.5f;float z5083031dab=1.0f+z5252c1704c*0.0064f;float
+z448a3dde4b=zccb7f8e67f/z5083031dab;float ze7c57fc5f9=zccb7f8e67f;
+if(z3987adcbb1<z448a3dde4b){z3987adcbb1=z3987adcbb1*z5083031dab;}else{float w=
+z5083031dab*(1.0f-z448a3dde4b);float z20b29b6aff=w/(1.0f-ze7c57fc5f9);float z=
+1.0f/(1.0f-z448a3dde4b);float z52ab5b652a=z20b29b6aff-1.0f;float z56807b5599=(
+z3987adcbb1-z448a3dde4b)*z;z3987adcbb1=ze7c57fc5f9+(w*z56807b5599)/(z56807b5599*
+z52ab5b652a+1.0f);}z2d1fad4f44.y=z3987adcbb1;
+
+zaaa7fd862e=za68156bd05(z2d1fad4f44);}else{
+if(z5252c1704c<-100.0f)z5252c1704c=-100.0f;
+
+
+float Y=dot(zaaa7fd862e,(float4)(0.288047f,0.711861f,0.000092f,0.0f));
+float z38c36eec91=-z5252c1704c*0.01f;float zea34483265=1.0f-z38c36eec91;
+
+
+zaaa7fd862e=zea34483265*zaaa7fd862e+(float4)(Y*z38c36eec91);}zaaa7fd862e=
+zaaa7fd862e*65535.0f;}
+ushort4 z4633c865c6=convert_ushort4_sat_rte(zaaa7fd862e);
+#if 1
+z4633c865c6.x=z177ff829d3[z4633c865c6.x].x;z4633c865c6.y=z177ff829d3[z4633c865c6
+.y].y;z4633c865c6.z=z177ff829d3[z4633c865c6.z].z;
+#endif
+float z0e9f85a3b3=z6d7333005c(za999b48c18,z305c8a97dc);float zdf15203512=
+z6d7333005c(zb273728874,z305c8a97dc);bool z7b437af491=(fabs(z0e9f85a3b3)>0.0f);
+bool zb696c584b7=(fabs(zdf15203512)>0.0f);if(zb696c584b7&&fabs(zdf15203512)>=
+0.001f){
+float zccb7f8e67f=16384.0f;
+float zf5ef026274=zdf15203512;
+
+
+float z5083031dab;if(zf5ef026274>0)z5083031dab=1.0f+zf5ef026274*0.030f;else
+z5083031dab=1.0f/(1.0f-zf5ef026274*0.015f);
+float z448a3dde4b,ze7c57fc5f9;if(z5083031dab>1.0f){z448a3dde4b=zccb7f8e67f/
+z5083031dab;ze7c57fc5f9=zccb7f8e67f;}else{z448a3dde4b=zccb7f8e67f;ze7c57fc5f9=
+zccb7f8e67f*z5083031dab;}
+
+float4 z90e1a42944=convert_float4(z4633c865c6);float zaec20d4434=z90e1a42944.x;
+float z839bc2282c=z90e1a42944.y;float z02168f5f79=z90e1a42944.z;
+float z960fb238c4,zb0aa49bc8a,z9eb0d07847;float w=z5083031dab*(65535.0f-
+z448a3dde4b);float z20b29b6aff=w/(65535.0f-ze7c57fc5f9);float z=1.0f/(65535.0f-
+z448a3dde4b);float z52ab5b652a=z20b29b6aff-1.0f;if(zaec20d4434<z448a3dde4b){
+z960fb238c4=zaec20d4434*z5083031dab;}else{float z56807b5599=(zaec20d4434-
+z448a3dde4b)*z;z960fb238c4=ze7c57fc5f9+(w*z56807b5599)/(z56807b5599*z52ab5b652a+
+1.0f);}if(z839bc2282c<z448a3dde4b){zb0aa49bc8a=z839bc2282c*z5083031dab;}else{
+float z56807b5599=(z839bc2282c-z448a3dde4b)*z;zb0aa49bc8a=ze7c57fc5f9+(w*
+z56807b5599)/(z56807b5599*z52ab5b652a+1.0f);}if(z02168f5f79<z448a3dde4b){
+z9eb0d07847=z02168f5f79*z5083031dab;}else{float z56807b5599=(z02168f5f79-
+z448a3dde4b)*z;z9eb0d07847=ze7c57fc5f9+(w*z56807b5599)/(z56807b5599*z52ab5b652a+
+1.0f);}z4633c865c6=convert_ushort4_sat((float4)(z960fb238c4,zb0aa49bc8a,
+z9eb0d07847,0.0f));}if(z7b437af491&&fabs(z0e9f85a3b3)>=0.001f){za6c557b086
+zafd99f89a4=65536;za6c557b086 z493deefb55=32768;
+
+
+float zc226175807=z0e9f85a3b3;
+
+
+float z5083031dab;if(zc226175807>0){float z52ab5b652a=zc226175807*0.0150f;
+z5083031dab=1.0f+z52ab5b652a+z52ab5b652a*z52ab5b652a*.5f;}else{z5083031dab=1.0f/
+(1.0f-zc226175807*0.0125f);}
+
+uint4 z67ced5074b=convert_uint4(z4633c865c6);za6c557b086 ze4b052164b=z67ced5074b
+.x;za6c557b086 z2e91460297=z67ced5074b.y;za6c557b086 z7e674d442a=z67ced5074b.z;
+float z960fb238c4,zb0aa49bc8a,z9eb0d07847;float z52ab5b652a=(1.0f-z5083031dab)*(
+1.0f/z493deefb55);float z56807b5599=z5083031dab-1.0f;float z88dce4da4d=
+zafd99f89a4-z493deefb55;float w=z88dce4da4d*z5083031dab;if(ze4b052164b<=
+z493deefb55){z960fb238c4=ze4b052164b/(ze4b052164b*z52ab5b652a+z5083031dab);}else
+{float x=ze4b052164b-z493deefb55;z960fb238c4=z493deefb55+w*x/(z56807b5599*x+
+z88dce4da4d);}if(z2e91460297<=z493deefb55){zb0aa49bc8a=z2e91460297/(z2e91460297*
+z52ab5b652a+z5083031dab);}else{float x=z2e91460297-z493deefb55;zb0aa49bc8a=
+z493deefb55+w*x/(z56807b5599*x+z88dce4da4d);}if(z7e674d442a<=z493deefb55){
+z9eb0d07847=z7e674d442a/(z7e674d442a*z52ab5b652a+z5083031dab);}else{float x=
+z7e674d442a-z493deefb55;z9eb0d07847=z493deefb55+w*x/(z56807b5599*x+z88dce4da4d);
+}
+z4633c865c6=convert_ushort4_sat((float4)(z960fb238c4,zb0aa49bc8a,z9eb0d07847,
+0.0f));
+
+}int z77f8ae3448=zba94ee46da.x+zba94ee46da.y*(z745057f086/4);z718a062ddd[
+z77f8ae3448]=z4633c865c6;}
+
+
+// buildOptions=
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%S " %cfg_path --cl-device=%cl_device 2>&1

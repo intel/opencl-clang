@@ -1,0 +1,24 @@
+@LIT_SITE_CFG_IN_HEADER@
+
+import sys
+
+config.llvm_tools_dir = lit_config.substitute(path(r"@LLVM_TOOLS_DIR@"))
+config.llvm_libs_dir = lit_config.substitute(path(r"@LLVM_LIBRARY_DIR@"))
+config.llvm_shlib_dir = lit_config.substitute(path(r"@SHLIBDIR@"))
+
+config.clang_tools_dir = lit_config.substitute(path(r"@CLANG_TOOLS_DIR@"))
+
+config.opencl_clang_src_root = lit_config.substitute(path(r"@CMAKE_CURRENT_SOURCE_DIR@/.."))
+config.opencl_clang_obj_root = lit_config.substitute(path(r"@CMAKE_CURRENT_BINARY_DIR@"))
+config.opencl_clang_tools_dir = lit_config.substitute(path(r"@LLVM_TOOLS_DIR@"))
+
+config.cl_device = "@OPENCL_CLANG_TEST_DEVICE@"
+
+config.host_triple = "@LLVM_HOST_TRIPLE@"
+config.target_triple = "@LLVM_TARGET_TRIPLE@"
+
+import lit.llvm
+lit.llvm.initialize(lit_config, config)
+
+# Let the main config do the real work.
+lit_config.load_config(config, "@CMAKE_CURRENT_SOURCE_DIR@/lit.cfg.py")

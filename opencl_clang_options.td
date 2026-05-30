@@ -44,3 +44,6 @@ def target_triple : Separate<["-"], "target-triple">,  HelpText<"Specify target 
 def spir_std_1_0: Flag<["-"], "spir-std=1.0">;
 def spir_std_1_2: Flag<["-"], "spir-std=1.2">;
 def x : Separate<["-"], "x">;
+def Xclang : Separate<["-"], "Xclang">, HelpText<"Pass argument to clang -cc1">;
+def W_Joined : Joined<["-"], "W">, HelpText<"Enable/disable warning flags">;
+def W_Separate : Separate<["-"], "W">;

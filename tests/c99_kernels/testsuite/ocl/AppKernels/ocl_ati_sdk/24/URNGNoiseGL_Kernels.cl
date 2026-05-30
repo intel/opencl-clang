@@ -1,0 +1,107 @@
+
+#define IA 16807    			// a
+#define IM 2147483647 			// m
+#define AM (1.0/IM) 			// 1/m - To calculate floating point result
+#define IQ 127773
+#define IR 2836
+#define NTAB 4
+#define NDIV (1 + (IM - 1)/ NTAB)
+#define EPS 1.2e-7
+#define RMAX (1.0 - EPS)
+#define FACTOR 60			// Deviation factor
+#define GROUP_SIZE 64
+
+
+
+
+/* Generate uniform random deviation */
+// Park-Miller with Bays-Durham shuffle and added safeguards
+// Returns a uniform random deviate between (-FACTOR/2, FACTOR/2)
+// input seed should be negative
+float ran1(int idum, __local int *iv)
+{
+    int j;
+    int k;
+    int iy = 0;
+    //__local int iv[NTAB * GROUP_SIZE];
+    int tid = get_local_id(0);
+
+    for(j = NTAB; j >=0; j--)			//Load the shuffle
+    {
+        k = idum / IQ;
+        idum = IA * (idum - k * IQ) - IR * k;
+
+        if(idum < 0)
+            idum += IM;
+
+        if(j < NTAB)
+            iv[NTAB* tid + j] = idum;
+    }
+    iy = iv[NTAB* tid];
+
+    k = idum / IQ;
+    idum = IA * (idum - k * IQ) - IR * k;
+
+    if(idum < 0)
+        idum += IM;
+
+    j = iy / NDIV;
+    iy = iv[NTAB * tid + j];
+    return (AM * iy);	//AM *iy will be between 0.0 and 1.0
+}
+
+
+
+
+/* Use float4 as input and output rather than uchar4 to save unnecessary conversions */
+
+__kernel void noise_uniform(__global uchar4* inputImage, __global uchar4* outputImage, int factor)
+{
+
+	int pos = get_global_id(0) + get_global_id(1) * get_global_size(0);
+
+	float4 temp = convert_float4(inputImage[pos]);
+
+	/* compute average value of a pixel from its compoments */
+	float avg = (temp.x + temp.y + temp.z + temp.y) / 4;
+
+	__local int iv[NTAB * GROUP_SIZE];
+
+	/* Calculate deviation from the avg value of a pixel */
+	float dev = ran1(-avg, iv);
+	dev = (dev - 0.5) * factor;
+	/* Saturate(clamp) the values */
+
+	outputImage[pos] = convert_uchar4_sat(temp + (float4)(dev));
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// buildOptions=
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%S " %cfg_path --cl-device=%cl_device 2>&1
