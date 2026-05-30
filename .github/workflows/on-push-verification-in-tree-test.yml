@@ -4,7 +4,7 @@
 #   Parses the destination branch to choose correct dependency revisions.
 # ===---
 
-name: Build and Test
+name: In-tree Build and Test
 run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
 
 permissions:
@@ -28,7 +28,7 @@ on:
 jobs:
 
   verify_default_branch:
-    name: In-tree Linux
+    name: Linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
     runs-on: ubuntu-24.04
