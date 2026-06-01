@@ -188,8 +188,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     }
     case OPT_COMPILE_cl_finite_math_only:
       effectiveArgs.push_back((*it)->getAsString(args));
-      effectiveArgs.push_back("-D");
-      effectiveArgs.push_back("__FINITE_MATH_ONLY__=1");
       break;
     case OPT_COMPILE_cl_fast_relaxed_math:
       effectiveArgs.push_back((*it)->getAsString(args));
@@ -380,6 +378,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     llvm::SmallVector<llvm::StringRef, 32> parsedExt;
     clExtRef.split(parsedExt, ',');
     for (auto &ext : parsedExt) {
+      if (ext.empty())
+        continue;
       char sign = ext.front();
       bool enabled = sign != '-';
       llvm::StringRef extName = ext;
