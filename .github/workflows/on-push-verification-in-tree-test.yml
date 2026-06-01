@@ -1,0 +1,46 @@
+# ===---
+# Running on push & pull_request.
+#   Builds opencl-clang in-tree and runs ninja check-opencl-clang.
+#   Parses the destination branch to choose correct dependency revisions.
+# ===---
+
+name: In-tree Build and Test
+run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+      - ocl-open-*
+  pull_request:
+    branches:
+      - main
+      - ocl-open-*
+    types:
+      - opened
+      - reopened
+      - synchronize       # commit pushed to the PR
+      - ready_for_review  # moved from draft state
+
+jobs:
+
+  verify_default_branch:
+    name: Linux
+    # ref_name for 'on: push'
+    # base_ref for 'on: pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+
+      - name: Checkout opencl-clang sources for action files
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run build-opencl-clang action
+        uses: ./.github/actions/build-opencl-clang
+        with:
+          ref_llvm: main
+          ref_translator: main
+          ref_opencl-clang: ${{ github.ref }}
+          run_tests: 'true'

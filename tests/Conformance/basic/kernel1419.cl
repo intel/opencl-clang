@@ -1,0 +1,19 @@
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable
+__kernel void test_fn(const __global double4 *src, __global double4 *dst,
+                      __local double4 *localBuffer, int copiesPerWorkgroup,
+                      int copiesPerWorkItem) {
+  int i;
+  for (i = 0; i < copiesPerWorkItem; i++)
+    localBuffer[get_local_id(0) * copiesPerWorkItem + i] = (double4)(double)0;
+  barrier(CLK_LOCAL_MEM_FENCE);
+  for (i = 0; i < copiesPerWorkItem; i++)
+    localBuffer[get_local_id(0) * copiesPerWorkItem + i] =
+        src[get_global_id(0) * copiesPerWorkItem + i];
+  barrier(CLK_LOCAL_MEM_FENCE);
+  event_t event;
+  event = async_work_group_copy(
+      (__global double4 *)(dst + copiesPerWorkgroup * get_group_id(0)),
+      (__local const double4 *)localBuffer, (size_t)copiesPerWorkgroup, 0);
+  wait_group_events(1, &event);
+}

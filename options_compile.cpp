@@ -146,6 +146,14 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     case OPT_COMPILE_D:
     case OPT_COMPILE_I:
     case OPT_COMPILE_Werror:
+    case OPT_COMPILE_W_Joined:
+    case OPT_COMPILE_W_Separate:
+      effectiveArgs.push_back((*it)->getAsString(args));
+      break;
+    case OPT_COMPILE_Xclang:
+      effectiveArgs.push_back("-Xclang");
+      effectiveArgs.push_back((*it)->getValue());
+      break;
     case OPT_COMPILE_cl_single_precision_constant:
     case OPT_COMPILE_cl_fp32_correctly_rounded_divide_sqrt:
     case OPT_COMPILE_cl_opt_disable:

@@ -1,0 +1,6 @@
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+__kernel void test_convert_uint2_ulong2(__global ulong2 *src,
+                                        __global uint2 *dest) {
+  size_t i = get_global_id(0);
+  dest[i] = convert_uint2(src[i]);
+}

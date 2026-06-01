@@ -1,0 +1,262 @@
+// Can't test in-memory-headers using lit
+// XFAIL: *
+
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+#include "foo/bar/baz/simple_header103.h"
+#include "foo/bar/baz/simple_header107.h"
+#include "foo/bar/baz/simple_header11.h"
+#include "foo/bar/baz/simple_header111.h"
+#include "foo/bar/baz/simple_header115.h"
+#include "foo/bar/baz/simple_header119.h"
+#include "foo/bar/baz/simple_header123.h"
+#include "foo/bar/baz/simple_header127.h"
+#include "foo/bar/baz/simple_header15.h"
+#include "foo/bar/baz/simple_header19.h"
+#include "foo/bar/baz/simple_header23.h"
+#include "foo/bar/baz/simple_header27.h"
+#include "foo/bar/baz/simple_header3.h"
+#include "foo/bar/baz/simple_header31.h"
+#include "foo/bar/baz/simple_header35.h"
+#include "foo/bar/baz/simple_header39.h"
+#include "foo/bar/baz/simple_header43.h"
+#include "foo/bar/baz/simple_header47.h"
+#include "foo/bar/baz/simple_header51.h"
+#include "foo/bar/baz/simple_header55.h"
+#include "foo/bar/baz/simple_header59.h"
+#include "foo/bar/baz/simple_header63.h"
+#include "foo/bar/baz/simple_header67.h"
+#include "foo/bar/baz/simple_header7.h"
+#include "foo/bar/baz/simple_header71.h"
+#include "foo/bar/baz/simple_header75.h"
+#include "foo/bar/baz/simple_header79.h"
+#include "foo/bar/baz/simple_header83.h"
+#include "foo/bar/baz/simple_header87.h"
+#include "foo/bar/baz/simple_header91.h"
+#include "foo/bar/baz/simple_header95.h"
+#include "foo/bar/baz/simple_header99.h"
+#include "foo/bar/simple_header10.h"
+#include "foo/bar/simple_header102.h"
+#include "foo/bar/simple_header106.h"
+#include "foo/bar/simple_header110.h"
+#include "foo/bar/simple_header114.h"
+#include "foo/bar/simple_header118.h"
+#include "foo/bar/simple_header122.h"
+#include "foo/bar/simple_header126.h"
+#include "foo/bar/simple_header14.h"
+#include "foo/bar/simple_header18.h"
+#include "foo/bar/simple_header2.h"
+#include "foo/bar/simple_header22.h"
+#include "foo/bar/simple_header26.h"
+#include "foo/bar/simple_header30.h"
+#include "foo/bar/simple_header34.h"
+#include "foo/bar/simple_header38.h"
+#include "foo/bar/simple_header42.h"
+#include "foo/bar/simple_header46.h"
+#include "foo/bar/simple_header50.h"
+#include "foo/bar/simple_header54.h"
+#include "foo/bar/simple_header58.h"
+#include "foo/bar/simple_header6.h"
+#include "foo/bar/simple_header62.h"
+#include "foo/bar/simple_header66.h"
+#include "foo/bar/simple_header70.h"
+#include "foo/bar/simple_header74.h"
+#include "foo/bar/simple_header78.h"
+#include "foo/bar/simple_header82.h"
+#include "foo/bar/simple_header86.h"
+#include "foo/bar/simple_header90.h"
+#include "foo/bar/simple_header94.h"
+#include "foo/bar/simple_header98.h"
+#include "foo/simple_header1.h"
+#include "foo/simple_header101.h"
+#include "foo/simple_header105.h"
+#include "foo/simple_header109.h"
+#include "foo/simple_header113.h"
+#include "foo/simple_header117.h"
+#include "foo/simple_header121.h"
+#include "foo/simple_header125.h"
+#include "foo/simple_header13.h"
+#include "foo/simple_header17.h"
+#include "foo/simple_header21.h"
+#include "foo/simple_header25.h"
+#include "foo/simple_header29.h"
+#include "foo/simple_header33.h"
+#include "foo/simple_header37.h"
+#include "foo/simple_header41.h"
+#include "foo/simple_header45.h"
+#include "foo/simple_header49.h"
+#include "foo/simple_header5.h"
+#include "foo/simple_header53.h"
+#include "foo/simple_header57.h"
+#include "foo/simple_header61.h"
+#include "foo/simple_header65.h"
+#include "foo/simple_header69.h"
+#include "foo/simple_header73.h"
+#include "foo/simple_header77.h"
+#include "foo/simple_header81.h"
+#include "foo/simple_header85.h"
+#include "foo/simple_header89.h"
+#include "foo/simple_header9.h"
+#include "foo/simple_header93.h"
+#include "foo/simple_header97.h"
+#include "simple_header0.h"
+#include "simple_header100.h"
+#include "simple_header104.h"
+#include "simple_header108.h"
+#include "simple_header112.h"
+#include "simple_header116.h"
+#include "simple_header12.h"
+#include "simple_header120.h"
+#include "simple_header124.h"
+#include "simple_header16.h"
+#include "simple_header20.h"
+#include "simple_header24.h"
+#include "simple_header28.h"
+#include "simple_header32.h"
+#include "simple_header36.h"
+#include "simple_header4.h"
+#include "simple_header40.h"
+#include "simple_header44.h"
+#include "simple_header48.h"
+#include "simple_header52.h"
+#include "simple_header56.h"
+#include "simple_header60.h"
+#include "simple_header64.h"
+#include "simple_header68.h"
+#include "simple_header72.h"
+#include "simple_header76.h"
+#include "simple_header8.h"
+#include "simple_header80.h"
+#include "simple_header84.h"
+#include "simple_header88.h"
+#include "simple_header92.h"
+#include "simple_header96.h"
+__kernel void CompositeKernel(__global float *src, __global float *dst) {
+  CopyBuffer0(src, dst);
+  CopyBuffer1(src, dst);
+  CopyBuffer2(src, dst);
+  CopyBuffer3(src, dst);
+  CopyBuffer4(src, dst);
+  CopyBuffer5(src, dst);
+  CopyBuffer6(src, dst);
+  CopyBuffer7(src, dst);
+  CopyBuffer8(src, dst);
+  CopyBuffer9(src, dst);
+  CopyBuffer10(src, dst);
+  CopyBuffer11(src, dst);
+  CopyBuffer12(src, dst);
+  CopyBuffer13(src, dst);
+  CopyBuffer14(src, dst);
+  CopyBuffer15(src, dst);
+  CopyBuffer16(src, dst);
+  CopyBuffer17(src, dst);
+  CopyBuffer18(src, dst);
+  CopyBuffer19(src, dst);
+  CopyBuffer20(src, dst);
+  CopyBuffer21(src, dst);
+  CopyBuffer22(src, dst);
+  CopyBuffer23(src, dst);
+  CopyBuffer24(src, dst);
+  CopyBuffer25(src, dst);
+  CopyBuffer26(src, dst);
+  CopyBuffer27(src, dst);
+  CopyBuffer28(src, dst);
+  CopyBuffer29(src, dst);
+  CopyBuffer30(src, dst);
+  CopyBuffer31(src, dst);
+  CopyBuffer32(src, dst);
+  CopyBuffer33(src, dst);
+  CopyBuffer34(src, dst);
+  CopyBuffer35(src, dst);
+  CopyBuffer36(src, dst);
+  CopyBuffer37(src, dst);
+  CopyBuffer38(src, dst);
+  CopyBuffer39(src, dst);
+  CopyBuffer40(src, dst);
+  CopyBuffer41(src, dst);
+  CopyBuffer42(src, dst);
+  CopyBuffer43(src, dst);
+  CopyBuffer44(src, dst);
+  CopyBuffer45(src, dst);
+  CopyBuffer46(src, dst);
+  CopyBuffer47(src, dst);
+  CopyBuffer48(src, dst);
+  CopyBuffer49(src, dst);
+  CopyBuffer50(src, dst);
+  CopyBuffer51(src, dst);
+  CopyBuffer52(src, dst);
+  CopyBuffer53(src, dst);
+  CopyBuffer54(src, dst);
+  CopyBuffer55(src, dst);
+  CopyBuffer56(src, dst);
+  CopyBuffer57(src, dst);
+  CopyBuffer58(src, dst);
+  CopyBuffer59(src, dst);
+  CopyBuffer60(src, dst);
+  CopyBuffer61(src, dst);
+  CopyBuffer62(src, dst);
+  CopyBuffer63(src, dst);
+  CopyBuffer64(src, dst);
+  CopyBuffer65(src, dst);
+  CopyBuffer66(src, dst);
+  CopyBuffer67(src, dst);
+  CopyBuffer68(src, dst);
+  CopyBuffer69(src, dst);
+  CopyBuffer70(src, dst);
+  CopyBuffer71(src, dst);
+  CopyBuffer72(src, dst);
+  CopyBuffer73(src, dst);
+  CopyBuffer74(src, dst);
+  CopyBuffer75(src, dst);
+  CopyBuffer76(src, dst);
+  CopyBuffer77(src, dst);
+  CopyBuffer78(src, dst);
+  CopyBuffer79(src, dst);
+  CopyBuffer80(src, dst);
+  CopyBuffer81(src, dst);
+  CopyBuffer82(src, dst);
+  CopyBuffer83(src, dst);
+  CopyBuffer84(src, dst);
+  CopyBuffer85(src, dst);
+  CopyBuffer86(src, dst);
+  CopyBuffer87(src, dst);
+  CopyBuffer88(src, dst);
+  CopyBuffer89(src, dst);
+  CopyBuffer90(src, dst);
+  CopyBuffer91(src, dst);
+  CopyBuffer92(src, dst);
+  CopyBuffer93(src, dst);
+  CopyBuffer94(src, dst);
+  CopyBuffer95(src, dst);
+  CopyBuffer96(src, dst);
+  CopyBuffer97(src, dst);
+  CopyBuffer98(src, dst);
+  CopyBuffer99(src, dst);
+  CopyBuffer100(src, dst);
+  CopyBuffer101(src, dst);
+  CopyBuffer102(src, dst);
+  CopyBuffer103(src, dst);
+  CopyBuffer104(src, dst);
+  CopyBuffer105(src, dst);
+  CopyBuffer106(src, dst);
+  CopyBuffer107(src, dst);
+  CopyBuffer108(src, dst);
+  CopyBuffer109(src, dst);
+  CopyBuffer110(src, dst);
+  CopyBuffer111(src, dst);
+  CopyBuffer112(src, dst);
+  CopyBuffer113(src, dst);
+  CopyBuffer114(src, dst);
+  CopyBuffer115(src, dst);
+  CopyBuffer116(src, dst);
+  CopyBuffer117(src, dst);
+  CopyBuffer118(src, dst);
+  CopyBuffer119(src, dst);
+  CopyBuffer120(src, dst);
+  CopyBuffer121(src, dst);
+  CopyBuffer122(src, dst);
+  CopyBuffer123(src, dst);
+  CopyBuffer124(src, dst);
+  CopyBuffer125(src, dst);
+  CopyBuffer126(src, dst);
+  CopyBuffer127(src, dst);
+}

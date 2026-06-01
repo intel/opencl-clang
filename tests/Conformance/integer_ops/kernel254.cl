@@ -1,0 +1,10 @@
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+__kernel void sample_test(__global short *sourceA, __global short *sourceB,
+                          __global short *sourceC, __global short *destValues) {
+  int tid = get_global_id(0);
+  short3 sA = vload3(tid, sourceA);
+  short3 sB = vload3(tid, sourceB);
+  short3 sC = vload3(tid, sourceC);
+  short3 dst = clamp(sA, sB, sC);
+  vstore3(dst, tid, destValues);
+}

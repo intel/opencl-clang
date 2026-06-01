@@ -1,0 +1,7 @@
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+
+__kernel void test_fn(__global short4 *src, __global ushort *dst) {
+  int tid = get_global_id(0);
+  ushort3 tmp = as_ushort3(src[tid]);
+  vstore3(tmp, tid, dst);
+}

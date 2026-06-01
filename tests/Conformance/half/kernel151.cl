@@ -1,0 +1,7 @@
+// RUN: %occ-cli %s --cl-options= --cl-device=%cl_device %cfg_path
+__kernel void test(__global float2 *p, __global half *f) {
+  __private float2 data;
+  size_t i = get_global_id(0);
+  data = p[i];
+  vstorea_half2_rte(data, i, f);
+}
