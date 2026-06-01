@@ -372,6 +372,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     llvm::SmallVector<llvm::StringRef, 32> parsedExt;
     clExtRef.split(parsedExt, ',');
     for (auto &ext : parsedExt) {
+      if (ext.empty())
+        continue;
       char sign = ext.front();
       bool enabled = sign != '-';
       llvm::StringRef extName = ext;
