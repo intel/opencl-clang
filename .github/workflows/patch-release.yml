@@ -94,7 +94,7 @@ jobs:
           | tail -1)
           echo "llvm_patch=${LLVM_PATCH}" >> $GITHUB_OUTPUT
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
         with:
             # Setting tag to have format:
