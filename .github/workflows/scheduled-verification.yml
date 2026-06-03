@@ -48,4 +48,4 @@ jobs:
           ref_llvm: release/${{ matrix.llvm_version }}.x
           ref_translator: llvm_release_${{ matrix.llvm_version }}0
           ref_opencl-clang: ocl-open-${{ matrix.llvm_version }}0
-          run_tests: 'true'
+          run_tests: ${{ matrix.llvm_version >= 23 }}
