@@ -303,6 +303,37 @@ add_llvm_library(${TARGET_NAME} SHARED
   )
 
 if (WIN32)
+    # Configure version resource file on Windows.
+    # windows_resource_file should be defined by add_llvm_library and should
+    # contain the full path to a .rc file.
+    # It also might not be defined if this library is built out-of-tree:
+    # let's use our copy of the .rc file from the LLVM source tree in that case.
+    if (NOT DEFINED windows_resource_file)
+        set(windows_resource_file windows_resource_file.rc)
+    endif(NOT DEFINED windows_resource_file)
+
+    set(RC_CHAR_TM "\\231")
+    set(RC_CHAR_R "\\256")
+
+    set(RC_FILE_VERSION "${PRODUCT_VER_MAJOR}.${PRODUCT_VER_MINOR}.${LLVM_VER_MAJOR}.${LLVM_VER_MINOR}")
+    set(RC_PRODUCT_NAME "Intel${RC_CHAR_R} Front-end Library for OpenCL${RC_CHAR_TM} software")
+
+    # Adjust content of the resource file by specifying compile definitions
+    set_property(SOURCE ${windows_resource_file}
+        PROPERTY COMPILE_DEFINITIONS
+            "RC_VERSION_FIELD_1=${PRODUCT_VER_MAJOR}"
+            "RC_VERSION_FIELD_2=${PRODUCT_VER_MINOR}"
+            "RC_VERSION_FIELD_3=${LLVM_VER_MAJOR}"
+            "RC_VERSION_FIELD_4=${LLVM_VER_MINOR}"
+            "RC_COMPANY_NAME=\"Intel Corporation\""
+            "RC_FILE_DESCRIPTION=\"${RC_PRODUCT_NAME}\""
+            "RC_FILE_VERSION=\"${RC_FILE_VERSION}\""
+            "RC_INTERNAL_NAME=\"${TARGET_NAME}\""
+            "RC_ORIGINAL_FILENAME=\"${TARGET_NAME}.dll\""
+            "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
+            "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
+            "RC_COPYRIGHT=\"Copyright (C) 2018 Intel Corporation\"")
+
     # Enable compiler generation of Control Flow Guard security checks.
     target_compile_options(${TARGET_NAME} PUBLIC "/guard:cf")
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
