@@ -1,0 +1,114 @@
+From f898891b80cd0045cab926e937c65d5c8aae9af1 Mon Sep 17 00:00:00 2001
+From: Sven van Haastregt <sven.vanhaastregt@arm.com>
+Date: Tue, 16 Jun 2026 13:35:31 +0200
+Subject: [PATCH] [OpenCL] Add cl_khr_subgroup_rotate builtins
+
+Differential Revision: https://reviews.llvm.org/D124256
+---
+ clang/lib/Headers/opencl-c-base.h     |  1 +
+ clang/lib/Headers/opencl-c.h          | 34 +++++++++++++++++++++++++++
+ clang/lib/Sema/OpenCLBuiltins.td      |  6 +++++
+ clang/test/Headers/opencl-c-header.cl |  6 +++++
+ 4 files changed, 47 insertions(+)
+
+diff --git a/clang/lib/Headers/opencl-c-base.h b/clang/lib/Headers/opencl-c-base.h
+index c230d8b0c492..75d2a969eb80 100644
+--- a/clang/lib/Headers/opencl-c-base.h
++++ b/clang/lib/Headers/opencl-c-base.h
+@@ -21,6 +21,7 @@
+ #define cl_khr_subgroup_shuffle 1
+ #define cl_khr_subgroup_shuffle_relative 1
+ #define cl_khr_subgroup_clustered_reduce 1
++#define cl_khr_subgroup_rotate 1
+ #define cl_khr_extended_bit_ops 1
+ #define cl_khr_integer_dot_product 1
+ #define __opencl_c_integer_dot_product_input_4x8bit 1
+diff --git a/clang/lib/Headers/opencl-c.h b/clang/lib/Headers/opencl-c.h
+index c7bb77716ac4..8c53c2cc9a7a 100644
+--- a/clang/lib/Headers/opencl-c.h
++++ b/clang/lib/Headers/opencl-c.h
+@@ -17508,6 +17508,40 @@ int __ovld __cnfn dot_acc_sat_4x8packed_us_int(uint, uint, int);
+ int __ovld __cnfn dot_acc_sat_4x8packed_su_int(uint, uint, int);
+ #endif // __opencl_c_integer_dot_product_input_4x8bit_packed
+ 
++#if defined(cl_khr_subgroup_rotate)
++char __ovld __conv sub_group_rotate(char, int);
++uchar __ovld __conv sub_group_rotate(uchar, int);
++short __ovld __conv sub_group_rotate(short, int);
++ushort __ovld __conv sub_group_rotate(ushort, int);
++int __ovld __conv sub_group_rotate(int, int);
++uint __ovld __conv sub_group_rotate(uint, int);
++long __ovld __conv sub_group_rotate(long, int);
++ulong __ovld __conv sub_group_rotate(ulong, int);
++float __ovld __conv sub_group_rotate(float, int);
++#if defined(cl_khr_fp64)
++double __ovld __conv sub_group_rotate(double, int);
++#endif // cl_khr_fp64
++#if defined(cl_khr_fp16)
++half __ovld __conv sub_group_rotate(half, int);
++#endif // cl_khr_fp16
++
++char __ovld __conv sub_group_clustered_rotate(char, int, uint);
++uchar __ovld __conv sub_group_clustered_rotate(uchar, int, uint);
++short __ovld __conv sub_group_clustered_rotate(short, int, uint);
++ushort __ovld __conv sub_group_clustered_rotate(ushort, int, uint);
++int __ovld __conv sub_group_clustered_rotate(int, int, uint);
++uint __ovld __conv sub_group_clustered_rotate(uint, int, uint);
++long __ovld __conv sub_group_clustered_rotate(long, int, uint);
++ulong __ovld __conv sub_group_clustered_rotate(ulong, int, uint);
++float __ovld __conv sub_group_clustered_rotate(float, int, uint);
++#if defined(cl_khr_fp64)
++double __ovld __conv sub_group_clustered_rotate(double, int, uint);
++#endif // cl_khr_fp64
++#if defined(cl_khr_fp16)
++half __ovld __conv sub_group_clustered_rotate(half, int, uint);
++#endif // cl_khr_fp16
++#endif // cl_khr_subgroup_rotate
++
+ #if defined(cl_intel_subgroups)
+ // Intel-Specific Sub Group Functions
+ float   __ovld __conv intel_sub_group_shuffle( float  x, uint c );
+diff --git a/clang/lib/Sema/OpenCLBuiltins.td b/clang/lib/Sema/OpenCLBuiltins.td
+index ab3055300572..8dbc1ddaf57e 100644
+--- a/clang/lib/Sema/OpenCLBuiltins.td
++++ b/clang/lib/Sema/OpenCLBuiltins.td
+@@ -1829,6 +1829,12 @@ let Extension = FunctionExtension<"__opencl_c_integer_dot_product_input_4x8bit_p
+   def : Builtin<"dot_acc_sat_4x8packed_su_int", [Int, UInt, UInt, Int], Attr.Const>;
+ }
+ 
++// Section 48.3 - cl_khr_subgroup_rotate
++let Extension = FunctionExtension<"cl_khr_subgroup_rotate"> in {
++  def : Builtin<"sub_group_rotate", [AGenType1, AGenType1, Int], Attr.Convergent>;
++  def : Builtin<"sub_group_clustered_rotate", [AGenType1, AGenType1, Int, UInt], Attr.Convergent>;
++}
++
+ //--------------------------------------------------------------------
+ // Arm extensions.
+ let Extension = ArmIntegerDotProductInt8 in {
+diff --git a/clang/test/Headers/opencl-c-header.cl b/clang/test/Headers/opencl-c-header.cl
+index be185ff8dcf1..455842412fd0 100644
+--- a/clang/test/Headers/opencl-c-header.cl
++++ b/clang/test/Headers/opencl-c-header.cl
+@@ -127,6 +127,9 @@ global atomic_int z = ATOMIC_VAR_INIT(99);
+ #if cl_khr_subgroup_clustered_reduce != 1
+ #error "Incorrectly defined cl_khr_subgroup_clustered_reduce"
+ #endif
++#if cl_khr_subgroup_rotate != 1
++#error "Incorrectly defined cl_khr_subgroup_rotate"
++#endif
+ #if cl_khr_extended_bit_ops != 1
+ #error "Incorrectly defined cl_khr_extended_bit_ops"
+ #endif
+@@ -208,6 +211,9 @@ global atomic_int z = ATOMIC_VAR_INIT(99);
+ #ifdef cl_khr_subgroup_clustered_reduce
+ #error "Incorrect cl_khr_subgroup_clustered_reduce define"
+ #endif
++#ifdef cl_khr_subgroup_rotate
++#error "Incorrect cl_khr_subgroup_rotate define"
++#endif
+ #ifdef cl_khr_extended_bit_ops
+ #error "Incorrect cl_khr_extended_bit_ops define"
+ #endif
+-- 
+2.53.0
+
