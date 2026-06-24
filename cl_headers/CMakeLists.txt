@@ -31,16 +31,16 @@ if(USE_PREBUILT_LLVM)
 else(USE_PREBUILT_LLVM)
     set(OPENCL_HEADERS_DIR "${CLANG_SOURCE_DIR}/lib/Headers")
 endif(USE_PREBUILT_LLVM)
-copy_file(${OPENCL_HEADERS_DIR}/opencl-c.h opencl-c.h)
-copy_file(${OPENCL_HEADERS_DIR}/opencl-c-base.h opencl-c-base.h)
+copy_file(${OPENCL_HEADERS_DIR}/opencl-c-intel.h opencl-c-intel.h)
+copy_file(${OPENCL_HEADERS_DIR}/opencl-c-intel-base.h opencl-c-intel-base.h)
 copy_file(${CMAKE_CURRENT_SOURCE_DIR}/module.modulemap module.modulemap)
 
 add_custom_target (
     opencl.headers.target
     DEPENDS
     module.modulemap
-    opencl-c.h
-    opencl-c-base.h
+    opencl-c-intel.h
+    opencl-c-intel-base.h
 )
 
 function(create_pcm DST MODULE HEADER OPTS DEPS)
@@ -76,19 +76,19 @@ else()
 endif()
 
 set(OPTS -cl-ext=+all,-cl_khr_fp64,-__opencl_c_fp64)
-create_pcm(opencl-c-12-spir.pcm cl12spir opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-20-spir.pcm cl20spir opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-30-spir.pcm cl30spir opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
-create_pcm(opencl-c-12-spir64.pcm cl12spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-20-spir64.pcm cl20spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-30-spir64.pcm cl30spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
+create_pcm(opencl-c-12-spir.pcm cl12spir opencl-c-intel-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-20-spir.pcm cl20spir opencl-c-intel-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-30-spir.pcm cl30spir opencl-c-intel-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
+create_pcm(opencl-c-12-spir64.pcm cl12spir64 opencl-c-intel-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-20-spir64.pcm cl20spir64 opencl-c-intel-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-30-spir64.pcm cl30spir64 opencl-c-intel-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
 set(OPTS -cl-ext=+all)
-create_pcm(opencl-c-12-spir-fp64.pcm cl12spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-20-spir-fp64.pcm cl20spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-30-spir-fp64.pcm cl30spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
-create_pcm(opencl-c-12-spir64-fp64.pcm cl12spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-20-spir64-fp64.pcm cl20spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
-create_pcm(opencl-c-30-spir64-fp64.pcm cl30spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
+create_pcm(opencl-c-12-spir-fp64.pcm cl12spirfp64 opencl-c-intel-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-20-spir-fp64.pcm cl20spirfp64 opencl-c-intel-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-30-spir-fp64.pcm cl30spirfp64 opencl-c-intel-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
+create_pcm(opencl-c-12-spir64-fp64.pcm cl12spir64fp64 opencl-c-intel-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-20-spir64-fp64.pcm cl20spir64fp64 opencl-c-intel-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
+create_pcm(opencl-c-30-spir64-fp64.pcm cl30spir64fp64 opencl-c-intel-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
 
 add_custom_target (
     opencl.pcm.target
@@ -120,11 +120,11 @@ endfunction(pack_to_obj)
 if(WIN32)
     list(APPEND CL_HEADERS_SRC OpenCL.rc)
 else()
-    pack_to_obj(opencl-c.h           opencl-c.h.cpp           "PCM_OPENCL_C_H")
-    pack_to_obj(opencl-c-base.h      opencl-c-base.h.cpp      "PCM_OPENCL_C_BASE_H")
+    pack_to_obj(opencl-c-intel.h           opencl-c-intel.h.cpp           "PCM_OPENCL_C_H")
+    pack_to_obj(opencl-c-intel-base.h      opencl-c-intel-base.h.cpp      "PCM_OPENCL_C_BASE_H")
     list(APPEND CL_HEADERS_SRC
-      opencl-c.h.cpp
-      opencl-c-base.h.cpp
+      opencl-c-intel.h.cpp
+      opencl-c-intel-base.h.cpp
       opencl-c-12-spir.mod.cpp
       opencl-c-20-spir.mod.cpp
       opencl-c-30-spir.mod.cpp
@@ -163,8 +163,8 @@ add_library(${CL_HEADERS_LIB} OBJECT
 
 add_dependencies(${CL_HEADERS_LIB} opencl.pcm.target)
 install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/opencl-c.h
-    ${CMAKE_CURRENT_BINARY_DIR}/opencl-c-base.h
+    ${CMAKE_CURRENT_BINARY_DIR}/opencl-c-intel.h
+    ${CMAKE_CURRENT_BINARY_DIR}/opencl-c-intel-base.h
     ${CMAKE_CURRENT_BINARY_DIR}/module.modulemap
     DESTINATION include/cclang
 )
