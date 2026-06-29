@@ -40,6 +40,6 @@ jobs:
       - name: Run build-opencl-clang action
         uses: ./.github/actions/build-opencl-clang
         with:
-          ref_llvm: main
-          ref_translator: main
+          ref_llvm: release/22.x
+          ref_translator: llvm_release_220
           ref_opencl-clang: ${{ github.ref }}
