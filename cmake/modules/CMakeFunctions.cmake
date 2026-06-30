@@ -138,9 +138,23 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
                 execute_process( # Apply the patch
                     COMMAND ${GIT_EXECUTABLE} am --3way --keep-non-patch --ignore-whitespace -C0 ${patch}
                     WORKING_DIRECTORY ${repo_dir}
+                    RESULT_VARIABLE ret_apply_patch
                     OUTPUT_VARIABLE patching_log
+                    ERROR_VARIABLE  patching_err
                 )
-                message(STATUS "[OPENCL-CLANG] Not present - ${patching_log}")
+                message(STATUS "[OPENCL-CLANG] Applying ${patch}\n${patching_log}")
+                if(ret_apply_patch)
+                    execute_process( # Abort the half-applied am so the repo is left in a sane state
+                        COMMAND ${GIT_EXECUTABLE} am --abort
+                        WORKING_DIRECTORY ${repo_dir}
+                        OUTPUT_QUIET ERROR_QUIET
+                    )
+                    message(FATAL_ERROR
+                        "[OPENCL-CLANG] Failed to apply patch ${patch}\n"
+                        "git am exit code: ${ret_apply_patch}\n"
+                        "stdout:\n${patching_log}\n"
+                        "stderr:\n${patching_err}")
+                endif()
             endif()
         endforeach(patch)
     elseif(patches_needed EQUAL 0) # The target branch already exists
