@@ -1,6 +1,6 @@
-From 52e00058960e90b1ccadd07b95ca05d13e1f1318 Mon Sep 17 00:00:00 2001
+From a043260b2e8431eb2fcf08dbdf44b21e0b34618a Mon Sep 17 00:00:00 2001
 From: Wenju He <wenju.he@intel.com>
-Date: Tue, 23 Jun 2026 02:41:44 +0200
+Date: Tue, 30 Jun 2026 00:43:54 +0200
 Subject: [PATCH] [OpenCL] Warn if filter_mode is linear in read_image{i|ui}
  (#204086)
 
@@ -15,18 +15,16 @@ Address https://github.com/intel/compute-runtime/issues/379#issuecomment-4592083
 Assisted-by: Claude Sonnet 4.6
 ---
  .../clang/Basic/DiagnosticSemaKinds.td        |  2 +
- clang/include/clang/Sema/SemaOpenCL.h         |  2 +
- clang/lib/Sema/SemaExpr.cpp                   |  7 ++
- clang/lib/Sema/SemaOpenCL.cpp                 | 48 +++++++++++
+ clang/lib/Sema/SemaExpr.cpp                   | 55 +++++++++++++
  .../read-image-integer-linear-filter.cl       | 80 +++++++++++++++++++
- 5 files changed, 139 insertions(+)
+ 3 files changed, 137 insertions(+)
  create mode 100644 clang/test/SemaOpenCL/read-image-integer-linear-filter.cl
 
 diff --git a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
-index 922c74b0857f..cb5f124c609c 100644
+index ef8c111b1d8c..90bdbea20823 100644
 --- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
 +++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
-@@ -11838,6 +11838,8 @@ def err_sampler_initializer_not_integer : Error<
+@@ -10620,6 +10620,8 @@ def err_sampler_initializer_not_integer : Error<
    "sampler_t initialization requires 32-bit integer, not %0">;
  def warn_sampler_initializer_invalid_bits : Warning<
    "sampler initializer has invalid %0 bits">, InGroup<SpirCompat>, DefaultIgnore;
@@ -35,63 +33,19 @@ index 922c74b0857f..cb5f124c609c 100644
  def err_sampler_argument_required : Error<
    "sampler_t variable required - got %0">;
  def err_wrong_sampler_addressspace: Error<
-diff --git a/clang/include/clang/Sema/SemaOpenCL.h b/clang/include/clang/Sema/SemaOpenCL.h
-index 04b2b617fb12..51c2e1703b50 100644
---- a/clang/include/clang/Sema/SemaOpenCL.h
-+++ b/clang/include/clang/Sema/SemaOpenCL.h
-@@ -100,6 +100,8 @@ public:
-   bool checkBuiltinKernelWorkGroupSize(CallExpr *TheCall);
- 
-   bool checkBuiltinNDRangeAndBlock(CallExpr *TheCall);
-+
-+  void checkBuiltinReadImage(FunctionDecl *FDecl, CallExpr *Call);
- };
- 
- } // namespace clang
 diff --git a/clang/lib/Sema/SemaExpr.cpp b/clang/lib/Sema/SemaExpr.cpp
-index 25df8fda7dc5..7c868d176e80 100644
+index 9ac806d2e8e8..e1b4c5147c73 100644
 --- a/clang/lib/Sema/SemaExpr.cpp
 +++ b/clang/lib/Sema/SemaExpr.cpp
-@@ -59,6 +59,7 @@
- #include "clang/Sema/SemaFixItUtils.h"
- #include "clang/Sema/SemaHLSL.h"
- #include "clang/Sema/SemaObjC.h"
-+#include "clang/Sema/SemaOpenCL.h"
- #include "clang/Sema/SemaOpenMP.h"
- #include "clang/Sema/SemaPseudoObject.h"
- #include "clang/Sema/Template.h"
-@@ -7287,6 +7288,12 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
-     }
-   }
- 
-+  // Check read_image{i|ui} sampler argument before ConvertArgumentsForCall
-+  // replaces sampler DeclRefExprs with their integer initializers.
-+  if (getLangOpts().OpenCL && FDecl) {
-+    OpenCL().checkBuiltinReadImage(FDecl, TheCall);
-+  }
-+
-   if (Proto) {
-     if (ConvertArgumentsForCall(TheCall, Fn, FDecl, Proto, Args, RParenLoc,
-                                 IsExecConfig))
-diff --git a/clang/lib/Sema/SemaOpenCL.cpp b/clang/lib/Sema/SemaOpenCL.cpp
-index f11a40e3964f..4151972c6747 100644
---- a/clang/lib/Sema/SemaOpenCL.cpp
-+++ b/clang/lib/Sema/SemaOpenCL.cpp
-@@ -12,7 +12,9 @@
- 
- #include "clang/Sema/SemaOpenCL.h"
- #include "clang/AST/Attr.h"
-+#include "clang/AST/Decl.h"
- #include "clang/AST/DeclBase.h"
-+#include "clang/AST/Expr.h"
- #include "clang/Basic/DiagnosticSema.h"
- #include "clang/Sema/ParsedAttr.h"
- #include "clang/Sema/Sema.h"
-@@ -576,4 +578,50 @@ bool SemaOpenCL::checkBuiltinToAddr(unsigned BuiltinID, CallExpr *Call) {
-   return false;
+@@ -7443,6 +7443,56 @@ ExprResult Sema::ActOnConvertVectorExpr(Expr *E, ParsedType ParsedDestTy,
+   return SemaConvertVectorExpr(E, TInfo, BuiltinLoc, RParenLoc);
  }
  
-+void SemaOpenCL::checkBuiltinReadImage(FunctionDecl *FDecl, CallExpr *Call) {
++// Warn if read_imagei/read_imageui is called with a sampler that has
++// CLK_FILTER_LINEAR set.  Per the OpenCL spec, those functions only support
++// nearest filtering; using linear produces undefined results.
++static void checkReadImageIntegerSampler(Sema &S, FunctionDecl *FDecl,
++                                         CallExpr *Call) {
 +  IdentifierInfo *II = FDecl->getIdentifier();
 +  if (!II)
 +    return;
@@ -125,7 +79,7 @@ index f11a40e3964f..4151972c6747 100644
 +    return;
 +
 +  Expr::EvalResult EVResult;
-+  if (!IntExpr->EvaluateAsInt(EVResult, getASTContext()))
++  if (!IntExpr->EvaluateAsInt(EVResult, S.getASTContext()))
 +    return;
 +
 +  uint64_t SamplerValue = EVResult.Val.getInt().getLimitedValue();
@@ -133,11 +87,25 @@ index f11a40e3964f..4151972c6747 100644
 +  constexpr unsigned FilterModeMask = 0x30u;
 +  constexpr unsigned FilterModeLinear = 0x20u;
 +  if ((SamplerValue & FilterModeMask) == FilterModeLinear)
-+    Diag(SamplerArg->getExprLoc(), diag::warn_sampler_argument_invalid_filter)
++    S.Diag(SamplerArg->getExprLoc(), diag::warn_sampler_argument_invalid_filter)
 +        << Name << SamplerArg->getSourceRange();
 +}
 +
- } // namespace clang
+ /// BuildResolvedCallExpr - Build a call to a resolved expression,
+ /// i.e. an expression not of \p OverloadTy.  The expression should
+ /// unary-convert to an expression of function-pointer or
+@@ -7644,6 +7694,11 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
+     }
+   }
+ 
++  // Check read_image{i|ui} sampler argument before ConvertArgumentsForCall
++  // replaces sampler DeclRefExprs with their integer initializers.
++  if (getLangOpts().OpenCL && FDecl)
++    checkReadImageIntegerSampler(*this, FDecl, TheCall);
++
+   if (Proto) {
+     if (ConvertArgumentsForCall(TheCall, Fn, FDecl, Proto, Args, RParenLoc,
+                                 IsExecConfig))
 diff --git a/clang/test/SemaOpenCL/read-image-integer-linear-filter.cl b/clang/test/SemaOpenCL/read-image-integer-linear-filter.cl
 new file mode 100644
 index 000000000000..a90f689a307d
