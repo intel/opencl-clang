@@ -1,4 +1,4 @@
-From 52e00058960e90b1ccadd07b95ca05d13e1f1318 Mon Sep 17 00:00:00 2001
+From 11d1cf2fd97ae5ace500094a3ea101561b0c65f5 Mon Sep 17 00:00:00 2001
 From: Wenju He <wenju.he@intel.com>
 Date: Tue, 23 Jun 2026 02:41:44 +0200
 Subject: [PATCH] [OpenCL] Warn if filter_mode is linear in read_image{i|ui}
@@ -23,10 +23,10 @@ Assisted-by: Claude Sonnet 4.6
  create mode 100644 clang/test/SemaOpenCL/read-image-integer-linear-filter.cl
 
 diff --git a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
-index 922c74b0857f..cb5f124c609c 100644
+index 7180447e250c..16a686611797 100644
 --- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
 +++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
-@@ -11838,6 +11838,8 @@ def err_sampler_initializer_not_integer : Error<
+@@ -10981,6 +10981,8 @@ def err_sampler_initializer_not_integer : Error<
    "sampler_t initialization requires 32-bit integer, not %0">;
  def warn_sampler_initializer_invalid_bits : Warning<
    "sampler initializer has invalid %0 bits">, InGroup<SpirCompat>, DefaultIgnore;
@@ -49,18 +49,18 @@ index 04b2b617fb12..51c2e1703b50 100644
  
  } // namespace clang
 diff --git a/clang/lib/Sema/SemaExpr.cpp b/clang/lib/Sema/SemaExpr.cpp
-index 25df8fda7dc5..7c868d176e80 100644
+index 2aaeb7a69b51..5f6c9fac9d0e 100644
 --- a/clang/lib/Sema/SemaExpr.cpp
 +++ b/clang/lib/Sema/SemaExpr.cpp
-@@ -59,6 +59,7 @@
- #include "clang/Sema/SemaFixItUtils.h"
+@@ -55,6 +55,7 @@
  #include "clang/Sema/SemaHLSL.h"
+ #include "clang/Sema/SemaInternal.h"
  #include "clang/Sema/SemaObjC.h"
 +#include "clang/Sema/SemaOpenCL.h"
  #include "clang/Sema/SemaOpenMP.h"
  #include "clang/Sema/SemaPseudoObject.h"
  #include "clang/Sema/Template.h"
-@@ -7287,6 +7288,12 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
+@@ -6923,6 +6924,12 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
      }
    }
  
@@ -74,7 +74,7 @@ index 25df8fda7dc5..7c868d176e80 100644
      if (ConvertArgumentsForCall(TheCall, Fn, FDecl, Proto, Args, RParenLoc,
                                  IsExecConfig))
 diff --git a/clang/lib/Sema/SemaOpenCL.cpp b/clang/lib/Sema/SemaOpenCL.cpp
-index f11a40e3964f..4151972c6747 100644
+index 9f746fffd34d..0e73e9cdc1e1 100644
 --- a/clang/lib/Sema/SemaOpenCL.cpp
 +++ b/clang/lib/Sema/SemaOpenCL.cpp
 @@ -12,7 +12,9 @@
@@ -87,7 +87,7 @@ index f11a40e3964f..4151972c6747 100644
  #include "clang/Basic/DiagnosticSema.h"
  #include "clang/Sema/ParsedAttr.h"
  #include "clang/Sema/Sema.h"
-@@ -576,4 +578,50 @@ bool SemaOpenCL::checkBuiltinToAddr(unsigned BuiltinID, CallExpr *Call) {
+@@ -575,4 +577,50 @@ bool SemaOpenCL::checkBuiltinToAddr(unsigned BuiltinID, CallExpr *Call) {
    return false;
  }
  
