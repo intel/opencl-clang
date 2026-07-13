@@ -206,6 +206,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       iCLStdSet = 300;
       effectiveArgs.push_back((*it)->getAsString(args));
       break;
+    case OPT_COMPILE_cl_std_CL3_1:
+      iCLStdSet = 310;
+      effectiveArgs.push_back((*it)->getAsString(args));
+      break;
     case OPT_COMPILE_cl_std_CLCxx:
     case OPT_COMPILE_cl_std_CLCxx1_0:
       iCLStdSet = 200;
@@ -429,6 +433,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
         else if (iCLStdSet == 300)
           effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir64.pcm");
+        else if (iCLStdSet == 310)
+          effectiveArgs.push_back("-fmodule-file=opencl-c-31-spir64.pcm");
       } else if (szTriple.find("spir") != szTriple.npos) {
         if (iCLStdSet <= 120)
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
@@ -436,6 +442,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
         else if (iCLStdSet == 300)
           effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir.pcm");
+        else if (iCLStdSet == 310)
+          effectiveArgs.push_back("-fmodule-file=opencl-c-31-spir.pcm");
       }
     } else {
       if (szTriple.find("spir64") != szTriple.npos) {
@@ -445,6 +453,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64-fp64.pcm");
         else if (iCLStdSet == 300)
           effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir64-fp64.pcm");
+        else if (iCLStdSet == 310)
+          effectiveArgs.push_back("-fmodule-file=opencl-c-31-spir64-fp64.pcm");
       } else if (szTriple.find("spir") != szTriple.npos) {
         if (iCLStdSet <= 120)
           effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir-fp64.pcm");
@@ -452,6 +462,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
           effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir-fp64.pcm");
         else if (iCLStdSet == 300)
           effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir-fp64.pcm");
+        else if (iCLStdSet == 310)
+          effectiveArgs.push_back("-fmodule-file=opencl-c-31-spir-fp64.pcm");
       }
     }
   }
