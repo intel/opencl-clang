@@ -34,6 +34,7 @@ def cl_std_CL1_1: Flag<["-"], "cl-std=CL1.1">;
 def cl_std_CL1_2: Flag<["-"], "cl-std=CL1.2">;
 def cl_std_CL2_0: Flag<["-"], "cl-std=CL2.0">;
 def cl_std_CL3_0: Flag<["-"], "cl-std=CL3.0">;
+def cl_std_CL3_1: Flag<["-"], "cl-std=CL3.1">;
 def cl_std_CLCxx: Flag<["-"], "cl-std=CLC++">;
 def cl_std_CLCxx1_0: Flag<["-"], "cl-std=CLC++1.0">;
 def cl_std_CLCxx2021: Flag<["-"], "cl-std=CLC++2021">;

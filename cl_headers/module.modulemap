@@ -13,6 +13,11 @@ module cl30spir {
   header "opencl-c-base.h"
   export *
 }
+module cl31spir {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
 module cl12spir64 {
   header "opencl-c.h"
   header "opencl-c-base.h"
@@ -24,6 +29,11 @@ module cl20spir64 {
   export *
 }
 module cl30spir64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl31spir64 {
   header "opencl-c.h"
   header "opencl-c-base.h"
   export *
@@ -43,6 +53,11 @@ module cl30spirfp64 {
   header "opencl-c-base.h"
   export *
 }
+module cl31spirfp64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
 module cl12spir64fp64 {
   header "opencl-c.h"
   header "opencl-c-base.h"
@@ -54,6 +69,11 @@ module cl20spir64fp64 {
   export *
 }
 module cl30spir64fp64 {
+  header "opencl-c.h"
+  header "opencl-c-base.h"
+  export *
+}
+module cl31spir64fp64 {
   header "opencl-c.h"
   header "opencl-c-base.h"
   export *
