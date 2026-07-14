@@ -1,7 +1,7 @@
 From 468fac4676ffba39c2f0b46be16b638493638762 Mon Sep 17 00:00:00 2001
 From: Wenju He <wenju.he@intel.com>
 Date: Tue, 14 Jul 2026 13:08:09 +0200
-Subject: [PATCH] Fix extensions checks for 3.1 (#208370)
+Subject: [PATCH] [OpenCL] Fix extensions checks for 3.1 (#208370)
 
 These extension checks apply to 3.1 as well.
 This fix kernel build fails when OpenCL 3.1 is enabled in

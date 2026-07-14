@@ -1,7 +1,7 @@
 From 70a2b308311a8b3092adc9bbf60e085e50a6d3c1 Mon Sep 17 00:00:00 2001
 From: Wenju He <wenju.he@intel.com>
 Date: Tue, 14 Jul 2026 13:07:36 +0200
-Subject: [PATCH] Add OpenCL 3.1 language version (#204043)
+Subject: [PATCH] [Clang][OpenCL] Add OpenCL 3.1 language version (#204043)
 
 OpenCL 3.1 was recently added to spec in
 https://github.com/KhronosGroup/OpenCL-Docs/commit/9fff1a87a975
