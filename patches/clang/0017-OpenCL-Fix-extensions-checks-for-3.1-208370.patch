@@ -1,0 +1,255 @@
+From e8cfa454fe0fcf4897fbd6889d2207f59eeb0960 Mon Sep 17 00:00:00 2001
+From: Wenju He <wenju.he@intel.com>
+Date: Tue, 14 Jul 2026 14:21:00 +0200
+Subject: [PATCH] [OpenCL] Fix extensions checks for 3.1 (#208370)
+
+These extension checks apply to 3.1 as well.
+This fix kernel build fails when OpenCL 3.1 is enabled in
+https://github.com/intel/opencl-clang/pull/752
+
+Assisted-by: Claude
+---
+ clang/include/clang/Basic/OpenCLOptions.h  |  2 +-
+ clang/lib/Sema/SemaDeclAttr.cpp            |  2 +-
+ clang/lib/Sema/SemaType.cpp                |  4 +--
+ clang/test/SemaOpenCL/access-qualifier.cl  | 12 +++++----
+ clang/test/SemaOpenCL/fp64-fp16-options.cl |  7 +++++
+ clang/test/SemaOpenCL/storageclass.cl      | 30 ++++++++++++----------
+ clang/test/SemaOpenCL/unsupported-image.cl |  3 +++
+ 7 files changed, 38 insertions(+), 22 deletions(-)
+
+diff --git a/clang/include/clang/Basic/OpenCLOptions.h b/clang/include/clang/Basic/OpenCLOptions.h
+index 3771e64dfd8d..88844543c5a3 100644
+--- a/clang/include/clang/Basic/OpenCLOptions.h
++++ b/clang/include/clang/Basic/OpenCLOptions.h
+@@ -83,7 +83,7 @@ public:
+   // C++ for OpenCL inherits rule from OpenCL C v2.0.
+   bool areProgramScopeVariablesSupported(const LangOptions &Opts) const {
+     return Opts.getOpenCLCompatibleVersion() == 200 ||
+-           (Opts.getOpenCLCompatibleVersion() == 300 &&
++           (Opts.getOpenCLCompatibleVersion() >= 300 &&
+             isSupported("__opencl_c_program_scope_global_variables", Opts));
+   }
+ 
+diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
+index 2d60d2b03169..7283615b01fe 100644
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -7822,7 +7822,7 @@ static void handleOpenCLAccessAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+     if (AL.getAttrName()->getName().contains("read_write")) {
+       bool ReadWriteImagesUnsupported =
+           (S.getLangOpts().getOpenCLCompatibleVersion() < 200) ||
+-          (S.getLangOpts().getOpenCLCompatibleVersion() == 300 &&
++          (S.getLangOpts().getOpenCLCompatibleVersion() >= 300 &&
+            !S.getOpenCLOptions().isSupported("__opencl_c_read_write_images", S.getLangOpts()) &&
+            !S.getASTContext().getTargetInfo().getTriple().isSPIR() &&
+            !S.getASTContext().getTargetInfo().getTriple().isSPIRV());
+diff --git a/clang/lib/Sema/SemaType.cpp b/clang/lib/Sema/SemaType.cpp
+index 7eb74e9f9e35..2ca2079ca77c 100644
+--- a/clang/lib/Sema/SemaType.cpp
++++ b/clang/lib/Sema/SemaType.cpp
+@@ -1532,7 +1532,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
+       if (!S.getOpenCLOptions().isSupported("cl_khr_fp64", S.getLangOpts()))
+         S.Diag(DS.getTypeSpecTypeLoc(), diag::err_opencl_requires_extension)
+             << 0 << Result
+-            << (S.getLangOpts().getOpenCLCompatibleVersion() == 300
++            << (S.getLangOpts().getOpenCLCompatibleVersion() >= 300
+                     ? "cl_khr_fp64 and __opencl_c_fp64"
+                     : "cl_khr_fp64");
+       else if (!S.getOpenCLOptions().isAvailableOption("cl_khr_fp64", S.getLangOpts()))
+@@ -1733,7 +1733,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
+   if (S.getLangOpts().OpenCL) {
+     const auto &OpenCLOptions = S.getOpenCLOptions();
+     bool IsOpenCLC30Compatible =
+-        S.getLangOpts().getOpenCLCompatibleVersion() == 300;
++        S.getLangOpts().getOpenCLCompatibleVersion() >= 300;
+     // OpenCL C v3.0 s6.3.3 - OpenCL image types require __opencl_c_images
+     // support.
+     // OpenCL C v3.0 s6.2.1 - OpenCL 3d image write types requires support
+diff --git a/clang/test/SemaOpenCL/access-qualifier.cl b/clang/test/SemaOpenCL/access-qualifier.cl
+index 726253c0b1a2..3ba6fefc5456 100644
+--- a/clang/test/SemaOpenCL/access-qualifier.cl
++++ b/clang/test/SemaOpenCL/access-qualifier.cl
+@@ -2,6 +2,8 @@
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-std=CL2.0 %s
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-std=CL3.0 %s
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-std=CL3.0 %s -cl-ext=-__opencl_c_read_write_images
++// RUN: %clang_cc1 -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-std=CL3.1 %s
++// RUN: %clang_cc1 -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-std=CL3.1 %s -cl-ext=-__opencl_c_read_write_images
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-std=clc++2021 %s
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-std=clc++2021 %s -cl-ext=-__opencl_c_read_write_images
+ 
+@@ -10,7 +12,7 @@ typedef image1d_t img1d_ro_default; // expected-note {{previously declared 'read
+ typedef write_only image1d_t img1d_wo; // expected-note {{previously declared 'write_only' here}}
+ typedef read_only image1d_t img1d_ro;
+ 
+-#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300) && defined(__opencl_c_read_write_images))
++#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300) && defined(__opencl_c_read_write_images))
+ typedef read_write image1d_t img1d_rw;
+ #endif
+ 
+@@ -33,7 +35,7 @@ void myRead(read_only image1d_t);
+ // expected-note@-4 {{candidate function not viable: no known conversion from '__private img1d_wo' (aka '__private __write_only image1d_t') to '__private __read_only image1d_t' for 1st argument}}
+ #endif
+ 
+-#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300) && defined(__opencl_c_read_write_images))
++#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300) && defined(__opencl_c_read_write_images))
+ void myReadWrite(read_write image1d_t);
+ #else
+ void myReadWrite(read_write image1d_t); // expected-error {{access qualifier 'read_write' can not be used for '__read_write image1d_t' prior to OpenCL C version 2.0 or in version 3.0 and without __opencl_c_read_write_images feature}}
+@@ -62,7 +64,7 @@ kernel void k3(img1d_wo img) {
+   myWrite(img);
+ }
+ 
+-#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300) && defined(__opencl_c_read_write_images))
++#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300) && defined(__opencl_c_read_write_images))
+ kernel void k4(img1d_rw img) {
+   myReadWrite(img);
+ }
+@@ -93,7 +95,7 @@ kernel void k11(read_only write_only image1d_t i){} // expected-error{{multiple
+ 
+ kernel void k12(read_only read_only image1d_t i){} // expected-warning {{duplicate 'read_only' declaration specifier}}
+ 
+-#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300) && defined(__opencl_c_read_write_images))
++#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300) && defined(__opencl_c_read_write_images))
+ kernel void k13(read_write pipe int i){} // expected-error{{access qualifier 'read_write' can not be used for 'read_only pipe int'}}
+ #else
+ kernel void k13(__read_write image1d_t i){} // expected-error{{access qualifier '__read_write' can not be used for '__read_write image1d_t' prior to OpenCL C version 2.0 or in version 3.0 and without __opencl_c_read_write_images feature}}
+@@ -103,7 +105,7 @@ kernel void k13(__read_write image1d_t i){} // expected-error{{access qualifier
+ kernel void test_image3d_wo(write_only image3d_t img) {} // expected-error {{use of type '__write_only image3d_t' requires cl_khr_3d_image_writes support}}
+ #endif
+ 
+-#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300) && defined(__opencl_c_read_write_images))
++#if (__OPENCL_C_VERSION__ == 200) || ((__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300) && defined(__opencl_c_read_write_images))
+ kernel void read_write_twice_typedef(read_write img1d_rw i){} // expected-warning {{duplicate 'read_write' declaration specifier}}
+ // expected-note@-94 {{previously declared 'read_write' here}}
+ #endif
+diff --git a/clang/test/SemaOpenCL/fp64-fp16-options.cl b/clang/test/SemaOpenCL/fp64-fp16-options.cl
+index cee430ca9ef0..34610c8b4f83 100644
+--- a/clang/test/SemaOpenCL/fp64-fp16-options.cl
++++ b/clang/test/SemaOpenCL/fp64-fp16-options.cl
+@@ -6,6 +6,7 @@
+ // Test with a target not supporting fp64.
+ // RUN: %clang_cc1 %s -cl-std=CL1.0 -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -DNOFP64 -DNOFP16
+ // RUN: %clang_cc1 -cl-std=CL3.0 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -DNOFP64 -DNOFP16
++// RUN: %clang_cc1 -cl-std=CL3.1 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -DNOFP64 -DNOFP16
+ // RUN: %clang_cc1 -cl-std=clc++2021 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -DNOFP64 -DNOFP16
+ 
+ // Test with some extensions enabled or disabled by cmd-line args
+@@ -21,6 +22,9 @@
+ // RUN: %clang_cc1 -cl-std=CL3.0 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-all -DNOFP64 -DNOFP16
+ // RUN: %clang_cc1 -cl-std=CL3.0 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -cl-ext=+all -DFP64
+ // RUN: %clang_cc1 -cl-std=CL3.0 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -cl-ext=+all,-__opencl_c_fp64,-cl_khr_fp64 -DNOFP64
++// RUN: %clang_cc1 -cl-std=CL3.1 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-all -DNOFP64 -DNOFP16
++// RUN: %clang_cc1 -cl-std=CL3.1 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -cl-ext=+all -DFP64
++// RUN: %clang_cc1 -cl-std=CL3.1 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -cl-ext=+all,-__opencl_c_fp64,-cl_khr_fp64 -DNOFP64
+ // RUN: %clang_cc1 -cl-std=clc++2021 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-all -DNOFP64 -DNOFP16
+ // RUN: %clang_cc1 -cl-std=clc++2021 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -cl-ext=+all -DFP64
+ // RUN: %clang_cc1 -cl-std=clc++2021 %s -triple r600-unknown-unknown -target-cpu r600 -verify -pedantic -fsyntax-only -cl-ext=+all,-__opencl_c_fp64,-cl_khr_fp64 -DNOFP64
+@@ -33,6 +37,9 @@
+ // RUN: %clang_cc1 -cl-std=CL3.0 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,-cl_khr_fp64 -cl-ext=+__opencl_c_fp64,+cl_khr_fp64 -DFP64
+ // RUN: %clang_cc1 -cl-std=CL3.0 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,+__opencl_c_fp64,+cl_khr_fp64 -DFP64
+ // RUN: %clang_cc1 -cl-std=CL3.0 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,-cl_khr_fp64 -DNOFP64
++// RUN: %clang_cc1 -cl-std=CL3.1 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,-cl_khr_fp64 -cl-ext=+__opencl_c_fp64,+cl_khr_fp64 -DFP64
++// RUN: %clang_cc1 -cl-std=CL3.1 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,+__opencl_c_fp64,+cl_khr_fp64 -DFP64
++// RUN: %clang_cc1 -cl-std=CL3.1 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,-cl_khr_fp64 -DNOFP64
+ // RUN: %clang_cc1 -cl-std=clc++2021 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,-cl_khr_fp64 -cl-ext=+__opencl_c_fp64,+cl_khr_fp64 -DFP64
+ // RUN: %clang_cc1 -cl-std=clc++2021 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,+__opencl_c_fp64,+cl_khr_fp64 -DFP64
+ // RUN: %clang_cc1 -cl-std=clc++2021 %s -triple spir-unknown-unknown -verify -pedantic -fsyntax-only -cl-ext=-__opencl_c_fp64,-cl_khr_fp64 -DNOFP64
+diff --git a/clang/test/SemaOpenCL/storageclass.cl b/clang/test/SemaOpenCL/storageclass.cl
+index 827c4fa83993..89030e5cbf1b 100644
+--- a/clang/test/SemaOpenCL/storageclass.cl
++++ b/clang/test/SemaOpenCL/storageclass.cl
+@@ -3,6 +3,10 @@
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0 -cl-ext=-all,+__opencl_c_program_scope_global_variables
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0 -cl-ext=-all,+__opencl_c_generic_address_space
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.0 -cl-ext=-all,+__opencl_c_program_scope_global_variables,+__opencl_c_generic_address_space
++// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.1 -cl-ext=-all
++// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.1 -cl-ext=-all,+__opencl_c_program_scope_global_variables
++// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.1 -cl-ext=-all,+__opencl_c_generic_address_space
++// RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=CL3.1 -cl-ext=-all,+__opencl_c_program_scope_global_variables,+__opencl_c_generic_address_space
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=clc++2021 -cl-ext=-all
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=clc++2021 -cl-ext=-all,+__opencl_c_program_scope_global_variables
+ // RUN: %clang_cc1 %s -verify -pedantic -fsyntax-only -cl-std=clc++2021 -cl-ext=-all,+__opencl_c_generic_address_space
+@@ -50,10 +54,10 @@ static generic float g_generic_static_var = 0;
+ #if (defined(__OPENCL_C_VERSION__) && __OPENCL_C_VERSION__ < 300)
+ // expected-error@-2 {{OpenCL C version 1.2 does not support the 'generic' type qualifier}}
+ // expected-error@-3 {{program scope variable must reside in constant address space}}
+-#elif (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300)
++#elif (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300)
+ #if !defined(__opencl_c_generic_address_space)
+-#if (__OPENCL_C_VERSION__ == 300)
+-// expected-error@-7 {{OpenCL C version 3.0 does not support the 'generic' type qualifier}}
++#if (__OPENCL_C_VERSION__ >= 300)
++// expected-error-re@-7 {{OpenCL C version {{3.0|3.1}} does not support the 'generic' type qualifier}}
+ #elif (__OPENCL_CPP_VERSION__ == 202100)
+ // expected-error@-9 {{C++ for OpenCL version 2021 does not support the 'generic' type qualifier}}
+ #endif
+@@ -96,10 +100,10 @@ extern generic float g_generic_extern_var;
+ #if (defined(__OPENCL_C_VERSION__) && __OPENCL_C_VERSION__ < 300)
+ // expected-error@-2 {{OpenCL C version 1.2 does not support the 'generic' type qualifier}}
+ // expected-error@-3 {{extern variable must reside in constant address space}}
+-#elif (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300)
++#elif (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300)
+ #if !defined(__opencl_c_generic_address_space)
+-#if (__OPENCL_C_VERSION__ == 300)
+-// expected-error@-7 {{OpenCL C version 3.0 does not support the 'generic' type qualifier}}
++#if (__OPENCL_C_VERSION__ >= 300)
++// expected-error-re@-7 {{OpenCL C version {{3.0|3.1}} does not support the 'generic' type qualifier}}
+ #elif (__OPENCL_CPP_VERSION__ == 202100)
+ // expected-error@-9 {{C++ for OpenCL version 2021 does not support the 'generic' type qualifier}}
+ #endif
+@@ -138,7 +142,7 @@ void kernel foo(int x) {
+ #if (__OPENCL_CPP_VERSION__ == 202100)
+ // expected-error@-2{{C++ for OpenCL version 2021 does not support the 'auto' storage class specifier}}
+ #else
+-// expected-error-re@-4{{OpenCL C version {{1.2|3.0}} does not support the 'auto' storage class specifier}}
++// expected-error-re@-4{{OpenCL C version {{1.2|3.0|3.1}} does not support the 'auto' storage class specifier}}
+ #endif
+   global int L4;                              // expected-error{{function scope variable cannot be declared in global address space}}
+   __attribute__((address_space(100))) int L5; // expected-error{{automatic variable qualified with an invalid address space}}
+@@ -208,10 +212,10 @@ void f() {
+ #if (defined(__OPENCL_C_VERSION__) && __OPENCL_C_VERSION__ < 300)
+ // expected-error@-2 {{OpenCL C version 1.2 does not support the 'generic' type qualifier}}
+ // expected-error@-3 {{variables in function scope cannot be declared static}}
+-#elif (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300)
++#elif (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300)
+ #if !defined(__opencl_c_generic_address_space)
+-#if (__OPENCL_C_VERSION__ == 300)
+-// expected-error@-7 {{OpenCL C version 3.0 does not support the 'generic' type qualifier}}
++#if (__OPENCL_C_VERSION__ >= 300)
++// expected-error-re@-7 {{OpenCL C version {{3.0|3.1}} does not support the 'generic' type qualifier}}
+ #elif (__OPENCL_CPP_VERSION__ == 202100)
+ // expected-error@-9 {{C++ for OpenCL version 2021 does not support the 'generic' type qualifier}}
+ #endif
+@@ -262,10 +266,10 @@ void f() {
+ #if (defined(__OPENCL_C_VERSION__) && __OPENCL_C_VERSION__ < 300)
+ // expected-error@-2 {{OpenCL C version 1.2 does not support the 'generic' type qualifier}}
+ // expected-error@-3 {{extern variable must reside in constant address space}}
+-#elif (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ == 300)
++#elif (__OPENCL_CPP_VERSION__ == 202100 || __OPENCL_C_VERSION__ >= 300)
+ #if !defined(__opencl_c_generic_address_space)
+-#if (__OPENCL_C_VERSION__ == 300)
+-// expected-error@-7 {{OpenCL C version 3.0 does not support the 'generic' type qualifier}}
++#if (__OPENCL_C_VERSION__ >= 300)
++// expected-error-re@-7 {{OpenCL C version {{3.0|3.1}} does not support the 'generic' type qualifier}}
+ #elif (__OPENCL_CPP_VERSION__ == 202100 && !defined(__opencl_c_generic_address_space))
+ // expected-error@-9 {{C++ for OpenCL version 2021 does not support the 'generic' type qualifier}}
+ #endif
+diff --git a/clang/test/SemaOpenCL/unsupported-image.cl b/clang/test/SemaOpenCL/unsupported-image.cl
+index 53422fa259f2..b67fce7952a2 100644
+--- a/clang/test/SemaOpenCL/unsupported-image.cl
++++ b/clang/test/SemaOpenCL/unsupported-image.cl
+@@ -1,6 +1,9 @@
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=CL3.0 -cl-ext=-__opencl_c_images,-__opencl_c_read_write_images,-cl_khr_3d_image_writes,-__opencl_c_3d_image_writes %s
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=CL3.0 -cl-ext=+__opencl_c_images,+__opencl_c_read_write_images,+cl_khr_3d_image_writes,+__opencl_c_3d_image_writes %s
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=CL3.0 -cl-ext=+__opencl_c_images,+__opencl_c_read_write_images,-cl_khr_3d_image_writes,-__opencl_c_3d_image_writes %s
++// RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=CL3.1 -cl-ext=-__opencl_c_images,-__opencl_c_read_write_images,-cl_khr_3d_image_writes,-__opencl_c_3d_image_writes %s
++// RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=CL3.1 -cl-ext=+__opencl_c_images,+__opencl_c_read_write_images,+cl_khr_3d_image_writes,+__opencl_c_3d_image_writes %s
++// RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=CL3.1 -cl-ext=+__opencl_c_images,+__opencl_c_read_write_images,-cl_khr_3d_image_writes,-__opencl_c_3d_image_writes %s
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=clc++2021 -cl-ext=-__opencl_c_images,-__opencl_c_read_write_images,-cl_khr_3d_image_writes,-__opencl_c_3d_image_writes %s
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=clc++2021 -cl-ext=+__opencl_c_images,+__opencl_c_read_write_images,+cl_khr_3d_image_writes,+__opencl_c_3d_image_writes %s
+ // RUN: %clang_cc1 -triple spir-unknown-unknown -verify -cl-std=clc++2021 -cl-ext=+__opencl_c_images,+__opencl_c_read_write_images,-cl_khr_3d_image_writes,-__opencl_c_3d_image_writes %s
+-- 
+2.53.0
+
