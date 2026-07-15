@@ -1,0 +1,261 @@
+From 6b3714977dd352b353d06ffc37703a7346f7bfdc Mon Sep 17 00:00:00 2001
+From: Wenju He <wenju.he@intel.com>
+Date: Tue, 14 Jul 2026 13:07:36 +0200
+Subject: [PATCH 1/2] [Clang][OpenCL] Add OpenCL 3.1 language version (#204043)
+
+OpenCL 3.1 was recently added to spec in
+https://github.com/KhronosGroup/OpenCL-Docs/commit/9fff1a87a975
+
+This PR adds version 3.1 to clang support, including frontend flag
+`-std=cl3.1` (and its alias `-std=CL3.1`).
+Updated release note.
+
+A few extensions are promoted to 3.1 core. They'll be handled in
+follow-up PRs.
+
+Assisted-by: Claude Sonnet 4.6
+---
+ clang/docs/ReleaseNotes.rst                       |  4 ++++
+ clang/include/clang/Basic/LangStandards.def       |  4 ++++
+ clang/include/clang/Basic/OpenCLOptions.h         |  5 ++++-
+ clang/lib/Basic/LangOptions.cpp                   |  2 ++
+ clang/lib/Basic/TargetInfo.cpp                    |  2 +-
+ clang/lib/Frontend/CompilerInvocation.cpp         |  1 +
+ clang/lib/Frontend/InitPreprocessor.cpp           |  4 ++++
+ clang/test/Driver/opencl.cl                       |  2 ++
+ clang/test/Driver/unknown-std.cl                  |  1 +
+ clang/test/Preprocessor/predefined-macros.c       | 15 +++++++++++++++
+ .../utils/TableGen/ClangOpenCLBuiltinEmitter.cpp  |  2 +-
+ 11 files changed, 39 insertions(+), 3 deletions(-)
+
+diff --git a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
+index 8d67ff904469..3d92c4bcdb90 100644
+--- a/clang/docs/ReleaseNotes.rst
++++ b/clang/docs/ReleaseNotes.rst
+@@ -957,6 +957,10 @@ Miscellaneous Clang Crashes Fixed
+   (`#58800 <https://github.com/llvm/llvm-project/issues/58800>`_)
+ 
+ 
++OpenCL Specific Changes
++-----------------------
++- Added support for OpenCL C 3.1 language version (``-cl-std=CL3.1``).
++
+ Target Specific Changes
+ -----------------------
+ 
+diff --git a/clang/include/clang/Basic/LangStandards.def b/clang/include/clang/Basic/LangStandards.def
+index c5d4da1cb2f9..02c9c439427e 100644
+--- a/clang/include/clang/Basic/LangStandards.def
++++ b/clang/include/clang/Basic/LangStandards.def
+@@ -179,6 +179,9 @@ LANGSTANDARD(opencl20, "cl2.0",
+ LANGSTANDARD(opencl30, "cl3.0",
+              OpenCL, "OpenCL 3.0",
+              LineComment | C99 | Digraphs | HexFloat | OpenCL)
++LANGSTANDARD(opencl31, "cl3.1",
++             OpenCL, "OpenCL 3.1",
++             LineComment | C99 | Digraphs | HexFloat | OpenCL)
+ 
+ LANGSTANDARD(openclcpp10, "clc++1.0",
+              OpenCL, "C++ for OpenCL 1.0",
+@@ -196,6 +199,7 @@ LANGSTANDARD_ALIAS_DEPR(opencl11, "CL1.1")
+ LANGSTANDARD_ALIAS_DEPR(opencl12, "CL1.2")
+ LANGSTANDARD_ALIAS_DEPR(opencl20, "CL2.0")
+ LANGSTANDARD_ALIAS_DEPR(opencl30, "CL3.0")
++LANGSTANDARD_ALIAS_DEPR(opencl31, "CL3.1")
+ LANGSTANDARD_ALIAS_DEPR(openclcpp10, "CLC++")
+ LANGSTANDARD_ALIAS_DEPR(openclcpp10, "CLC++1.0")
+ LANGSTANDARD_ALIAS_DEPR(openclcpp2021, "CLC++2021")
+diff --git a/clang/include/clang/Basic/OpenCLOptions.h b/clang/include/clang/Basic/OpenCLOptions.h
+index d6cb1a210519..ec661bba94ad 100644
+--- a/clang/include/clang/Basic/OpenCLOptions.h
++++ b/clang/include/clang/Basic/OpenCLOptions.h
+@@ -32,7 +32,8 @@ enum OpenCLVersionID : unsigned int {
+   OCL_C_12 = 0x4,
+   OCL_C_20 = 0x8,
+   OCL_C_30 = 0x10,
+-  OCL_C_ALL = 0x1f,
++  OCL_C_31 = 0x20,
++  OCL_C_ALL = 0x3f,
+   OCL_C_11P = OCL_C_ALL ^ OCL_C_10,              // OpenCL C 1.1+
+   OCL_C_12P = OCL_C_ALL ^ (OCL_C_10 | OCL_C_11), // OpenCL C 1.2+
+ };
+@@ -51,6 +52,8 @@ static inline OpenCLVersionID encodeOpenCLVersion(unsigned OpenCLVersion) {
+     return OCL_C_20;
+   case 300:
+     return OCL_C_30;
++  case 310:
++    return OCL_C_31;
+   }
+ }
+ 
+diff --git a/clang/lib/Basic/LangOptions.cpp b/clang/lib/Basic/LangOptions.cpp
+index 753b6bfe18a3..193956e23427 100644
+--- a/clang/lib/Basic/LangOptions.cpp
++++ b/clang/lib/Basic/LangOptions.cpp
+@@ -132,6 +132,8 @@ void LangOptions::setLangDefaults(LangOptions &Opts, Language Lang,
+     Opts.OpenCLVersion = 200;
+   else if (LangStd == LangStandard::lang_opencl30)
+     Opts.OpenCLVersion = 300;
++  else if (LangStd == LangStandard::lang_opencl31)
++    Opts.OpenCLVersion = 310;
+   else if (LangStd == LangStandard::lang_openclcpp10)
+     Opts.OpenCLCPlusPlusVersion = 100;
+   else if (LangStd == LangStandard::lang_openclcpp2021)
+diff --git a/clang/lib/Basic/TargetInfo.cpp b/clang/lib/Basic/TargetInfo.cpp
+index 031e1507fe43..f32eeaf6eba9 100644
+--- a/clang/lib/Basic/TargetInfo.cpp
++++ b/clang/lib/Basic/TargetInfo.cpp
+@@ -447,7 +447,7 @@ void TargetInfo::adjust(DiagnosticsEngine &Diags, LangOptions &Opts) {
+     // for OpenCL C 2.0 but with no access to target capabilities. Target
+     // should be immutable once created and thus these language options need
+     // to be defined only once.
+-    if (Opts.getOpenCLCompatibleVersion() == 300) {
++    if (Opts.getOpenCLCompatibleVersion() >= 300) {
+       const auto &OpenCLFeaturesMap = getSupportedOpenCLOpts();
+       Opts.OpenCLGenericAddressSpace = hasFeatureEnabled(
+           OpenCLFeaturesMap, "__opencl_c_generic_address_space");
+diff --git a/clang/lib/Frontend/CompilerInvocation.cpp b/clang/lib/Frontend/CompilerInvocation.cpp
+index 0bb9c8c83c63..25b8a31e008e 100644
+--- a/clang/lib/Frontend/CompilerInvocation.cpp
++++ b/clang/lib/Frontend/CompilerInvocation.cpp
+@@ -3648,6 +3648,7 @@ bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
+         .Cases("cl1.2", "CL1.2", LangStandard::lang_opencl12)
+         .Cases("cl2.0", "CL2.0", LangStandard::lang_opencl20)
+         .Cases("cl3.0", "CL3.0", LangStandard::lang_opencl30)
++        .Cases("cl3.1", "CL3.1", LangStandard::lang_opencl31)
+         .Cases("clc++", "CLC++", LangStandard::lang_openclcpp10)
+         .Cases("clc++1.0", "CLC++1.0", LangStandard::lang_openclcpp10)
+         .Cases("clc++2021", "CLC++2021", LangStandard::lang_openclcpp2021)
+diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
+index 33c8409eaf12..24919bef615e 100644
+--- a/clang/lib/Frontend/InitPreprocessor.cpp
++++ b/clang/lib/Frontend/InitPreprocessor.cpp
+@@ -539,6 +539,9 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
+       case 300:
+         Builder.defineMacro("__OPENCL_C_VERSION__", "300");
+         break;
++      case 310:
++        Builder.defineMacro("__OPENCL_C_VERSION__", "310");
++        break;
+       default:
+         llvm_unreachable("Unsupported OpenCL version");
+       }
+@@ -548,6 +551,7 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
+     Builder.defineMacro("CL_VERSION_1_2", "120");
+     Builder.defineMacro("CL_VERSION_2_0", "200");
+     Builder.defineMacro("CL_VERSION_3_0", "300");
++    Builder.defineMacro("CL_VERSION_3_1", "310");
+ 
+     if (TI.isLittleEndian())
+       Builder.defineMacro("__ENDIAN_LITTLE__");
+diff --git a/clang/test/Driver/opencl.cl b/clang/test/Driver/opencl.cl
+index ba1ace508150..86d9960e10d4 100644
+--- a/clang/test/Driver/opencl.cl
++++ b/clang/test/Driver/opencl.cl
+@@ -4,6 +4,7 @@
+ // RUN: %clang -S -### -cl-std=CL1.2 %s 2>&1 | FileCheck --check-prefix=CHECK-CL12 %s
+ // RUN: %clang -S -### -cl-std=CL2.0 %s 2>&1 | FileCheck --check-prefix=CHECK-CL20 %s
+ // RUN: %clang -S -### -cl-std=CL3.0 %s 2>&1 | FileCheck --check-prefix=CHECK-CL30 %s
++// RUN: %clang -S -### -cl-std=CL3.1 %s 2>&1 | FileCheck --check-prefix=CHECK-CL31 %s
+ // RUN: %clang -S -### -cl-std=clc++ %s 2>&1 | FileCheck --check-prefix=CHECK-CLCPP %s
+ // RUN: %clang -S -### -cl-opt-disable %s 2>&1 | FileCheck --check-prefix=CHECK-OPT-DISABLE %s
+ // RUN: %clang -S -### -cl-strict-aliasing %s 2>&1 | FileCheck --check-prefix=CHECK-STRICT-ALIASING %s
+@@ -29,6 +30,7 @@
+ // CHECK-CL12: "-cc1" {{.*}} "-cl-std=CL1.2"
+ // CHECK-CL20: "-cc1" {{.*}} "-cl-std=CL2.0"
+ // CHECK-CL30: "-cc1" {{.*}} "-cl-std=CL3.0"
++// CHECK-CL31: "-cc1" {{.*}} "-cl-std=CL3.1"
+ // CHECK-CLCPP: "-cc1" {{.*}} "-cl-std=clc++"
+ // CHECK-OPT-DISABLE: "-cc1" {{.*}} "-cl-opt-disable"
+ // CHECK-STRICT-ALIASING: "-cc1" {{.*}} "-cl-strict-aliasing"
+diff --git a/clang/test/Driver/unknown-std.cl b/clang/test/Driver/unknown-std.cl
+index 3570515ad076..a6d065d9a7d4 100644
+--- a/clang/test/Driver/unknown-std.cl
++++ b/clang/test/Driver/unknown-std.cl
+@@ -11,6 +11,7 @@
+ // CHECK-NEXT: note: use 'cl1.2' for 'OpenCL 1.2' standard
+ // CHECK-NEXT: note: use 'cl2.0' for 'OpenCL 2.0' standard
+ // CHECK-NEXT: note: use 'cl3.0' for 'OpenCL 3.0' standard
++// CHECK-NEXT: note: use 'cl3.1' for 'OpenCL 3.1' standard
+ // CHECK-NEXT: note: use 'clc++1.0' or 'clc++' for 'C++ for OpenCL 1.0' standard
+ // CHECK-NEXT: note: use 'clc++2021' for 'C++ for OpenCL 2021' standard
+ 
+diff --git a/clang/test/Preprocessor/predefined-macros.c b/clang/test/Preprocessor/predefined-macros.c
+index 4dd02c3cfde4..91df26284e4c 100644
+--- a/clang/test/Preprocessor/predefined-macros.c
++++ b/clang/test/Preprocessor/predefined-macros.c
+@@ -145,6 +145,8 @@
+ // RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-CL20
+ // RUN: %clang_cc1 %s -E -dM -o - -x cl -cl-std=CL3.0 \
+ // RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-CL30
++// RUN: %clang_cc1 %s -E -dM -o - -x cl -cl-std=CL3.1 \
++// RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-CL31
+ // RUN: %clang_cc1 %s -E -dM -o - -x cl -cl-fast-relaxed-math \
+ // RUN:   | FileCheck -match-full-lines %s --check-prefix=CHECK-FRM
+ // RUN: %clang_cc1 %s -E -dM -o - -x cl -cl-std=clc++ \
+@@ -158,6 +160,7 @@
+ // CHECK-CL10: #define CL_VERSION_1_2 120
+ // CHECK-CL10: #define CL_VERSION_2_0 200
+ // CHECK-CL10: #define CL_VERSION_3_0 300
++// CHECK-CL10: #define CL_VERSION_3_1 310
+ // CHECK-CL10: #define __OPENCL_C_VERSION__ 100
+ // CHECK-CL10-NOT: #define __FAST_RELAXED_MATH__ 1
+ // CHECK-CL11: #define CL_VERSION_1_0 100
+@@ -165,6 +168,7 @@
+ // CHECK-CL11: #define CL_VERSION_1_2 120
+ // CHECK-CL11: #define CL_VERSION_2_0 200
+ // CHECK-CL11: #define CL_VERSION_3_0 300
++// CHECK-CL11: #define CL_VERSION_3_1 310
+ // CHECK-CL11: #define __OPENCL_C_VERSION__ 110
+ // CHECK-CL11-NOT: #define __FAST_RELAXED_MATH__ 1
+ // CHECK-CL12: #define CL_VERSION_1_0 100
+@@ -172,6 +176,7 @@
+ // CHECK-CL12: #define CL_VERSION_1_2 120
+ // CHECK-CL12: #define CL_VERSION_2_0 200
+ // CHECK-CL12: #define CL_VERSION_3_0 300
++// CHECK-CL12: #define CL_VERSION_3_1 310
+ // CHECK-CL12: #define __OPENCL_C_VERSION__ 120
+ // CHECK-CL12-NOT: #define __FAST_RELAXED_MATH__ 1
+ // CHECK-CL20: #define CL_VERSION_1_0 100
+@@ -179,6 +184,7 @@
+ // CHECK-CL20: #define CL_VERSION_1_2 120
+ // CHECK-CL20: #define CL_VERSION_2_0 200
+ // CHECK-CL20: #define CL_VERSION_3_0 300
++// CHECK-CL20: #define CL_VERSION_3_1 310
+ // CHECK-CL20: #define __OPENCL_C_VERSION__ 200
+ // CHECK-CL20-NOT: #define __FAST_RELAXED_MATH__ 1
+ // CHECK-CL30: #define CL_VERSION_1_0 100
+@@ -186,8 +192,17 @@
+ // CHECK-CL30: #define CL_VERSION_1_2 120
+ // CHECK-CL30: #define CL_VERSION_2_0 200
+ // CHECK-CL30: #define CL_VERSION_3_0 300
++// CHECK-CL30: #define CL_VERSION_3_1 310
+ // CHECK-CL30: #define __OPENCL_C_VERSION__ 300
+ // CHECK-CL30-NOT: #define __FAST_RELAXED_MATH__ 1
++// CHECK-CL31: #define CL_VERSION_1_0 100
++// CHECK-CL31: #define CL_VERSION_1_1 110
++// CHECK-CL31: #define CL_VERSION_1_2 120
++// CHECK-CL31: #define CL_VERSION_2_0 200
++// CHECK-CL31: #define CL_VERSION_3_0 300
++// CHECK-CL31: #define CL_VERSION_3_1 310
++// CHECK-CL31: #define __OPENCL_C_VERSION__ 310
++// CHECK-CL31-NOT: #define __FAST_RELAXED_MATH__ 1
+ // CHECK-FRM: #define __FAST_RELAXED_MATH__ 1
+ // CHECK-CLCPP10: #define __CL_CPP_VERSION_1_0__ 100
+ // CHECK-CLCPP10: #define __CL_CPP_VERSION_2021__ 202100
+diff --git a/clang/utils/TableGen/ClangOpenCLBuiltinEmitter.cpp b/clang/utils/TableGen/ClangOpenCLBuiltinEmitter.cpp
+index da5d1fdc2eae..abf4aef9ce7d 100644
+--- a/clang/utils/TableGen/ClangOpenCLBuiltinEmitter.cpp
++++ b/clang/utils/TableGen/ClangOpenCLBuiltinEmitter.cpp
+@@ -597,7 +597,7 @@ static unsigned short EncodeVersions(unsigned int MinVersion,
+     MaxVersion = UINT_MAX;
+   }
+ 
+-  unsigned VersionIDs[] = {100, 110, 120, 200, 300};
++  unsigned VersionIDs[] = {100, 110, 120, 200, 300, 310};
+   for (unsigned I = 0; I < std::size(VersionIDs); I++) {
+     if (VersionIDs[I] >= MinVersion && VersionIDs[I] < MaxVersion) {
+       Encoded |= 1 << I;
+-- 
+2.53.0
+
