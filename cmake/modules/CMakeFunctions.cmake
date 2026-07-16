@@ -87,7 +87,11 @@ endfunction()
 # Does nothing if the `target_branch` is already checked out in the `repo_dir`.
 #
 function(apply_patches repo_dir patches_dir base_revision target_branch)
-    file(GLOB patches ${patches_dir}/*.patch)
+    set(patches "")
+    foreach(single_patches_dir ${patches_dir})
+        file(GLOB single_dir_patches ${single_patches_dir}/*.patch)
+        list(APPEND patches ${single_dir_patches})
+    endforeach()
     if(NOT patches)
         message(STATUS "[OPENCL-CLANG] No patches in ${patches_dir}")
         return()

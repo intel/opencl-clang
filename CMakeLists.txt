@@ -155,9 +155,15 @@ if(NOT USE_PREBUILT_LLVM)
     set(CLANG_BASE_REVISION main)
     set(SPIRV_BASE_REVISION main)
     set(TARGET_BRANCH main)
+    get_filename_component(LLVM_MONOREPO_DIR ${LLVM_SOURCE_DIR} DIRECTORY)
+    set(LLVM_PATCHES_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/patches/llvm
+                          ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang)
 
-    apply_patches(${CLANG_SOURCE_DIR}
-                  ${CMAKE_CURRENT_SOURCE_DIR}/patches/clang
+    # Apply the LLVM core patches together with the Clang patches to the
+    # monorepo in a single call: apply_patches creates the target branch on its
+    # first invocation, so subsequent calls on the same repository are skipped.
+    apply_patches(${LLVM_MONOREPO_DIR}
+                  "${LLVM_PATCHES_DIRS}"
                   ${CLANG_BASE_REVISION}
                   ${TARGET_BRANCH})
     apply_patches(${SPIRV_SOURCE_DIR}
