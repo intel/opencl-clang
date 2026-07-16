@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Michal Paszkowski <michal.paszkowski@intel.com>
+Date: Thu, 16 Jul 2026 12:00:00 +0000
+Subject: [PATCH] Fix heap-buffer-overflow in
+ GCRelocateInst::getBasePtr/getDerivedPtr
+
+GCRelocateInst::getBasePtr()/getDerivedPtr() dereferenced
+'Inputs.begin() + index' (or 'arg_begin() + index') without validating
+the index, so a malformed gc.relocate that references a gc.statepoint with
+an out-of-bounds index triggered a heap-buffer-overflow read while the IR
+verifier printed the offending instruction. Add a bounds check that
+returns nullptr for an out-of-bounds index, and print "invalid" for such
+operands in AssemblyWriter::printGCRelocateComment.
+
+This adapts the fix from llvm/llvm-project#199191 to this LLVM version,
+where GCRelocateInst::getBasePtr()/getDerivedPtr() access the statepoint
+through getStatepoint() directly.
+---
+ llvm/lib/IR/AsmWriter.cpp     | 10 ++++++++--
+ llvm/lib/IR/IntrinsicInst.cpp | 26 ++++++++++++++++++++------
+ 2 files changed, 28 insertions(+), 8 deletions(-)
+
+diff --git a/llvm/lib/IR/AsmWriter.cpp b/llvm/lib/IR/AsmWriter.cpp
+--- a/llvm/lib/IR/AsmWriter.cpp
++++ b/llvm/lib/IR/AsmWriter.cpp
+@@ -3993,7 +3993,13 @@ void AssemblyWriter::printGCRelocateComment(const GCRelocateInst &Relocate) {
+ void AssemblyWriter::printGCRelocateComment(const GCRelocateInst &Relocate) {
+   Out << " ; (";
+-  writeOperand(Relocate.getBasePtr(), false);
++  if (Value *BasePtr = Relocate.getBasePtr())
++    writeOperand(BasePtr, false);
++  else
++    Out << "invalid";
+   Out << ", ";
+-  writeOperand(Relocate.getDerivedPtr(), false);
++  if (Value *DerivedPtr = Relocate.getDerivedPtr())
++    writeOperand(DerivedPtr, false);
++  else
++    Out << "invalid";
+   Out << ")";
+ }
+diff --git a/llvm/lib/IR/IntrinsicInst.cpp b/llvm/lib/IR/IntrinsicInst.cpp
+--- a/llvm/lib/IR/IntrinsicInst.cpp
++++ b/llvm/lib/IR/IntrinsicInst.cpp
+@@ -645,11 +645,25 @@ Value *GCRelocateInst::getBasePtr() const {
+ Value *GCRelocateInst::getBasePtr() const {
+-  if (auto Opt = getStatepoint()->getOperandBundle(LLVMContext::OB_gc_live))
+-    return *(Opt->Inputs.begin() + getBasePtrIndex());
+-  return *(getStatepoint()->arg_begin() + getBasePtrIndex());
++  // Handle too few (bundle) arguments to avoid crashes when printing invalid
++  // IR, e.g. in the verifier.
++  if (auto Opt = getStatepoint()->getOperandBundle(LLVMContext::OB_gc_live)) {
++    if (getBasePtrIndex() > Opt->Inputs.size())
++      return nullptr;
++    return *(Opt->Inputs.begin() + getBasePtrIndex());
++  }
++  if (getBasePtrIndex() > getStatepoint()->arg_size())
++    return nullptr;
++  return *(getStatepoint()->arg_begin() + getBasePtrIndex());
+ }
+ 
+ Value *GCRelocateInst::getDerivedPtr() const {
+-  if (auto Opt = getStatepoint()->getOperandBundle(LLVMContext::OB_gc_live))
+-    return *(Opt->Inputs.begin() + getDerivedPtrIndex());
+-  return *(getStatepoint()->arg_begin() + getDerivedPtrIndex());
++  // Handle too few (bundle) arguments to avoid crashes when printing invalid
++  // IR, e.g. in the verifier.
++  if (auto Opt = getStatepoint()->getOperandBundle(LLVMContext::OB_gc_live)) {
++    if (getDerivedPtrIndex() > Opt->Inputs.size())
++      return nullptr;
++    return *(Opt->Inputs.begin() + getDerivedPtrIndex());
++  }
++  if (getDerivedPtrIndex() > getStatepoint()->arg_size())
++    return nullptr;
++  return *(getStatepoint()->arg_begin() + getDerivedPtrIndex());
+ }
+-- 
+2.43.0
+
