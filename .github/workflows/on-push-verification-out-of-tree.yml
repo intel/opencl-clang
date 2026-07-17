@@ -2,7 +2,7 @@
 # Running on push & pull_request.
 # ===---
 
-name: Out-of-tree build
+name: Build
 run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
 
 permissions:
@@ -28,7 +28,7 @@ on:
 jobs:
 
   verify_default_branch:
-    name: linux
+    name: Out-of-tree Linux
     # ref_name for 'on: push'
     # base_ref for 'on: pull_request'
     runs-on: ubuntu-24.04
