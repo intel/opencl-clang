@@ -357,3 +357,8 @@ install(FILES common_clang.h
 SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} common_clang.map )
 
 add_custom_target(deploy DEPENDS install-${TARGET_NAME})
+
+if(LLVM_INCLUDE_TESTS)
+  set(OPENCL_CLANG_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+  add_subdirectory(tests)
+endif()
