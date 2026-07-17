@@ -17,6 +17,10 @@ inputs:
     description: 'Build type to pass to CMake'
     required: false
     default: Release
+  run_tests:
+    description: 'Run ninja check-opencl-clang after build'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -59,10 +63,17 @@ runs:
           -DLLVM_EXTERNAL_OPENCL_CLANG_SOURCE_DIR=${{ github.workspace }}/llvm-project/opencl-clang        \
           -DCMAKE_BUILD_TYPE=${{ inputs.build_type }}  \
           -DLLVM_TARGETS_TO_BUILD="X86" \
-          -G "Unix Makefiles"
+          -G "Ninja"
 
     - name: Build
       shell: bash
       run: |
         cd build
-        make opencl-clang -j8
+        ninja opencl-clang
+
+    - name: Test
+      if: ${{ inputs.run_tests == 'true' }}
+      shell: bash
+      run: |
+        cd build
+        ninja check-opencl-clang
