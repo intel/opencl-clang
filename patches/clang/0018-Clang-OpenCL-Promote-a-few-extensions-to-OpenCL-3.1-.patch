@@ -1,0 +1,98 @@
+From 9274f477045c8cdc824350d337d9efe5d225f5ee Mon Sep 17 00:00:00 2001
+From: Wenju He <wenju.he@intel.com>
+Date: Thu, 16 Jul 2026 13:07:02 +0200
+Subject: [PATCH] [Clang][OpenCL] Promote a few extensions to OpenCL 3.1 core
+ (#204330)
+
+Following 6 OpenCL extensions are promoted to core features in 3.1:
+https://github.com/KhronosGroup/OpenCL-Docs/commit/9fff1a87a975
+- cl_khr_extended_bit_ops
+- cl_khr_integer_dot_product
+- cl_khr_subgroup_extended_types
+- cl_khr_subgroup_rotate
+- cl_khr_subgroup_shuffle
+- cl_khr_subgroup_shuffle_relative
+
+A target claiming OpenCL C 3.1 conformance without supporting one of
+these features is now diagnosed.
+Updated release notes for the change.
+
+Assisted-by: Claude
+---
+ clang/docs/ReleaseNotes.rst                    | 5 +++++
+ clang/include/clang/Basic/OpenCLExtensions.def | 6 ++++++
+ clang/test/Misc/amdgcn.unsupported_core_3.1.cl | 8 ++++++++
+ clang/test/SemaOpenCL/extension-version.cl     | 2 ++
+ 4 files changed, 21 insertions(+)
+ create mode 100644 clang/test/Misc/amdgcn.unsupported_core_3.1.cl
+
+diff --git a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
+index ecb8375b7975..68c57a8af403 100644
+--- a/clang/docs/ReleaseNotes.rst
++++ b/clang/docs/ReleaseNotes.rst
+@@ -555,4 +555,9 @@ list <https://lists.llvm.org/mailman/listinfo/cfe-dev>`_.
+ OpenCL Specific Changes
+ -----------------------
+ - Added support for OpenCL C 3.1 language version (``-cl-std=CL3.1``).
++- Extensions ``cl_khr_extended_bit_ops``, ``cl_khr_integer_dot_product``,
++  ``cl_khr_subgroup_extended_types``, ``cl_khr_subgroup_rotate``,
++  ``cl_khr_subgroup_shuffle``, and ``cl_khr_subgroup_shuffle_relative`` are
++  promoted to core features in OpenCL C 3.1. A target claiming OpenCL C 3.1
++  conformance without supporting one of these features is now diagnosed.
+ 
+diff --git a/clang/include/clang/Basic/OpenCLExtensions.def b/clang/include/clang/Basic/OpenCLExtensions.def
+index 2f90ff45eb30..7e0c40b61530 100644
+--- a/clang/include/clang/Basic/OpenCLExtensions.def
++++ b/clang/include/clang/Basic/OpenCLExtensions.def
+@@ -78,9 +78,15 @@ OPENCL_EXTENSION(cles_khr_int64, true, 110)
+ OPENCL_EXTENSION(cl_khr_depth_images, true, 120)
+ 
+ // OpenCL 2.0.
++OPENCL_COREFEATURE(cl_khr_extended_bit_ops, false, 200, OCL_C_31)
++OPENCL_COREFEATURE(cl_khr_integer_dot_product, false, 200, OCL_C_31)
+ OPENCL_EXTENSION(cl_khr_mipmap_image, true, 200)
+ OPENCL_EXTENSION(cl_khr_mipmap_image_writes, true, 200)
+ OPENCL_EXTENSION(cl_khr_srgb_image_writes, true, 200)
++OPENCL_COREFEATURE(cl_khr_subgroup_extended_types, false, 200, OCL_C_31)
++OPENCL_COREFEATURE(cl_khr_subgroup_rotate, false, 200, OCL_C_31)
++OPENCL_COREFEATURE(cl_khr_subgroup_shuffle_relative, false, 200, OCL_C_31)
++OPENCL_COREFEATURE(cl_khr_subgroup_shuffle, false, 200, OCL_C_31)
+ OPENCL_EXTENSION(cl_khr_subgroups, true, 200)
+ 
+ // Clang Extensions.
+diff --git a/clang/test/Misc/amdgcn.unsupported_core_3.1.cl b/clang/test/Misc/amdgcn.unsupported_core_3.1.cl
+new file mode 100644
+index 000000000000..5a406670777a
+--- /dev/null
++++ b/clang/test/Misc/amdgcn.unsupported_core_3.1.cl
+@@ -0,0 +1,8 @@
++// RUN: %clang_cc1 -cl-std=CL3.1 -triple amdgcn-amd-amdhsa -Wpedantic-core-features %s 2>&1 | FileCheck %s
++
++// CHECK: cl_khr_extended_bit_ops is a core feature in OpenCL C version 3.1 but not supported on this target
++// CHECK: cl_khr_integer_dot_product is a core feature in OpenCL C version 3.1 but not supported on this target
++// CHECK: cl_khr_subgroup_extended_types is a core feature in OpenCL C version 3.1 but not supported on this target
++// CHECK: cl_khr_subgroup_rotate is a core feature in OpenCL C version 3.1 but not supported on this target
++// CHECK: cl_khr_subgroup_shuffle_relative is a core feature in OpenCL C version 3.1 but not supported on this target
++// CHECK: cl_khr_subgroup_shuffle is a core feature in OpenCL C version 3.1 but not supported on this target
+diff --git a/clang/test/SemaOpenCL/extension-version.cl b/clang/test/SemaOpenCL/extension-version.cl
+index 8508b4ca35d7..674cdc4e44cd 100644
+--- a/clang/test/SemaOpenCL/extension-version.cl
++++ b/clang/test/SemaOpenCL/extension-version.cl
+@@ -4,12 +4,14 @@
+ // RUN: %clang_cc1 -x cl -cl-std=CL2.0 %s -verify -triple spir-unknown-unknown
+ // RUN: %clang_cc1 -x cl -cl-std=clc++ %s -verify -triple spir-unknown-unknown
+ // RUN: %clang_cc1 -x cl -cl-std=CL3.0 %s -verify -triple spir-unknown-unknown
++// RUN: %clang_cc1 -x cl -cl-std=CL3.1 %s -verify -triple spir-unknown-unknown
+ // RUN: %clang_cc1 -x cl -cl-std=CL %s -verify -triple spir-unknown-unknown -Wpedantic-core-features -DTEST_CORE_FEATURES
+ // RUN: %clang_cc1 -x cl -cl-std=CL1.1 %s -verify -triple spir-unknown-unknown -Wpedantic-core-features -DTEST_CORE_FEATURES
+ // RUN: %clang_cc1 -x cl -cl-std=CL1.2 %s -verify -triple spir-unknown-unknown -Wpedantic-core-features -DTEST_CORE_FEATURES
+ // RUN: %clang_cc1 -x cl -cl-std=CL2.0 %s -verify -triple spir-unknown-unknown -Wpedantic-core-features -DTEST_CORE_FEATURES
+ // RUN: %clang_cc1 -x cl -cl-std=clc++ %s -verify -triple spir-unknown-unknown -Wpedantic-core-features -DTEST_CORE_FEATURES
+ // RUN: %clang_cc1 -x cl -cl-std=CL3.0 %s -verify -triple spir-unknown-unknown -Wpedantic-core-features -DTEST_CORE_FEATURES
++// RUN: %clang_cc1 -x cl -cl-std=CL3.1 %s -verify -triple spir-unknown-unknown -Wpedantic-core-features -DTEST_CORE_FEATURES
+ 
+ // Extensions in all versions
+ #ifndef cl_clang_storage_class_specifiers
+-- 
+2.53.0
+
