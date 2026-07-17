@@ -383,3 +383,8 @@ if (WIN32)
 else (WIN32)
     SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} opencl_clang.map )
 endif(WIN32)
+
+if(LLVM_INCLUDE_TESTS)
+  set(OPENCL_CLANG_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+  add_subdirectory(tests)
+endif()
