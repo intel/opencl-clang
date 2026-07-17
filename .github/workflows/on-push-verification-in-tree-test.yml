@@ -1,10 +1,10 @@
 # ===---
 # Running on push & pull_request.
-#   This workflow parses the destination branch
-#   to choose correct dependencies revisions
+#   Builds opencl-clang in-tree and runs ninja check-opencl-clang.
+#   Parses the destination branch to choose correct dependency revisions.
 # ===---
 
-name: In-tree build
+name: In-tree Build and Test
 run-name: '${{ github.event_name }}: ${{ github.base_ref }} ${{ github.ref_name }}' # github.base_ref null for 'on: push'
 
 permissions:
@@ -62,3 +62,4 @@ jobs:
           ref_llvm: release/${{ steps.check-llvm-version.outputs.llvm_version }}.x
           ref_translator: llvm_release_${{ steps.check-llvm-version.outputs.llvm_version }}0
           ref_opencl-clang: ${{ github.ref }}
+          run_tests: 'true'
