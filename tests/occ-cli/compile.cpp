@@ -229,6 +229,7 @@ int compile(const vector<string> &args) {
     if (*pBinaryResult)
       cerr << (*pBinaryResult)->GetErrorLog() << endl;
     cerr << string(30, '-') << endl;
+    cerr << "err: " << err << endl;
     return err;
   }
 
