@@ -473,6 +473,12 @@ int CompileOptionsParser::processOptions(const char *pszOptions,
   std::unique_ptr<OpenCLArgList> pArgs(
       m_optTbl.ParseArgs(pszOptions, missingArgIndex, missingArgCount));
 
+  // -cl-std= only accepts the fixed set of values defined in
+  // opencl_clang_options.td to avoid masking a user error.
+  std::string unknownArgs = pArgs->getFilteredArgs(OPT_COMPILE_UNKNOWN);
+  if (unknownArgs.find("-cl-std=") != std::string::npos)
+    return -1;
+
   // post process logic
   m_sourceName =
       m_commonFilter.processOptions(*pArgs, pszOptionsEx, m_effectiveArgs);

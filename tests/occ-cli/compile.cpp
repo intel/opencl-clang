@@ -225,9 +225,10 @@ int compile(const vector<string> &args) {
     }
 
     cerr << "ERROR: Failed to compile program:" << endl
-         << string(30, '-') << endl
-         << (*pBinaryResult)->GetErrorLog() << endl
          << string(30, '-') << endl;
+    if (*pBinaryResult)
+      cerr << (*pBinaryResult)->GetErrorLog() << endl;
+    cerr << string(30, '-') << endl;
     return err;
   }
 
