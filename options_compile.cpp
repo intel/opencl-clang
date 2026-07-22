@@ -310,10 +310,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     effectiveArgs.push_back("-fgnu89-inline");
   }
 
-  // Do not support all extensions by default. Support for a particular
-  // extension should be enabled by passing a '-cl-ext' option in pszOptionsEx.
-  effectiveArgs.push_back("-cl-ext=-all");
-
   // OpenCL v2.0 s6.9.u - Implicit function declaration is not supported.
   // Behavior of clang is changed and now there is only warning about
   // implicit function declarations. To be more user friendly and avoid
