@@ -80,20 +80,32 @@ set(OPTS -cl-ext=+all,-cl_khr_fp64,-__opencl_c_fp64)
 create_pcm(opencl-c-12-spir.pcm cl12spir opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir.pcm cl20spir opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-30-spir.pcm cl30spir opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
-create_pcm(opencl-c-31-spir.pcm cl31spir opencl-c-base.h "${SPIR_TRIPLE};${CL31};${OPTS};${OPTS30}" "${DEPS}")
 create_pcm(opencl-c-12-spir64.pcm cl12spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir64.pcm cl20spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-30-spir64.pcm cl30spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30}" "${DEPS}")
-create_pcm(opencl-c-31-spir64.pcm cl31spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL31};${OPTS};${OPTS30}" "${DEPS}")
 set(OPTS -cl-ext=+all)
 create_pcm(opencl-c-12-spir-fp64.pcm cl12spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir-fp64.pcm cl20spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL20};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-30-spir-fp64.pcm cl30spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL30};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
-create_pcm(opencl-c-31-spir-fp64.pcm cl31spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL31};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
 create_pcm(opencl-c-12-spir64-fp64.pcm cl12spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL12};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-20-spir64-fp64.pcm cl20spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL20};${OPTS}" "${DEPS}")
 create_pcm(opencl-c-30-spir64-fp64.pcm cl30spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL30};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
-create_pcm(opencl-c-31-spir64-fp64.pcm cl31spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL31};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
+
+set(CL31_PCM_TARGETS "")
+if(CLANG_SUPPORTS_CL31)
+    set(OPTS -cl-ext=+all,-cl_khr_fp64,-__opencl_c_fp64)
+    create_pcm(opencl-c-31-spir.pcm cl31spir opencl-c-base.h "${SPIR_TRIPLE};${CL31};${OPTS};${OPTS30}" "${DEPS}")
+    create_pcm(opencl-c-31-spir64.pcm cl31spir64 opencl-c-base.h "${SPIR64_TRIPLE};${CL31};${OPTS};${OPTS30}" "${DEPS}")
+    set(OPTS -cl-ext=+all)
+    create_pcm(opencl-c-31-spir-fp64.pcm cl31spirfp64 opencl-c-base.h "${SPIR_TRIPLE};${CL31};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
+    create_pcm(opencl-c-31-spir64-fp64.pcm cl31spir64fp64 opencl-c-base.h "${SPIR64_TRIPLE};${CL31};${OPTS};${OPTS30};${OPTS30_FP64}" "${DEPS}")
+    list(APPEND CL31_PCM_TARGETS
+        opencl-c-31-spir.pcm
+        opencl-c-31-spir64.pcm
+        opencl-c-31-spir-fp64.pcm
+        opencl-c-31-spir64-fp64.pcm
+    )
+endif()
 
 add_custom_target (
     opencl.pcm.target
@@ -102,19 +114,16 @@ add_custom_target (
     opencl-c-12-spir.pcm
     opencl-c-20-spir.pcm
     opencl-c-30-spir.pcm
-    opencl-c-31-spir.pcm
     opencl-c-12-spir64.pcm
     opencl-c-20-spir64.pcm
     opencl-c-30-spir64.pcm
-    opencl-c-31-spir64.pcm
     opencl-c-12-spir-fp64.pcm
     opencl-c-20-spir-fp64.pcm
     opencl-c-30-spir-fp64.pcm
-    opencl-c-31-spir-fp64.pcm
     opencl-c-12-spir64-fp64.pcm
     opencl-c-20-spir64-fp64.pcm
     opencl-c-30-spir64-fp64.pcm
-    opencl-c-31-spir64-fp64.pcm
+    ${CL31_PCM_TARGETS}
 )
 
 function(pack_to_obj SRC DST TAG)
@@ -137,40 +146,46 @@ else()
       opencl-c-12-spir.mod.cpp
       opencl-c-20-spir.mod.cpp
       opencl-c-30-spir.mod.cpp
-      opencl-c-31-spir.mod.cpp
       opencl-c-12-spir64.mod.cpp
       opencl-c-20-spir64.mod.cpp
       opencl-c-30-spir64.mod.cpp
-      opencl-c-31-spir64.mod.cpp
       opencl-c-12-spir-fp64.mod.cpp
       opencl-c-20-spir-fp64.mod.cpp
       opencl-c-30-spir-fp64.mod.cpp
-      opencl-c-31-spir-fp64.mod.cpp
       opencl-c-12-spir64-fp64.mod.cpp
       opencl-c-20-spir64-fp64.mod.cpp
       opencl-c-30-spir64-fp64.mod.cpp
-      opencl-c-31-spir64-fp64.mod.cpp
       module.modulemap.cpp
     )
+    if(CLANG_SUPPORTS_CL31)
+        list(APPEND CL_HEADERS_SRC
+          opencl-c-31-spir.mod.cpp
+          opencl-c-31-spir64.mod.cpp
+          opencl-c-31-spir-fp64.mod.cpp
+          opencl-c-31-spir64-fp64.mod.cpp
+        )
+    endif()
     # note the .pcm -> .mod extension change
     # this is a workaround for CMake bug that caused
     # dependency cycle in generated build rules
     pack_to_obj(opencl-c-12-spir.pcm    opencl-c-12-spir.mod.cpp   "PCM_OPENCL_C_12_SPIR_PCM")
     pack_to_obj(opencl-c-20-spir.pcm    opencl-c-20-spir.mod.cpp   "PCM_OPENCL_C_20_SPIR_PCM")
     pack_to_obj(opencl-c-30-spir.pcm    opencl-c-30-spir.mod.cpp   "PCM_OPENCL_C_30_SPIR_PCM")
-    pack_to_obj(opencl-c-31-spir.pcm    opencl-c-31-spir.mod.cpp   "PCM_OPENCL_C_31_SPIR_PCM")
     pack_to_obj(opencl-c-12-spir64.pcm  opencl-c-12-spir64.mod.cpp "PCM_OPENCL_C_12_SPIR64_PCM")
     pack_to_obj(opencl-c-20-spir64.pcm  opencl-c-20-spir64.mod.cpp "PCM_OPENCL_C_20_SPIR64_PCM")
     pack_to_obj(opencl-c-30-spir64.pcm  opencl-c-30-spir64.mod.cpp "PCM_OPENCL_C_30_SPIR64_PCM")
-    pack_to_obj(opencl-c-31-spir64.pcm  opencl-c-31-spir64.mod.cpp "PCM_OPENCL_C_31_SPIR64_PCM")
     pack_to_obj(opencl-c-12-spir-fp64.pcm    opencl-c-12-spir-fp64.mod.cpp   "PCM_OPENCL_C_12_SPIR_FP64_PCM")
     pack_to_obj(opencl-c-20-spir-fp64.pcm    opencl-c-20-spir-fp64.mod.cpp   "PCM_OPENCL_C_20_SPIR_FP64_PCM")
     pack_to_obj(opencl-c-30-spir-fp64.pcm    opencl-c-30-spir-fp64.mod.cpp   "PCM_OPENCL_C_30_SPIR_FP64_PCM")
-    pack_to_obj(opencl-c-31-spir-fp64.pcm    opencl-c-31-spir-fp64.mod.cpp   "PCM_OPENCL_C_31_SPIR_FP64_PCM")
     pack_to_obj(opencl-c-12-spir64-fp64.pcm  opencl-c-12-spir64-fp64.mod.cpp "PCM_OPENCL_C_12_SPIR64_FP64_PCM")
     pack_to_obj(opencl-c-20-spir64-fp64.pcm  opencl-c-20-spir64-fp64.mod.cpp "PCM_OPENCL_C_20_SPIR64_FP64_PCM")
     pack_to_obj(opencl-c-30-spir64-fp64.pcm  opencl-c-30-spir64-fp64.mod.cpp "PCM_OPENCL_C_30_SPIR64_FP64_PCM")
-    pack_to_obj(opencl-c-31-spir64-fp64.pcm  opencl-c-31-spir64-fp64.mod.cpp "PCM_OPENCL_C_31_SPIR64_FP64_PCM")
+    if(CLANG_SUPPORTS_CL31)
+        pack_to_obj(opencl-c-31-spir.pcm    opencl-c-31-spir.mod.cpp   "PCM_OPENCL_C_31_SPIR_PCM")
+        pack_to_obj(opencl-c-31-spir64.pcm  opencl-c-31-spir64.mod.cpp "PCM_OPENCL_C_31_SPIR64_PCM")
+        pack_to_obj(opencl-c-31-spir-fp64.pcm    opencl-c-31-spir-fp64.mod.cpp   "PCM_OPENCL_C_31_SPIR_FP64_PCM")
+        pack_to_obj(opencl-c-31-spir64-fp64.pcm  opencl-c-31-spir64-fp64.mod.cpp "PCM_OPENCL_C_31_SPIR64_FP64_PCM")
+    endif()
     pack_to_obj(module.modulemap  module.modulemap.cpp  "PCM_OPENCL_C_MODULE_MAP")
 endif()
 
