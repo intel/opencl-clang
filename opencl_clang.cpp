@@ -97,19 +97,27 @@ static bool GetHeaders(std::vector<Resource> &Result) {
                  {OPENCL_C_12_SPIR_PCM, "opencl-c-12-spir.pcm"},
                  {OPENCL_C_20_SPIR_PCM, "opencl-c-20-spir.pcm"},
                  {OPENCL_C_30_SPIR_PCM, "opencl-c-30-spir.pcm"},
+#ifndef OPENCL_CLANG_NO_CL31_PCM
                  {OPENCL_C_31_SPIR_PCM, "opencl-c-31-spir.pcm"},
+#endif
                  {OPENCL_C_12_SPIR64_PCM, "opencl-c-12-spir64.pcm"},
                  {OPENCL_C_20_SPIR64_PCM, "opencl-c-20-spir64.pcm"},
                  {OPENCL_C_30_SPIR64_PCM, "opencl-c-30-spir64.pcm"},
+#ifndef OPENCL_CLANG_NO_CL31_PCM
                  {OPENCL_C_31_SPIR64_PCM, "opencl-c-31-spir64.pcm"},
+#endif
                  {OPENCL_C_12_SPIR_FP64_PCM, "opencl-c-12-spir-fp64.pcm"},
                  {OPENCL_C_20_SPIR_FP64_PCM, "opencl-c-20-spir-fp64.pcm"},
                  {OPENCL_C_30_SPIR_FP64_PCM, "opencl-c-30-spir-fp64.pcm"},
+#ifndef OPENCL_CLANG_NO_CL31_PCM
                  {OPENCL_C_31_SPIR_FP64_PCM, "opencl-c-31-spir-fp64.pcm"},
+#endif
                  {OPENCL_C_12_SPIR64_FP64_PCM, "opencl-c-12-spir64-fp64.pcm"},
                  {OPENCL_C_20_SPIR64_FP64_PCM, "opencl-c-20-spir64-fp64.pcm"},
                  {OPENCL_C_30_SPIR64_FP64_PCM, "opencl-c-30-spir64-fp64.pcm"},
+#ifndef OPENCL_CLANG_NO_CL31_PCM
                  {OPENCL_C_31_SPIR64_FP64_PCM, "opencl-c-31-spir64-fp64.pcm"},
+#endif
                  {OPENCL_C_MODULE_MAP, "module.modulemap"}};
 
   Result.clear();
