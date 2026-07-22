@@ -263,11 +263,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
     }
   }
 
-  if (!iCLStdSet) {
-    effectiveArgs.push_back("-cl-std=CL1.2");
-    iCLStdSet = 120;
-  }
-
   effectiveArgs.push_back("-D");
   effectiveArgs.push_back("__OPENCL_VERSION__=" + m_opencl_ver);
   effectiveArgs.push_back("-x");
