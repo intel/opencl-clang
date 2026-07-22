@@ -62,6 +62,24 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
       ${CMAKE_MODULE_PATH}
       ${LLVM_CMAKE_DIR})
 
+    # A prebuilt clang may predate the CL3.1 patches carried in patches/clang
+    # (only applied when building clang from source, see below). Probe it so
+    # we don't try to generate a PCM with a -cl-std value the compiler rejects.
+    find_program(OPENCL_CLANG_PROBE_CLANG clang PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cl31_check.cl" "")
+    execute_process(
+        COMMAND ${OPENCL_CLANG_PROBE_CLANG} -cl-std=CL3.1 -x cl -fsyntax-only "${CMAKE_CURRENT_BINARY_DIR}/cl31_check.cl"
+        RESULT_VARIABLE CLANG_CL31_CHECK_RESULT
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    if(CLANG_CL31_CHECK_RESULT EQUAL 0)
+        set(CLANG_SUPPORTS_CL31 TRUE)
+    else()
+        set(CLANG_SUPPORTS_CL31 FALSE)
+        message(STATUS "[OPENCL-CLANG] ${OPENCL_CLANG_PROBE_CLANG} does not support -cl-std=CL3.1; skipping OpenCL 3.1 PCM generation")
+    endif()
+
     set(CMAKE_CXX_STANDARD 14)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -76,8 +94,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif(LLVMSPIRV_INCLUDED_IN_LLVM)
 else(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(USE_PREBUILT_LLVM OFF)
+    set(CLANG_SUPPORTS_CL31 TRUE)
     find_package(Git REQUIRED)
 endif(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+
+if(NOT CLANG_SUPPORTS_CL31)
+  add_definitions(-DOPENCL_CLANG_NO_CL31_PCM)
+endif()
 
 include(AddLLVM)
 include(TableGen)
