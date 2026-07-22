@@ -238,8 +238,12 @@ void quoted_tokenize(OutIt dest, llvm::StringRef str, llvm::StringRef delims,
   while (ptr < end) {
     char c = str[ptr];
     if (c == escape) {
-      tok += c;
-      is_escaped = is_escaped ? false : true;
+      if (is_escaped) {
+        tok += c;
+        is_escaped = false;
+      } else {
+        is_escaped = true;
+      }
     } else if (c == quote) {
       if (is_escaped) {
         tok += c;
@@ -248,9 +252,9 @@ void quoted_tokenize(OutIt dest, llvm::StringRef str, llvm::StringRef delims,
         in_quote = in_quote ? false : true;
       }
     } else if (delims.find(c) != llvm::StringRef::npos) {
-      is_escaped = false;
-      if (in_quote) {
+      if (is_escaped || in_quote) {
         tok += c;
+        is_escaped = false;
       } else {
         *(dest++) = tok;
         tok.clear();
