@@ -10,7 +10,7 @@ add_executable(${TARGET_NAME}
   IniFiles.cpp
 )
 
-add_dependencies(${TARGET_NAME} ${OPENCL_CLANG_LIBRARY_NAME})
+add_dependencies(${TARGET_NAME} ${OPENCL_CLANG_LIBRARY_NAME}${BUILD_PLATFORM})
 
 target_link_libraries( ${TARGET_NAME}
                        ${OPENCL_CLANG_LIBRARY_NAME} )
