@@ -194,6 +194,10 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       effectiveArgs.push_back("-D");
       effectiveArgs.push_back("__FAST_RELAXED_MATH__=1");
       break;
+    case OPT_COMPILE_cl_std_CL1_0:
+      iCLStdSet = 100;
+      effectiveArgs.push_back((*it)->getAsString(args));
+      break;
     case OPT_COMPILE_cl_std_CL1_1:
       iCLStdSet = 110;
       effectiveArgs.push_back((*it)->getAsString(args));

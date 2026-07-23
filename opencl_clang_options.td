@@ -30,6 +30,7 @@ def cl_unsafe_math_optimizations: Flag<["-"], "cl-unsafe-math-optimizations">;
 def cl_finite_math_only: Flag<["-"], "cl-finite-math-only">;
 def cl_fast_relaxed_math: Flag<["-"], "cl-fast-relaxed-math">;
 def cl_kernel_arg_info: Flag<["-"], "cl-kernel-arg-info">;
+def cl_std_CL1_0: Flag<["-"], "cl-std=CL1.0">;
 def cl_std_CL1_1: Flag<["-"], "cl-std=CL1.1">;
 def cl_std_CL1_2: Flag<["-"], "cl-std=CL1.2">;
 def cl_std_CL2_0: Flag<["-"], "cl-std=CL2.0">;
