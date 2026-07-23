@@ -10,5 +10,4 @@ add_executable(${OCC_CLI_TARGET_NAME}
   IniFiles.cpp
 )
 
-target_link_libraries( ${OCC_CLI_TARGET_NAME}
-                       ${TARGET_NAMEE} )
+target_link_libraries(${OCC_CLI_TARGET_NAME} ${TARGET_NAMEE})
