@@ -1,4 +1,4 @@
-// REQUIRES: linux
+// REQUIRES: system-linux
 
 // RUN: %occ-cli %s --cl-options="-g -s ./tmp/kernel.cl" --cl-device=%cl_device %cfg_path --output=%t.bc
 // RUN: llvm-dis < %t.bc | FileCheck %s --check-prefix=CHECK-1
