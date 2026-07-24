@@ -347,4 +347,4 @@ limitClamp(__global float *phi,
 
 
 // buildOptions=-D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini  -D FIELDOFFX=0 -D VELOFFX=1 -D FIELDOFFY=0 -D VELOFFY=1 -D FIELDOFFZ=0 -D VELOFFZ=1 -D ADVECTMETHOD=1
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S -D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini  -D FIELDOFFX=0 -D VELOFFX=1 -D FIELDOFFY=0 -D VELOFFY=1 -D FIELDOFFZ=0 -D VELOFFZ=1 -D ADVECTMETHOD=1" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S -D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini  -D FIELDOFFX=0 -D VELOFFX=1 -D FIELDOFFY=0 -D VELOFFY=1 -D FIELDOFFZ=0 -D VELOFFZ=1 -D ADVECTMETHOD=1" %cfg_path --cl-device=%cl_device 2>&1

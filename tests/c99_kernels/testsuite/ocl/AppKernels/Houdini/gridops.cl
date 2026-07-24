@@ -510,4 +510,4 @@ boxFilterWindow(__global const float *src,
 
 
 // buildOptions=-D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S -D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S -D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini" %cfg_path --cl-device=%cl_device 2>&1

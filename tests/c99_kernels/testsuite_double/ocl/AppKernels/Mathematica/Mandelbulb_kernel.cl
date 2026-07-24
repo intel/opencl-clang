@@ -348,4 +348,4 @@ __kernel void MandelbulbGPU(
 
 
 // buildOptions=-Itestsuite/ocl/AppKernels/Mathematica -D FLOOR_POSITION=1 -D COLOR_R=100 -D COLOR_G=100 -D COLOR_B=100 -D ENABLE_SHADOW=1
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S -Itestsuite/ocl/AppKernels/Mathematica -D FLOOR_POSITION=1 -D COLOR_R=100 -D COLOR_G=100 -D COLOR_B=100 -D ENABLE_SHADOW=1" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S -Itestsuite/ocl/AppKernels/Mathematica -D FLOOR_POSITION=1 -D COLOR_R=100 -D COLOR_G=100 -D COLOR_B=100 -D ENABLE_SHADOW=1" %cfg_path --cl-device=%cl_device 2>&1

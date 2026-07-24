@@ -342,4 +342,4 @@ compress_kernel(long d_Ne,
 
 
 // buildOptions=-Itestsuite/ocl/AppKernels/Rodinia
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S -Itestsuite/ocl/AppKernels/Rodinia" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S -Itestsuite/ocl/AppKernels/Rodinia" %cfg_path --cl-device=%cl_device 2>&1

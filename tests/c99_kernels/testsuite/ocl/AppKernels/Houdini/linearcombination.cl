@@ -215,4 +215,4 @@ linearCombination3(float c0, __global const float *a0,
 
 
 // buildOptions=-D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini -D NFIELDS=2 -D USECONST=1 -D MIXOP=1 -D OFFSET0=0 -D OFFSET1=-1
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S -D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini -D NFIELDS=2 -D USECONST=1 -D MIXOP=1 -D OFFSET0=0 -D OFFSET1=-1" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S -D NO_DOUBLE_SUPPORT -I testsuite/ocl/AppKernels/Houdini -D NFIELDS=2 -D USECONST=1 -D MIXOP=1 -D OFFSET0=0 -D OFFSET1=-1" %cfg_path --cl-device=%cl_device 2>&1
