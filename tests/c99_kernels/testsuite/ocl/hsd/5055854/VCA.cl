@@ -196,4 +196,4 @@ void dspp_read_block_8u_wg(
 
 
 // buildOptions= -I testsuite/ocl/hsd/5055854
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S  -I testsuite/ocl/hsd/5055854" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S  -I testsuite/ocl/hsd/5055854" %cfg_path --cl-device=%cl_device 2>&1

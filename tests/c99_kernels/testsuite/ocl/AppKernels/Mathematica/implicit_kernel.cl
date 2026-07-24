@@ -372,4 +372,4 @@ __kernel void IsosurfaceGPU(
 
 
 // buildOptions=-Itestsuite/ocl/AppKernels/Mathematica -D FLOOR_POSITION=1 -D BOUNDING_RADIUS_2=0.3
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S -Itestsuite/ocl/AppKernels/Mathematica -D FLOOR_POSITION=1 -D BOUNDING_RADIUS_2=0.3" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S -Itestsuite/ocl/AppKernels/Mathematica -D FLOOR_POSITION=1 -D BOUNDING_RADIUS_2=0.3" %cfg_path --cl-device=%cl_device 2>&1

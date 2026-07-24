@@ -98,4 +98,4 @@ __kernel void RadianceGPU(
 
 
 // buildOptions=-Itestsuite/ocl/AppKernels/SmallptGPU
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S -Itestsuite/ocl/AppKernels/SmallptGPU" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S -Itestsuite/ocl/AppKernels/SmallptGPU" %cfg_path --cl-device=%cl_device 2>&1

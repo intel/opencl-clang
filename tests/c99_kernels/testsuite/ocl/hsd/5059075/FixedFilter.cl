@@ -633,4 +633,4 @@ void clpp_filter_fixed_3x3_8u16s_wg(
 
 
 // buildOptions= -I testsuite/ocl/hsd/5059075 -DBLK_X=128 -DBLK_Y=8
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S  -I testsuite/ocl/hsd/5059075 -DBLK_X=128 -DBLK_Y=8" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S  -I testsuite/ocl/hsd/5059075 -DBLK_X=128 -DBLK_Y=8" %cfg_path --cl-device=%cl_device 2>&1

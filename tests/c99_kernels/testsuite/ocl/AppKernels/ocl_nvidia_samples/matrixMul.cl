@@ -90,4 +90,4 @@ matrixMul( __global float* C, __global float* A, __global float* B,
 
 
 // buildOptions=-I testsuite/ocl/AppKernels/ocl_nvidia_samples
-// RUN: %occ-cli %s --cl-options="-I%cwd -I%S -I testsuite/ocl/AppKernels/ocl_nvidia_samples" %cfg_path --cl-device=%cl_device 2>&1
+// RUN: %occ-cli %s --cl-options="-I%cwd -I%/S -I testsuite/ocl/AppKernels/ocl_nvidia_samples" %cfg_path --cl-device=%cl_device 2>&1
