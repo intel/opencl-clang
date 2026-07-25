@@ -65,6 +65,27 @@ function(is_backport_patch_present patch_path repo_dir patch_in_branch)
     endif()
 endfunction()
 
+# Checks whether the patch's changes are already present in the working tree,
+# regardless of git history. This covers the case where the same upstream
+# change was applied without preserving its original commit hash, so
+# is_backport_patch_present() misses it while a `git am` would still fail.
+# Reverse-applies the patch as a dry run: if that succeeds, every hunk is
+# already present, so the patch is a no-op and must be skipped.
+function(is_patch_content_applied patch_path repo_dir patch_applied)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} apply --reverse --check --ignore-whitespace -C0 ${patch_path}
+        WORKING_DIRECTORY ${repo_dir}
+        RESULT_VARIABLE reverse_apply_failed
+        OUTPUT_QUIET
+        ERROR_QUIET
+        )
+    if(reverse_apply_failed)
+        set(${patch_applied} False PARENT_SCOPE) # changes are not (fully) present yet
+    else()
+        set(${patch_applied} True PARENT_SCOPE)  # changes already present in the tree
+    endif()
+endfunction()
+
 # Validates if given SHA1/tag/branch name exists in local repo
 function(is_valid_revision repo_dir revision return_val)
     message(STATUS "[OPENCL-CLANG] Validating ${revision} in repository")
@@ -136,8 +157,11 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
         message(STATUS "[OPENCL-CLANG] ${checkout_log} which starts from ref : ${base_revision}")
         foreach(patch ${patches})
             is_backport_patch_present(${patch} ${repo_dir} patch_in_branch)
+            is_patch_content_applied(${patch} ${repo_dir} patch_content_applied)
             if(${patch_in_branch})
                 message(STATUS "[OPENCL-CLANG] Patch ${patch} is already in local branch - ignore patching")
+            elseif(${patch_content_applied})
+                message(STATUS "[OPENCL-CLANG] Patch ${patch} changes are already present in the tree - ignore patching")
             else()
                 execute_process( # Apply the patch
                     COMMAND ${GIT_EXECUTABLE} am --3way --keep-non-patch --ignore-whitespace -C0 ${patch}
