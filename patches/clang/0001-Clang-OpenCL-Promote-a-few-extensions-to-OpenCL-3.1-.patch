@@ -1,4 +1,4 @@
-From 2b8125c686614ffc5c5f8cde007cd6ddcf6649d8 Mon Sep 17 00:00:00 2001
+From 3780d3eec04d3baf653ed6bfffe0d9281b11b9d3 Mon Sep 17 00:00:00 2001
 From: Wenju He <wenju.he@intel.com>
 Date: Thu, 16 Jul 2026 02:15:10 -0700
 Subject: [PATCH] [Clang][OpenCL] Promote a few extensions to OpenCL 3.1 core
@@ -19,30 +19,12 @@ Updated release notes for the change.
 
 Assisted-by: Claude
 ---
- clang/docs/ReleaseNotes.md                     |  6 ++++++
  clang/include/clang/Basic/OpenCLExtensions.def | 16 ++++++++--------
  clang/test/Misc/amdgcn.unsupported_core_3.1.cl |  8 ++++++++
  clang/test/SemaOpenCL/extension-version.cl     |  2 ++
- 4 files changed, 24 insertions(+), 8 deletions(-)
+ 3 files changed, 18 insertions(+), 8 deletions(-)
  create mode 100644 clang/test/Misc/amdgcn.unsupported_core_3.1.cl
 
-diff --git a/clang/docs/ReleaseNotes.md b/clang/docs/ReleaseNotes.md
-index 07e9d4a554dd..052838ef0af0 100644
---- a/clang/docs/ReleaseNotes.md
-+++ b/clang/docs/ReleaseNotes.md
-@@ -159,6 +159,12 @@ latest release, please see the [Clang Web Site](https://clang.llvm.org) or the
- 
- ### OpenCL Specific Changes
- 
-+- Extensions ``cl_khr_extended_bit_ops``, ``cl_khr_integer_dot_product``,
-+  ``cl_khr_subgroup_extended_types``, ``cl_khr_subgroup_rotate``,
-+  ``cl_khr_subgroup_shuffle``, and ``cl_khr_subgroup_shuffle_relative`` are
-+  promoted to core features in OpenCL C 3.1. A target claiming OpenCL C 3.1
-+  conformance without supporting one of these features is now diagnosed.
-+
- ### Target Specific Changes
- 
- #### AMDGPU Support
 diff --git a/clang/include/clang/Basic/OpenCLExtensions.def b/clang/include/clang/Basic/OpenCLExtensions.def
 index 08ac5f692616..f8af9b843f95 100644
 --- a/clang/include/clang/Basic/OpenCLExtensions.def
