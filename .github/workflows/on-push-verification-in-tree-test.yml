@@ -13,12 +13,10 @@ permissions:
 on:
   push:
     branches:
-      - main
-      - ocl-open-*
+      - ocl-open-230
   pull_request:
     branches:
-      - main
-      - ocl-open-*
+      - ocl-open-230
     types:
       - opened
       - reopened
@@ -40,7 +38,7 @@ jobs:
       - name: Run build-opencl-clang action
         uses: ./.github/actions/build-opencl-clang
         with:
-          ref_llvm: main
-          ref_translator: main
+          ref_llvm: release/23.x
+          ref_translator: llvm_release_230
           ref_opencl-clang: ${{ github.ref }}
           run_tests: 'true'
