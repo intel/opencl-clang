@@ -232,38 +232,33 @@ void quoted_tokenize(OutIt dest, llvm::StringRef str, llvm::StringRef delims,
   // pArg state machine, with the following state vars:
   //
   // ptr        - points to the current char in the string
-  // is_escaped - is the current char escaped (i.e. was the
-  //              previous char = escape, inside a quote)
   // in_quote   - are we in a quote now (i.e. a quote character
   //              appeared without a matching closing quote)
   // tok        - accumulates the current token. once an unquoted
   //              delimiter or end of string is encountered, tok
   //              is added to the return vector and re-initialized
   //
-  bool is_escaped = false;
+  // The escape char only escapes the quote, the escape char itself,
+  // or a delimiter - it is otherwise passed through verbatim, so
+  // that arbitrary text (e.g. "\n" inside a macro value, or Windows
+  // paths) isn't corrupted.
+  //
   bool in_quote = false;
   std::string tok;
 
   while (ptr < end) {
     char c = str[ptr];
-    if (c == escape) {
-      if (is_escaped) {
-        tok += c;
-        is_escaped = false;
-      } else {
-        is_escaped = true;
-      }
+    if (c == escape && ptr + 1 < end &&
+        (str[ptr + 1] == quote || str[ptr + 1] == escape ||
+         delims.find(str[ptr + 1]) != llvm::StringRef::npos)) {
+      tok += str[ptr + 1];
+      ptr += 2;
+      continue;
     } else if (c == quote) {
-      if (is_escaped) {
-        tok += c;
-        is_escaped = false;
-      } else {
-        in_quote = in_quote ? false : true;
-      }
+      in_quote = in_quote ? false : true;
     } else if (delims.find(c) != llvm::StringRef::npos) {
-      if (is_escaped || in_quote) {
+      if (in_quote) {
         tok += c;
-        is_escaped = false;
       } else {
         *(dest++) = tok;
         tok.clear();
@@ -275,7 +270,6 @@ void quoted_tokenize(OutIt dest, llvm::StringRef str, llvm::StringRef delims,
         }
       }
     } else {
-      is_escaped = false;
       tok += c;
     }
     ++ptr;
