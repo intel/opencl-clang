@@ -32,7 +32,7 @@ jobs:
           git config user.email "${{ github.actor }}@users.noreply.github.com"
 
       - name: Ensure PR is merged
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = await github.rest.pulls.get({
@@ -45,7 +45,7 @@ jobs:
             }
 
       - name: Parse backport command
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           result-encoding: string
@@ -65,7 +65,7 @@ jobs:
             core.exportVariable('SHORT_TARGET', String(Number(msg[1].slice('ocl-open-'.length)) / 10));
 
       - name: Notify attempt
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const target = process.env.TARGET;
@@ -83,7 +83,7 @@ jobs:
 
       - name: Get commit sha
         id: merge_sha
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           result-encoding: string
@@ -117,7 +117,7 @@ jobs:
 
       - name: Notify conflict
         if: env.CONFLICT == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -152,7 +152,7 @@ jobs:
       - name: Create Pull Request
         if: env.CONFLICT == 'false'
         id: create_pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           result-encoding: string
@@ -169,7 +169,7 @@ jobs:
 
       - name: Notify success
         if: env.CONFLICT == 'false'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PR_URL: ${{ steps.create_pr.outputs.result }}
         with:
@@ -200,7 +200,7 @@ jobs:
 
     steps:
       - name: Delete backport branch
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
