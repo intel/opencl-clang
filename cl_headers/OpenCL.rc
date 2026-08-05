@@ -11,8 +11,8 @@ END
 // Module with OpenCL C declarations with corresponding headers
 //
 
-OPENCL_C_H                     PCM   "opencl-c.h"
-OPENCL_C_BASE_H                PCM   "opencl-c-base.h"
+OPENCL_C_H                     PCM   "opencl-c-intel.h"
+OPENCL_C_BASE_H                PCM   "opencl-c-intel-base.h"
 OPENCL_C_12_SPIR_PCM           PCM   "opencl-c-12-spir.pcm"
 OPENCL_C_20_SPIR_PCM           PCM   "opencl-c-20-spir.pcm"
 OPENCL_C_30_SPIR_PCM           PCM   "opencl-c-30-spir.pcm"
