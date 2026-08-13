@@ -38,14 +38,14 @@ int main(int argc, char *argv[]) {
     }
 
     string method = "compile";
-    find_if(args.begin(), args.end(), [&](const string &s) {
+    for (const string &s : args) {
       string methodParam = "--method=";
       auto it = s.find(methodParam);
       if (it != string::npos) {
         method.assign(s.begin() + it + methodParam.size(), s.end());
+        break;
       }
-      return it != string::npos;
-    });
+    }
 
     transform(method.begin(), method.end(), method.begin(), ::tolower);
 
