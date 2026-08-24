@@ -119,13 +119,52 @@ function(apply_patches repo_dir patches_dirs base_revision target_branch)
         return()
     endif()
 
-    # Check if it's a git repo
-    if(EXISTS "${repo_dir}/.git")
-      message(STATUS "[OPENCL-CLANG] Patching repository ${repo_dir}")
-    else()
-      message(STATUS "[OPENCL-CLANG][Warning] ${repo_dir} is not a git repository, therefore, local patches are not applied")
+    # If there is no git history (e.g. sources extracted from a tarball, as
+    # done by distros/Nix that avoid full git clones), `git am`/branch
+    # tracking cannot work. Fall back to plain `git apply`, which only needs
+    # the working tree content to match the patch context and does not
+    # require a repository at all. Idempotency is tracked via a marker file
+    # instead of a git branch.
+    if(NOT EXISTS "${repo_dir}/.git")
+      message(STATUS "[OPENCL-CLANG] ${repo_dir} is not a git repository, applying patches directly with 'git apply'")
+      set(applied_marker "${repo_dir}/.opencl-clang-patches-applied")
+      if(EXISTS "${applied_marker}")
+        message(STATUS "[OPENCL-CLANG] Patches already applied to ${repo_dir} - skipping")
+        return()
+      endif()
+      list(SORT patches)
+      foreach(patch ${patches})
+        execute_process( # Skip if changes are already present in the tree
+            COMMAND ${GIT_EXECUTABLE} apply --reverse --check --ignore-whitespace -C0 ${patch}
+            WORKING_DIRECTORY ${repo_dir}
+            RESULT_VARIABLE reverse_apply_failed
+            OUTPUT_QUIET ERROR_QUIET
+            )
+        if(NOT reverse_apply_failed)
+          message(STATUS "[OPENCL-CLANG] Patch ${patch} changes are already present in the tree - ignore patching")
+          continue()
+        endif()
+        execute_process( # Apply the patch
+            COMMAND ${GIT_EXECUTABLE} apply --ignore-whitespace -C0 ${patch}
+            WORKING_DIRECTORY ${repo_dir}
+            RESULT_VARIABLE ret_apply_patch
+            OUTPUT_VARIABLE patching_log
+            ERROR_VARIABLE  patching_err
+            )
+        message(STATUS "[OPENCL-CLANG] Applying ${patch}\n${patching_log}")
+        if(ret_apply_patch)
+          message(FATAL_ERROR
+              "[OPENCL-CLANG] Failed to apply patch ${patch}\n"
+              "git apply exit code: ${ret_apply_patch}\n"
+              "stdout:\n${patching_log}\n"
+              "stderr:\n${patching_err}")
+        endif()
+      endforeach(patch)
+      file(WRITE "${applied_marker}" "")
+      message(STATUS "[OPENCL-CLANG] Applied patch successfully!")
       return()
     endif()
+    message(STATUS "[OPENCL-CLANG] Patching repository ${repo_dir}")
     # Check if the target branch already exists
     execute_process(
         COMMAND ${GIT_EXECUTABLE} rev-parse --verify --no-revs -q ${target_branch}
