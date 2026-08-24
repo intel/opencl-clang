@@ -1,6 +1,6 @@
 set(CL_HEADERS_LIB cl_headers)
 if(USE_PREBUILT_LLVM)
-    find_program(CLANG_COMMAND clang PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
+    set(CLANG_COMMAND ${OPENCL_CLANG_PROBE_CLANG})
 else()
     set(CLANG_COMMAND $<TARGET_FILE:clang>)
 endif()
