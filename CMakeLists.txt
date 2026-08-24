@@ -54,7 +54,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # A prebuilt clang may predate the CL3.1 patches carried in patches/clang
     # (only applied when building clang from source, see below). Probe it so
     # we don't try to generate a PCM with a -cl-std value the compiler rejects.
-    find_program(OPENCL_CLANG_PROBE_CLANG clang PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
+    find_program(OPENCL_CLANG_PROBE_CLANG clang PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH REQUIRED)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cl31_check.cl" "")
     execute_process(
         COMMAND ${OPENCL_CLANG_PROBE_CLANG} -cl-std=CL3.1 -x cl -fsyntax-only "${CMAKE_CURRENT_BINARY_DIR}/cl31_check.cl"
