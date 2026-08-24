@@ -152,6 +152,9 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
             ERROR_VARIABLE checkout_log
             OUTPUT_QUIET
             )
+        if(ret_check_out)
+            message(FATAL_ERROR "[OPENCL-CLANG] Failed to check out branch ${target_branch}\n${checkout_log}")
+        endif()
         message(STATUS "[OPENCL-CLANG] ${checkout_log} which starts from ref : ${base_revision}")
         foreach(patch ${patches})
             is_backport_patch_present(${patch} ${repo_dir} patch_in_branch)
@@ -189,9 +192,6 @@ function(apply_patches repo_dir patches_dir base_revision target_branch)
             WORKING_DIRECTORY ${repo_dir}
             OUTPUT_QUIET
         )
-    endif()
-    if (ret_check_out OR ret_apply_patch)
-      message(FATAL_ERROR "[OPENCL-CLANG] Failed to apply patch!")
     endif()
 endfunction()
 
