@@ -251,8 +251,8 @@ if(NOT USE_PREBUILT_LLVM)
     set(CLANG_BINARY_DIR ${LLVM_BINARY_DIR}/tools/clang/)
     include_directories(
         ${CLANG_BINARY_DIR}/include  # for tablegened includes
-        ${CLANG_SOURCE_DIR}/include  # for basic headers
-        ${SPIRV_SOURCE_DIR}/include) # for SPIRV headers
+        ${CLANG_SOURCE_DIR}/include) # for basic headers
+    # SPIRV headers are picked up transitively via the LLVMSPIRVLib target.
 endif(NOT USE_PREBUILT_LLVM)
 
 if(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
