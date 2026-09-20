@@ -26,6 +26,7 @@ Copyright (c) Intel Corporation (2009-2017).
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/Option.h"
+#include "llvm/Option/OptTable.h"
 #include "clang/Basic/OpenCLOptions.h"
 
 #ifdef USE_PREBUILT_LLVM
@@ -49,14 +50,6 @@ enum COMPILE_OPT_ID {
 #undef OPTION
 #undef PREFIX
 };
-
-#define OPTTABLE_STR_TABLE_CODE
-#include "opencl_clang_options.inc"
-#undef OPTTABLE_STR_TABLE_CODE
-
-#define OPTTABLE_PREFIXES_TABLE_CODE
-#include "opencl_clang_options.inc"
-#undef OPTTABLE_PREFIXES_TABLE_CODE
 
 typedef std::list<std::string> ArgsVector;
 
@@ -111,10 +104,10 @@ private:
 //
 // OpenCL specific OptTable
 //
-class OpenCLOptTable : public llvm::opt::GenericOptTable {
+class OpenCLOptTable : public llvm::opt::OptTable {
 public:
-  OpenCLOptTable(llvm::ArrayRef<Info> pOptionInfos)
-      : llvm::opt::GenericOptTable(OptionStrTable, OptionPrefixesTable, pOptionInfos) {}
+  OpenCLOptTable(const llvm::opt::OptTable::Tables &pOptionTables)
+      : llvm::opt::OptTable(pOptionTables) {}
 
   OpenCLArgList *ParseArgs(const char *szOptions, unsigned &missingArgIndex,
                            unsigned &missingArgCount) const;
