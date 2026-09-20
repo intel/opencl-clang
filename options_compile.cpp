@@ -30,31 +30,12 @@ Copyright (c) Intel Corporation (2009-2017).
 
 using namespace llvm::opt;
 
-static constexpr OptTable::Info ClangOptionsInfoTable[] = {
-#define PREFIX(NAME, VALUE)
-#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS,         \
-               VISIBILITY, PARAM, HELPTEXT, HELPTEXTSFORVARIANTS, METAVAR,     \
-               VALUES, SUBCOMMANDIDS_OFFSET)                                   \
-  {PREFIX,                                                                     \
-   NAME,                                                                       \
-   HELPTEXT,                                                                   \
-   HELPTEXTSFORVARIANTS,                                                       \
-   METAVAR,                                                                    \
-   OPT_COMPILE_##ID,                                                           \
-   llvm::opt::Option::KIND##Class,                                             \
-   PARAM,                                                                      \
-   FLAGS,                                                                      \
-   VISIBILITY,                                                                 \
-   OPT_COMPILE_##GROUP,                                                        \
-   OPT_COMPILE_##ALIAS,                                                        \
-   ALIASARGS,                                                                  \
-   VALUES,                                                                     \
-   SUBCOMMANDIDS_OFFSET},
+#define OPTTABLE_CODE
 #include "opencl_clang_options.inc"
-};
+#undef OPTTABLE_CODE
 
 OpenCLCompileOptTable::OpenCLCompileOptTable()
-    : OpenCLOptTable(ClangOptionsInfoTable) {}
+    : OpenCLOptTable(optionTables()) {}
 
 std::atomic<int> EffectiveOptionsFilter::s_progID{1};
 
