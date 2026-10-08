@@ -4,16 +4,16 @@ name: Backport on Comment
 on:
   issue_comment:
     types: [created]
-  pull_request:
-    types: [closed]
 
 permissions:
-  contents: write
-  pull-requests: write
-  issues: read
+  contents: read
 
 jobs:
   backport:
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
     if: >
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request != null &&
@@ -188,25 +188,3 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: backport-complete
-
-  delete-backport-branch:
-    if: >
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'backport/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Delete backport branch
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const ref = context.payload.pull_request.head.ref;
-            await github.rest.git.deleteRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: `heads/${ref}`
-            });
