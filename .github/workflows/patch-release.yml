@@ -98,7 +98,7 @@ jobs:
           echo "llvm_patch=${LLVM_PATCH}" >> $GITHUB_OUTPUT
       # Build, sign and attest the release assets before publishing the release
       # so a failure here leaves no tag behind and the job can simply be rerun.
-      - name: Create and sign source archive
+      - name: Create source archive
         id: sign
         if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
         env:
@@ -109,8 +109,13 @@ jobs:
           ARCHIVE="${RUNNER_TEMP}/signing/opencl-clang-${TAG}.tar.gz"
           git archive --format=tar.gz --prefix="opencl-clang-${TAG}/" \
             -o "${ARCHIVE}" "${COMMIT}"
-          pipx run --spec sigstore==4.5.0 sigstore sign "${ARCHIVE}"
           echo "archive=${ARCHIVE}" >> $GITHUB_OUTPUT
+      - name: Sign source archive
+        if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
+        uses: sigstore/gh-action-sigstore-python@790bc6befb9d733738f18d8f895854b453640ec9 # v3.5.0
+        with:
+          inputs: ${{ steps.sign.outputs.archive }}
+          release-signing-artifacts: false
       # The OIDC ref/sha of a scheduled run is the default branch, not the
       # release branch, so bind the provenance to the archived commit explicitly.
       - name: Write SLSA provenance predicate
