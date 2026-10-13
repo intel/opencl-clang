@@ -96,6 +96,81 @@ jobs:
           | sort -n \
           | tail -1)
           echo "llvm_patch=${LLVM_PATCH}" >> $GITHUB_OUTPUT
+      # Build, sign and attest the release assets before publishing the release
+      # so a failure here leaves no tag behind and the job can simply be rerun.
+      - name: Create and sign source archive
+        id: sign
+        if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
+        env:
+          TAG: v${{ steps.versions.outputs.release_version }}
+          COMMIT: ${{ steps.versions.outputs.last_commit }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/signing"
+          ARCHIVE="${RUNNER_TEMP}/signing/opencl-clang-${TAG}.tar.gz"
+          git archive --format=tar.gz --prefix="opencl-clang-${TAG}/" \
+            -o "${ARCHIVE}" "${COMMIT}"
+          pipx run --spec sigstore==4.5.0 sigstore sign "${ARCHIVE}"
+          echo "archive=${ARCHIVE}" >> $GITHUB_OUTPUT
+      # The OIDC ref/sha of a scheduled run is the default branch, not the
+      # release branch, so bind the provenance to the archived commit explicitly.
+      - name: Write SLSA provenance predicate
+        id: predicate
+        if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
+        env:
+          COMMIT: ${{ steps.versions.outputs.last_commit }}
+          BRANCH: ${{ matrix.branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          OWNER_ID: ${{ github.repository_owner_id }}
+          RUNNER_ENV: ${{ runner.environment }}
+        run: |
+          PREDICATE="${RUNNER_TEMP}/signing/predicate.json"
+          WORKFLOW_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/.github/workflows/patch-release.yml"
+          jq -n \
+            --arg buildType "https://actions.github.io/buildtypes/workflow/v1" \
+            --arg ref "${GITHUB_REF}" \
+            --arg repo "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --arg path ".github/workflows/patch-release.yml" \
+            --arg event "${EVENT_NAME}" \
+            --arg repoId "${REPOSITORY_ID}" \
+            --arg ownerId "${OWNER_ID}" \
+            --arg runnerEnv "${RUNNER_ENV}" \
+            --arg builderId "${WORKFLOW_URL}@${GITHUB_REF}" \
+            --arg invocationId "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}" \
+            --arg runUri "git+${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}@${GITHUB_REF}" \
+            --arg runSha "${GITHUB_SHA}" \
+            --arg uri "git+${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}@refs/heads/${BRANCH}" \
+            --arg commit "${COMMIT}" \
+            '{buildDefinition: {buildType: $buildType,
+                                externalParameters:
+                                  {workflow: {ref: $ref, repository: $repo,
+                                              path: $path}},
+                                internalParameters:
+                                  {github: {event_name: $event,
+                                            repository_id: $repoId,
+                                            repository_owner_id: $ownerId,
+                                            runner_environment: $runnerEnv}},
+                                resolvedDependencies:
+                                  [{uri: $runUri, digest: {gitCommit: $runSha}},
+                                   {uri: $uri, digest: {gitCommit: $commit}}]},
+              runDetails: {builder: {id: $builderId},
+                           metadata: {invocationId: $invocationId}}}' \
+            > "${PREDICATE}"
+          echo "path=${PREDICATE}" >> $GITHUB_OUTPUT
+      - name: Generate SLSA build provenance
+        id: attest
+        if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ steps.sign.outputs.archive }}
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: ${{ steps.predicate.outputs.path }}
+      - name: Stage release assets
+        if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
+        env:
+          ARCHIVE: ${{ steps.sign.outputs.archive }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: cp "${BUNDLE}" "${ARCHIVE}.intoto.jsonl"
       - name: Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
@@ -122,34 +197,7 @@ jobs:
               ${{ github.repository }}/compare/\
               ${{ steps.versions.outputs.latest_version }}...\
               v${{ steps.versions.outputs.release_version }}"
-
-      - name: Sign source archive with sigstore
-        id: sign
-        if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v${{ steps.versions.outputs.release_version }}
-        run: |
-          mkdir -p "${RUNNER_TEMP}/signing"
-          ARCHIVE="${RUNNER_TEMP}/signing/opencl-clang-${TAG}.tar.gz"
-          git archive --format=tar.gz --prefix="opencl-clang-${TAG}/" \
-            -o "${ARCHIVE}" "${{ steps.versions.outputs.last_commit }}"
-          pipx run sigstore sign "${ARCHIVE}"
-          echo "archive=${ARCHIVE}" >> $GITHUB_OUTPUT
-      - name: Generate SLSA build provenance
-        id: attest
-        if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: ${{ steps.sign.outputs.archive }}
-      - name: Upload signed archive and provenance
-        if: ${{ steps.versions.outputs.commits_since_last_release != 0 }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v${{ steps.versions.outputs.release_version }}
-          ARCHIVE: ${{ steps.sign.outputs.archive }}
-          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
-        run: |
-          cp "${BUNDLE}" "${ARCHIVE}.intoto.jsonl"
-          gh release upload "${TAG}" "${ARCHIVE}" "${ARCHIVE}.sigstore.json" \
-            "${ARCHIVE}.intoto.jsonl" --clobber
+            files: |
+              ${{ steps.sign.outputs.archive }}
+              ${{ steps.sign.outputs.archive }}.sigstore.json
+              ${{ steps.sign.outputs.archive }}.intoto.jsonl
