@@ -361,8 +361,6 @@ int CompileOptionsParser::processOptions(const char *pszOptions,
       if (0 != ret)
         return ret;
       continue;
-    } else if (arg == "no-opaque-pointers") {
-      OpaquePointers = false;
     }
     EffectiveArgsRaw.push_back(it->c_str());
   }
