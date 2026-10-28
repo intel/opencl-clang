@@ -21,19 +21,30 @@ add_public_tablegen_target(CClangCompileOptions)
 # Source code
 #
 set(TARGET_INCLUDE_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/OpenCLClang.h
-    Options.h
-    BinaryResult.h
-    BuiltInHeaders.h
-    ${COMPILE_OPTIONS_TD}
-    ${COMPILE_OPTIONS_INC}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/OpenCLClang.h
+
+  Action.h
+  Bitcode.h
+  BuiltInHeaders.h
+  Frontend.h
+  SPIRV.h
+  SmallVectorStream.h
+
+  Options.h
+  BinaryResult.h
+  ${COMPILE_OPTIONS_TD}
+  ${COMPILE_OPTIONS_INC}
 )
 
 set(TARGET_SOURCE_FILES
-    OpenCLClang.cpp
-    Options.cpp
-    OptionsCompile.cpp
-    BuiltInHeaders.cpp
+  Bitcode.cpp
+  BuiltInHeaders.cpp
+  Driver.cpp
+  Frontend.cpp
+  SPIRV.cpp
+
+  Options.cpp
+  OptionsCompile.cpp
 )
 
 #
