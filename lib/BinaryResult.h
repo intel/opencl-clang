@@ -19,6 +19,7 @@
 
 #include "opencl-clang/OpenCLClang.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include <string>
 
 // The following #defines are used as return value of Compile() API and defined
@@ -54,7 +55,7 @@ public:
 
   void setLog(std::string &&L) { Log = std::move(L); }
 
-  void setIRName(const std::string &Name) { IRName = Name; }
+  void setIRName(llvm::StringRef Name) { IRName = Name.str(); }
 
   void setIRType(Intel::OpenCL::ClangFE::IrType Type) { this->Type = Type; }
 

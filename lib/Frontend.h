@@ -28,7 +28,7 @@
 struct FrontendSource {
   FrontendSource(const char *Data, const char *Filename)
       : Data(Data), Filename(Filename) {}
-  FrontendSource(const char *Data, const std::string &Filename)
+  FrontendSource(const char *Data, llvm::StringRef Filename)
       : Data(Data), Filename(Filename) {}
 
   llvm::StringRef Data;

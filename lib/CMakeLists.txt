@@ -2,22 +2,6 @@
 add_subdirectory(Headers)
 
 #
-# TblGen the options include file
-#
-set (COMPILE_OPTIONS_TD  OpenCLClangOptions.td)
-set (COMPILE_OPTIONS_INC OpenCLClangOptions.inc)
-
-find_program(LLVM_TABLEGEN_EXE "llvm-tblgen" ${LLVM_TOOLS_BINARY_DIR})
-set(LLVM_TARGET_DEFINITIONS ${COMPILE_OPTIONS_TD})
-if(USE_PREBUILT_LLVM)
-  set(TABLEGEN_ADDITIONAL -I ${LLVM_INCLUDE_DIRS})
-else(USE_PREBUILT_LLVM)
-  set(TABLEGEN_ADDITIONAL "")
-endif(USE_PREBUILT_LLVM)
-llvm_tablegen(${COMPILE_OPTIONS_INC} -gen-opt-parser-defs ${TABLEGEN_ADDITIONAL})
-add_public_tablegen_target(CClangCompileOptions)
-
-#
 # Source code
 #
 set(TARGET_INCLUDE_FILES
@@ -30,10 +14,7 @@ set(TARGET_INCLUDE_FILES
   SPIRV.h
   SmallVectorStream.h
 
-  Options.h
   BinaryResult.h
-  ${COMPILE_OPTIONS_TD}
-  ${COMPILE_OPTIONS_INC}
 )
 
 set(TARGET_SOURCE_FILES
@@ -42,9 +23,6 @@ set(TARGET_SOURCE_FILES
   Driver.cpp
   Frontend.cpp
   SPIRV.cpp
-
-  Options.cpp
-  OptionsCompile.cpp
 )
 
 #
@@ -100,6 +78,10 @@ endif()
 
 set(LLVM_REQUIRES_EH ON)
 
+# Option parsing library. It needs the include directories and the compile
+# flags set up above, so it must be added after them.
+add_subdirectory(Options)
+
 if(USE_PREBUILT_LLVM OR CLANG_LINK_CLANG_DYLIB)
   list(APPEND OPENCL_CLANG_LINK_LIBS clang-cpp)
 else()
@@ -137,11 +119,10 @@ add_llvm_library(${TARGET_NAME} SHARED
   ${TARGET_INCLUDE_FILES}
   ${TARGET_SOURCE_FILES}
 
-  DEPENDS CClangCompileOptions
-
   LINK_LIBS
     ${OPENCL_CLANG_LINK_LIBS}
     opencl-clang-embedded-headers
+    opencl-clang-options
   )
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
