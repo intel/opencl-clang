@@ -15,9 +15,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "opencl-clang/OpenCLClang.h"
-#include "PCHManager.h"
-#include "../cl_headers/Resource.h"
 #include "BinaryResult.h"
+#include "BuiltInHeaders.h"
 #include "Options.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -86,55 +85,6 @@ void openCLClangInitialize() {
   llvm::call_once(OnceFlag, []() { atexit(openCLClangTerminate); });
 }
 
-static bool getHeaders(std::vector<Resource> &Result) {
-  struct {
-    const char *ID;
-    const char *Name;
-  } Headers[] = {{OPENCL_C_H, "opencl-c.h"},
-                 {OPENCL_C_BASE_H, "opencl-c-base.h"},
-                 {OPENCL_C_12_SPIR_PCM, "opencl-c-12-spir.pcm"},
-                 {OPENCL_C_20_SPIR_PCM, "opencl-c-20-spir.pcm"},
-                 {OPENCL_C_30_SPIR_PCM, "opencl-c-30-spir.pcm"},
-#ifndef OPENCL_CLANG_NO_CL31_PCM
-                 {OPENCL_C_31_SPIR_PCM, "opencl-c-31-spir.pcm"},
-#endif
-                 {OPENCL_C_12_SPIR64_PCM, "opencl-c-12-spir64.pcm"},
-                 {OPENCL_C_20_SPIR64_PCM, "opencl-c-20-spir64.pcm"},
-                 {OPENCL_C_30_SPIR64_PCM, "opencl-c-30-spir64.pcm"},
-#ifndef OPENCL_CLANG_NO_CL31_PCM
-                 {OPENCL_C_31_SPIR64_PCM, "opencl-c-31-spir64.pcm"},
-#endif
-                 {OPENCL_C_12_SPIR_FP64_PCM, "opencl-c-12-spir-fp64.pcm"},
-                 {OPENCL_C_20_SPIR_FP64_PCM, "opencl-c-20-spir-fp64.pcm"},
-                 {OPENCL_C_30_SPIR_FP64_PCM, "opencl-c-30-spir-fp64.pcm"},
-#ifndef OPENCL_CLANG_NO_CL31_PCM
-                 {OPENCL_C_31_SPIR_FP64_PCM, "opencl-c-31-spir-fp64.pcm"},
-#endif
-                 {OPENCL_C_12_SPIR64_FP64_PCM, "opencl-c-12-spir64-fp64.pcm"},
-                 {OPENCL_C_20_SPIR64_FP64_PCM, "opencl-c-20-spir64-fp64.pcm"},
-                 {OPENCL_C_30_SPIR64_FP64_PCM, "opencl-c-30-spir64-fp64.pcm"},
-#ifndef OPENCL_CLANG_NO_CL31_PCM
-                 {OPENCL_C_31_SPIR64_FP64_PCM, "opencl-c-31-spir64-fp64.pcm"},
-#endif
-                 {OPENCL_C_MODULE_MAP, "module.modulemap"}};
-
-  Result.clear();
-  Result.reserve(sizeof(Headers) / sizeof(*Headers));
-
-  ResourceManager &RM = ResourceManager::instance();
-  for (auto Header : Headers) {
-    Resource R = RM.getResource(Header.Name, Header.ID, "PCM", true);
-    if (!R) {
-      assert(false && "Resource not found");
-      return false;
-    }
-
-    Result.push_back(R);
-  }
-
-  return true;
-}
-
 static void printCompileOptions(const char *pszOptions, const char *pszOptionsEx,
                                 const char *pszOpenCLVer, const char * pszSource) {
 #ifdef _DEBUG
@@ -187,9 +137,9 @@ public:
 extern "C" CC_DLL_EXPORT int
 Compile(const char *pszProgramSource, const char **pInputHeaders,
         unsigned int uiNumInputHeaders, const char **pInputHeadersNames,
-        const char *pPCHBuffer, size_t uiPCHBufferSize, const char *pszOptions,
-        const char *pszOptionsEx, const char *pszOpenCLVer,
-        IOCLFEBinaryResult **pBinaryResult) {
+        const char * /*pPCHBuffer*/, size_t /*uiPCHBufferSize*/,
+        const char *pszOptions, const char *pszOptionsEx,
+        const char *pszOpenCLVer, IOCLFEBinaryResult **pBinaryResult) {
 
   // Capturing cclang compile options
   printCompileOptions(pszOptions, pszOptionsEx, pszOpenCLVer, pszProgramSource);
@@ -235,8 +185,9 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
     compiler->setDiagnostics(&*Diags);
 
-    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS(
-        new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
+    const BuiltInHeaders &Headers = BuiltInHeaders::get();
+    llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS =
+        Headers.getFileSystem();
     llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> MemFS(
         new llvm::vfs::InMemoryFileSystem);
     OverlayFS->pushOverlay(MemFS);
@@ -258,20 +209,6 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
         optionsParser.getSourceName(), (time_t)0,
         llvm::MemoryBuffer::getMemBuffer(
           llvm::StringRef(pszProgramSource), optionsParser.getSourceName()));
-
-    // Input header with OpenCL defines.
-    std::vector<Resource> vHeaderWithDefs;
-    if (!getHeaders(vHeaderWithDefs)) {
-      return CL_COMPILE_PROGRAM_FAILURE;
-    }
-
-    for (const auto &Header:vHeaderWithDefs) {
-      auto Buf = llvm::MemoryBuffer::getMemBuffer(
-          llvm::StringRef(Header.Data, Header.Size),
-          Header.Name);
-
-      MemFS->addFile(Header.Name,(time_t)0, std::move(Buf));
-    }
 
     // Input Headers
     for (unsigned int i = 0; i < uiNumInputHeaders; ++i) {
