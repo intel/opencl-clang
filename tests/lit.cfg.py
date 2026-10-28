@@ -22,8 +22,6 @@ config.test_exec_root = config.opencl_clang_obj_root
 
 llvm_config.use_default_substitutions()
 
-llvm_config.use_clang()
-
 occ_cli = os.path.join(config.opencl_clang_tools_dir, "occ-cli")
 cfg_path = os.path.join(config.opencl_clang_src_root, "tests", "occ-cli")
 cl_device = getattr(config, "cl_device", "DEFAULT")
