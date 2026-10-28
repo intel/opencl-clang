@@ -21,9 +21,12 @@
 #include "llvm/ADT/SmallVector.h"
 #include <string>
 
-// The following #define is taken from
-// https://github.com/KhronosGroup/OpenCL-Headers/blob/master/CL/cl.h
+// The following #defines are used as return value of Compile() API and defined
+// in https://github.com/KhronosGroup/OpenCL-Headers/blob/master/CL/cl.h
 #define CL_SUCCESS 0
+#define CL_COMPILE_PROGRAM_FAILURE -15
+#define CL_INVALID_BUILD_OPTIONS -43
+#define CL_OUT_OF_HOST_MEMORY -6
 
 class OCLFEBinaryResult : public Intel::OpenCL::ClangFE::IOCLFEBinaryResult {
   // IOCLFEBinaryResult
@@ -39,16 +42,17 @@ public:
   const char *GetErrorLog() const override { return Log.c_str(); }
 
   void Release() override { delete this; }
+
   // OCLFEBinaryResult
 public:
   OCLFEBinaryResult()
       : Type(Intel::OpenCL::ClangFE::IrTypeUnknown), Result(CL_SUCCESS) {}
 
-  llvm::SmallVectorImpl<char> &getIRBufferRef() { return IRBuffer; }
+  void setIRBuffer(llvm::SmallVector<char> &&Buffer) {
+    IRBuffer = std::move(Buffer);
+  }
 
-  std::string &getLogRef() { return Log; }
-
-  void setLog(const std::string &Log) { this->Log = Log; }
+  void setLog(std::string &&L) { Log = std::move(L); }
 
   void setIRName(const std::string &Name) { IRName = Name; }
 
@@ -56,10 +60,10 @@ public:
 
   void setResult(int Result) { this->Result = Result; }
 
-  int getResult(void) const { return Result; }
+  int getResult() const { return Result; }
 
 private:
-  llvm::SmallVector<char, 4096> IRBuffer;
+  llvm::SmallVector<char> IRBuffer;
   std::string Log;
   std::string IRName;
   Intel::OpenCL::ClangFE::IrType Type;
