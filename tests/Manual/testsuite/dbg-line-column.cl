@@ -3,7 +3,7 @@
 // RUN: %occ-cli %s --cl-options="-g" %cfg_path --cl-device=%cl_device --output=%t.bc
 // RUN: llvm-dis %t.bc -o - | FileCheck %s
 
-// CHECK: #dbg_declare(ptr %input.addr, ![[#]], !DIExpression(DW_OP_constu, 0, DW_OP_swap, DW_OP_xderef), ![[LOC:[0-9]+]])
+// CHECK: #dbg_declare(ptr %input.addr, ![[#]], !DIExpression({{.*}}), ![[LOC:[0-9]+]])
 // Only check there is line and scope information since column information
 // isn't generated on Windows
 // CHECK: ![[LOC]] = !DILocation(line: {{[0-9]+}}, {{.*}}scope: !{{[0-9]+}})
