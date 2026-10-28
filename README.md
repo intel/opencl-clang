@@ -53,6 +53,11 @@ To build opencl-clang as a standalone project, you need to obtain pre-built LLVM
 and SPIR-V Translator libraries. **Note:** currently this kind of build is
 supported on Linux only.
 
+The OpenCL C headers (`opencl-c.h` and `opencl-c-base.h`) are embedded into
+the library during the build. For the out-of-tree build they are taken from the
+Clang resource directory of the pre-built LLVM (`lib/clang/<version>/include`).
+Python 3 is required for the build.
+
 If opencl-clang is used as part of another CMake project, you will need to define `OPENCL_CLANG_BUILD_EXTERNAL`.
 
 Integration with pre-built LLVM is done using standard `find_package` way as

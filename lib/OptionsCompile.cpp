@@ -14,13 +14,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "opencl-clang/OpenCLClang.h"
+#include "BuiltInHeaders.h"
 #include "Options.h"
 
-#include "llvm/ADT/SmallSet.h"
+#include "opencl-clang/OpenCLClang.h"
+
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/ManagedStatic.h"
-#include "llvm/Support/Mutex.h"
 
 #include <algorithm>
 #include <map>
@@ -31,6 +30,11 @@ using namespace llvm::opt;
 #define OPTTABLE_CODE
 #include "OpenCLClangOptions.inc"
 #undef OPTTABLE_CODE
+
+#ifndef OPENCL_CLANG_NATIVE_TRIPLE
+#error "OPENCL_CLANG_NATIVE_TRIPLE must be defined by the build system"
+#endif // OPENCL_CLANG_NATIVE_TRIPLE
+static const char DefaultTargetTriple[] = OPENCL_CLANG_NATIVE_TRIPLE;
 
 OpenCLCompileOptTable::OpenCLCompileOptTable()
     : OpenCLOptTable(optionTables()) {}
@@ -112,10 +116,8 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
                                                    const char *pszOptionsEx,
                                                    ArgsVector &effectiveArgs) {
   // Reset args
-  int iCLStdSet = 0;
   bool isCpp = false;
-  bool fp64Enabled = false;
-  std::string szTriple;
+  std::string szTriple = DefaultTargetTriple;
   std::string sourceName(llvm::Twine(ProgID++).str());
 
   for (OpenCLArgList::const_iterator it = args.begin(), ie = args.end();
@@ -174,37 +176,16 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
       effectiveArgs.push_back("__FAST_RELAXED_MATH__=1");
       break;
     case OPT_COMPILE_cl_std_CL1_0:
-      iCLStdSet = 100;
-      effectiveArgs.push_back((*it)->getAsString(args));
-      break;
     case OPT_COMPILE_cl_std_CL1_1:
-      iCLStdSet = 110;
-      effectiveArgs.push_back((*it)->getAsString(args));
-      break;
     case OPT_COMPILE_cl_std_CL1_2:
-      iCLStdSet = 120;
-      effectiveArgs.push_back((*it)->getAsString(args));
-      break;
     case OPT_COMPILE_cl_std_CL2_0:
-      iCLStdSet = 200;
-      effectiveArgs.push_back((*it)->getAsString(args));
-      break;
     case OPT_COMPILE_cl_std_CL3_0:
-      iCLStdSet = 300;
-      effectiveArgs.push_back((*it)->getAsString(args));
-      break;
     case OPT_COMPILE_cl_std_CL3_1:
-      iCLStdSet = 310;
       effectiveArgs.push_back((*it)->getAsString(args));
       break;
     case OPT_COMPILE_cl_std_CLCxx:
     case OPT_COMPILE_cl_std_CLCxx1_0:
-      iCLStdSet = 200;
-      isCpp = true;
-      effectiveArgs.push_back((*it)->getAsString(args));
-      break;
     case OPT_COMPILE_cl_std_CLCxx2021:
-      iCLStdSet = 300;
       isCpp = true;
       effectiveArgs.push_back((*it)->getAsString(args));
       break;
@@ -252,7 +233,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   effectiveArgs.push_back("cl");
 
   effectiveArgs.push_back("-cl-kernel-arg-info");
-  effectiveArgs.push_back("-fno-validate-pch");
   effectiveArgs.push_back("-fno-caret-diagnostics");
 
   if (std::find_if(effectiveArgs.begin(), effectiveArgs.end(),
@@ -263,15 +243,11 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   }
 
   effectiveArgs.push_back("-triple");
-  if (szTriple.empty()) {
-#if defined(_M_X64) || defined(__LP64__)
-    szTriple = "spir64-unknown-unknown";
-#else
-    szTriple = "spir-unknown-unknown";
-#endif
-  }
-
   effectiveArgs.push_back(szTriple);
+
+  const auto &Headers = BuiltInHeaders::get();
+  effectiveArgs.push_back("-isystem");
+  effectiveArgs.push_back(Headers.getIncludePath());
 
   effectiveArgs.push_back("-include");
   effectiveArgs.push_back("opencl-c.h");
@@ -298,140 +274,6 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   // add the extended options verbatim
   std::back_insert_iterator<ArgsVector> it(std::back_inserter(effectiveArgs));
   quoted_tokenize(it, pszOptionsEx, " \t", '"', '\x00');
-
-  for (auto it = effectiveArgs.begin(), end = effectiveArgs.end(); it != end;
-       ++it) {
-    if (it->compare("-Dcl_khr_fp64") == 0 || it->compare("-D cl_khr_fp64=1") == 0)
-      fp64Enabled = true;
-    else if (it->compare("-U cl_khr_fp64") == 0)
-      fp64Enabled = false;
-    // Find last position that enables or disables cl_khr_fp64
-    else if (it->find("cl_khr_fp64") != std::string::npos) {
-      auto NegFp64 = it->rfind("-cl_khr_fp64");
-      auto PosFp64 = it->rfind("+cl_khr_fp64");
-      if(NegFp64 != std::string::npos && PosFp64 != std::string::npos)
-         fp64Enabled = PosFp64 > NegFp64;
-      else if(NegFp64 != std::string::npos)
-        fp64Enabled = false;
-      else
-        fp64Enabled = true;
-    }
-  }
-
-#ifdef PCH_EXTENSION
-  std::map<std::string, bool> extMap;
-  llvm::SmallVector<llvm::StringRef> extVec;
-  llvm::SplitString(PCH_EXTENSION, extVec, ",");
-  for (auto &ext : extVec)
-    extMap.insert({ext.str(), true});
-#else
-  std::map<std::string, bool> extMap{
-      {"cl_khr_3d_image_writes", true},
-      {"cl_khr_depth_images", true},
-      {"cl_khr_fp16", true},
-#ifdef _WIN32
-      // cl_khr_gl_msaa_sharing is only supported on Windows [NEO].
-      {"cl_khr_gl_msaa_sharing", true},
-#endif
-      {"cl_khr_global_int32_base_atomics", true},
-      {"cl_khr_global_int32_extended_atomics", true},
-      {"cl_khr_int64_base_atomics", true},
-      {"cl_khr_int64_extended_atomics", true},
-      {"cl_khr_local_int32_base_atomics", true},
-      {"cl_khr_local_int32_extended_atomics", true},
-      {"cl_khr_mipmap_image", true},
-      {"cl_khr_mipmap_image_writes", true},
-      {"cl_khr_subgroups", true},
-      {"cl_intel_device_side_avc_motion_estimation", true},
-      {"cl_intel_planar_yuv", true},
-      {"cl_intel_subgroups", true},
-      {"cl_intel_subgroups_short", true}};
-#endif
-
-  auto parseClExt = [&](const std::string &clExtStr) {
-    llvm::StringRef clExtRef(clExtStr);
-    bool hasPrefix = clExtRef.consume_front("-cl-ext=");
-    assert(hasPrefix && "clExtRef doesn't start with \"-cl-ext\" prefix");
-    (void)hasPrefix;
-    llvm::SmallVector<llvm::StringRef, 32> parsedExt;
-    clExtRef.split(parsedExt, ',');
-    for (auto &ext : parsedExt) {
-      if (ext.empty())
-        continue;
-      char sign = ext.front();
-      bool enabled = sign != '-';
-      llvm::StringRef extName = ext;
-      if (sign == '+' || sign == '-')
-        extName = extName.drop_front();
-      if (extName == "all") {
-        for (auto &p : extMap)
-          p.second = enabled;
-        continue;
-      }
-      auto it = extMap.find(extName.str());
-      if (it != extMap.end())
-        it->second = enabled;
-    }
-  };
-  llvm::SmallSet<llvm::StringRef, 32> parsedOclCFeatures;
-  std::for_each(effectiveArgs.begin(), effectiveArgs.end(),
-                [&](const ArgsVector::value_type &a) {
-                  if (a.find("-cl-ext=") == 0)
-                    parseClExt(a);
-		  else if (a.find("-D__opencl_c_") == 0)
-		    parsedOclCFeatures.insert(a);
-                });
-
-  // extension is enabled in PCH but disabled or not specified in options =>
-  // disable pch
-  bool useModules =
-      !std::any_of(extMap.begin(), extMap.end(),
-                   [](const auto &p) { return p.second == false; });
-
-  if (useModules) {
-    effectiveArgs.push_back("-fmodules");
-    if (!fp64Enabled) {
-      if (szTriple.find("spir64") != szTriple.npos) {
-        if (iCLStdSet <= 120)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64.pcm");
-        else if (iCLStdSet == 200)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64.pcm");
-        else if (iCLStdSet == 300)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir64.pcm");
-        else if (iCLStdSet == 310)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-31-spir64.pcm");
-      } else if (szTriple.find("spir") != szTriple.npos) {
-        if (iCLStdSet <= 120)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir.pcm");
-        else if (iCLStdSet == 200)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir.pcm");
-        else if (iCLStdSet == 300)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir.pcm");
-        else if (iCLStdSet == 310)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-31-spir.pcm");
-      }
-    } else {
-      if (szTriple.find("spir64") != szTriple.npos) {
-        if (iCLStdSet <= 120)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir64-fp64.pcm");
-        else if (iCLStdSet == 200)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir64-fp64.pcm");
-        else if (iCLStdSet == 300)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir64-fp64.pcm");
-        else if (iCLStdSet == 310)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-31-spir64-fp64.pcm");
-      } else if (szTriple.find("spir") != szTriple.npos) {
-        if (iCLStdSet <= 120)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-12-spir-fp64.pcm");
-        else if (iCLStdSet == 200)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-20-spir-fp64.pcm");
-        else if (iCLStdSet == 300)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-30-spir-fp64.pcm");
-        else if (iCLStdSet == 310)
-          effectiveArgs.push_back("-fmodule-file=opencl-c-31-spir-fp64.pcm");
-      }
-    }
-  }
 
   // add source name to options as an input file
   assert(!sourceName.empty() && "Empty source name.");

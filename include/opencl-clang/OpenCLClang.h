@@ -16,8 +16,8 @@
 
 #ifndef OPENCL_CLANG_OPENCLCLANG_H
 #define OPENCL_CLANG_OPENCLCLANG_H
-#include "assert.h"
-#include "cstddef" // size_t
+
+#include <cstddef> // size_t
 
 #if defined(_WIN32)
 #if defined(OPENCL_CLANG_EXPORTS)
@@ -100,8 +100,8 @@ extern "C" CC_DLL_EXPORT bool CheckCompileOptions(
 //    InputHeaders - array of the header buffers
 //    NumInputHeaders - size of the InputHeaders array
 //    InputHeadersNames - array of the headers names
-//    PCHBuffer - optional pointer to the pch buffer
-//    PCHBufferSize - size of the pch buffer
+//    PCHBuffer - deprecated, ignored
+//    PCHBufferSize - deprecated, ignored
 //    Options - OpenCL application supplied options
 //    OptionsEx - optional extra options string usually supplied by runtime
 //    OpenCLVersion - OpenCL version supported by the device, also defines
@@ -120,9 +120,9 @@ extern "C" CC_DLL_EXPORT int Compile(
     unsigned int NumInputHeaders,
     // array of input headers names corresponding to InputHeaders
     const char **InputHeadersNames,
-    // optional pointer to the pch buffer
+    // deprecated, ignored
     const char *PCHBuffer,
-    // size of the pch buffer
+    // deprecated, ignored
     size_t PCHBufferSize,
     // OpenCL application supplied options
     const char *Options,
