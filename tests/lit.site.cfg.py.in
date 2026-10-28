@@ -6,8 +6,6 @@ config.llvm_tools_dir = path(r"@LLVM_TOOLS_DIR@")
 config.llvm_libs_dir = path(r"@LLVM_LIBRARY_DIR@")
 config.llvm_shlib_dir = path(r"@SHLIBDIR@")
 
-config.clang_tools_dir = path(r"@CLANG_TOOLS_DIR@")
-
 config.opencl_clang_src_root = path(r"@CMAKE_CURRENT_SOURCE_DIR@/..")
 config.opencl_clang_obj_root = path(r"@CMAKE_CURRENT_BINARY_DIR@")
 config.opencl_clang_tools_dir = path(r"@LLVM_TOOLS_DIR@")

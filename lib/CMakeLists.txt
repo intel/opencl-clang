@@ -1,3 +1,6 @@
+# Embedded headers
+add_subdirectory(Headers)
+
 #
 # TblGen the options include file
 #
@@ -20,7 +23,7 @@ set(TARGET_INCLUDE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/OpenCLClang.h
     Options.h
     BinaryResult.h
-    PCHManager.h
+    BuiltInHeaders.h
     ${COMPILE_OPTIONS_TD}
     ${COMPILE_OPTIONS_INC}
 )
@@ -28,8 +31,8 @@ set(TARGET_INCLUDE_FILES
 set(TARGET_SOURCE_FILES
     OpenCLClang.cpp
     Options.cpp
-    PCHManager.cpp
     OptionsCompile.cpp
+    BuiltInHeaders.cpp
 )
 
 #
@@ -73,7 +76,7 @@ link_directories(
     ${LLVM_LIBRARY_DIRS}
 )
 
-set(OPENCL_CLANG_LINK_LIBS ${CMAKE_DL_LIBS})
+set(OPENCL_CLANG_LINK_LIBS "")
 
 if(NOT LLVMSPIRVLib IN_LIST LLVM_AVAILABLE_LIBS OR (USE_PREBUILT_LLVM AND LLVM_LINK_LLVM_DYLIB))
   # SPIRV-LLVM-Translator is not included into LLVM as a component.
@@ -124,14 +127,17 @@ endif()
 add_llvm_library(${TARGET_NAME} SHARED
   ${TARGET_INCLUDE_FILES}
   ${TARGET_SOURCE_FILES}
-  $<TARGET_OBJECTS:cl_headers>
 
   DEPENDS CClangCompileOptions
   LINK_COMPONENTS
     all
   LINK_LIBS
     ${OPENCL_CLANG_LINK_LIBS}
+    opencl-clang-embedded-headers
   )
+
+target_compile_definitions(${TARGET_NAME} PRIVATE
+  OPENCL_CLANG_NATIVE_TRIPLE="${OPENCL_CLANG_NATIVE_TRIPLE}")
 
 # Configure resource file on Windows
 if (WIN32)
@@ -171,9 +177,6 @@ if (WIN32)
         LINK_FLAGS "/DYNAMICBASE /GUARD:CF")
 
 elseif(UNIX)
-    set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-        COMPILE_DEFINITIONS LIBCOMMON_CLANG_NAME="$<TARGET_SONAME_FILE_NAME:${TARGET_NAME}>")
-
     set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
         LINK_FLAGS " -Wl,--no-undefined")
 endif(WIN32)
