@@ -1,0 +1,12 @@
+
+set(RESOURCE_EMBEDDER_OPTS "")
+check_c23_embed_supported(HAVE_C23_EMBED)
+if (HAVE_C23_EMBED)
+  list(APPEND RESOURCE_EMBEDDER_OPTS "--c23-embed")
+endif()
+if (MSVC)
+  list(APPEND RESOURCE_EMBEDDER_OPTS "--msvc")
+endif()
+
+set(RESOURCE_EMBEDDER_OPTS "${RESOURCE_EMBEDDER_OPTS}" PARENT_SCOPE)
+set(DIR_RESOURCE_EMBEDDER "${CMAKE_CURRENT_SOURCE_DIR}/ResourceEmbedder/directory_resource_embedder.py" PARENT_SCOPE)
