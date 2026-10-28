@@ -17,14 +17,16 @@
 #include "BinaryResult.h"
 #include "Bitcode.h"
 #include "Frontend.h"
-#include "Options.h"
+#include "Options/OptionParser.h"
 #include "SPIRV.h"
 
 #include "opencl-clang/OpenCLClang.h"
 
+#include "llvm/ADT/StringMap.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/ManagedStatic.h"
 
+#include <algorithm>
 #include <memory>
 
 #if defined _DEBUG
@@ -66,7 +68,7 @@ private:
   Expected<SmallVector<char>>
   emitOutput(Expected<std::unique_ptr<Module>> &&Module) const;
 
-  CompileOptionsParser OptionsParser;
+  OptionParser OptionsParser;
   std::unique_ptr<LLVMContext> Context;
 };
 } // namespace
@@ -94,8 +96,7 @@ Driver::Driver(const char *OpenCLVersion)
     : OptionsParser(OpenCLVersion), Context(createLLVMContext()) {}
 
 bool Driver::setOptions(const char *Options, const char *OptionsEx) {
-  auto Res = OptionsParser.processOptions(Options, OptionsEx);
-  return Res == 0;
+  return OptionsParser.process(Options, OptionsEx);
 }
 
 bool Driver::compile(const char *ProgramSource, const char **InputHeaders,
@@ -106,13 +107,18 @@ bool Driver::compile(const char *ProgramSource, const char **InputHeaders,
   // Prepare the input for the frontend action.
   SmallVector<FrontendSource> Sources;
 
-  std::string SourceName = OptionsParser.getSourceName();
-  Sources.emplace_back(ProgramSource, SourceName.c_str());
+  StringRef SourceName = OptionsParser.getSourceName();
+  Sources.emplace_back(ProgramSource, SourceName);
 
   for (unsigned I = 0; I < NumInputHeaders; ++I)
     Sources.emplace_back(InputHeaders[I], InputHeadersNames[I]);
 
-  FrontendInput Input = {Sources, OptionsParser.args()};
+  auto &CCArgs = OptionsParser.getCCArgs();
+  SmallVector<const char *> Args;
+  Args.reserve(CCArgs.size());
+  llvm::transform(CCArgs, std::back_inserter(Args),
+                  [](auto &Arg) { return Arg.c_str(); });
+  FrontendInput Input = {Sources, Args};
 
   auto Result = std::make_unique<OCLFEBinaryResult>();
   Result->setIRType(IrTypeCompiledObject);
@@ -147,9 +153,55 @@ Driver::emitOutput(Expected<std::unique_ptr<Module>> &&Module) const {
   return BCWriterAction().run(std::move(Module));
 }
 
+// Builds the SPIR-V extensions status map from the list of the extensions
+// specified by the --spirv-ext= option.
+static SPIRV::TranslatorOpts::ExtensionsStatusMap
+getSPIRVExtStatus(ArrayRef<SmallString<64>> SPIRVExts) {
+  // Map name -> id for known extensions
+  static const StringMap<SPIRV::ExtensionID> NameToID = {
+#define EXT(X) {#X, SPIRV::ExtensionID::X},
+#ifdef USE_PREBUILT_LLVM
+#include "LLVMSPIRVLib/LLVMSPIRVExtensions.inc"
+#else // USE_PREBUILT_LLVM
+#include "LLVMSPIRVExtensions.inc"
+#endif // USE_PREBUILT_LLVM
+#undef EXT
+  };
+
+  // Set the initial state: assume that any known extension is disallowed.
+  using ExtensionsStatusMap = SPIRV::TranslatorOpts::ExtensionsStatusMap;
+  ExtensionsStatusMap Map;
+  for (const auto &It : NameToID)
+    Map[It.second] = ExtensionsStatusMap::mapped_type();
+
+  for (StringRef Ext : SPIRVExts) {
+    bool Enabled = Ext.front() == '+';
+    StringRef ExtName = Ext.drop_front();
+
+    if (ExtName == "all") {
+      // Update status for all known extensions
+      for (const auto &It : NameToID)
+        Map[It.second] = Enabled;
+      continue;
+    }
+
+    // Ignore unknown extensions, as targets may support non-standard SPIR-V
+    // extensions. Do not reject them; this approach is more tolerant.
+    auto It = NameToID.find(ExtName);
+    if (It != NameToID.end())
+      Map[It->second] = Enabled;
+  }
+
+  return Map;
+}
+
 SPIRV::TranslatorOpts Driver::getSPIRVTranslatorOpts() const {
+  SPIRV::TranslatorOpts::ExtensionsStatusMap SPIRVExtStatusMap;
+  if (OptionsParser.hasSPIRVExt())
+    SPIRVExtStatusMap = getSPIRVExtStatus(OptionsParser.getSPIRVExts());
+
   SPIRV::TranslatorOpts Opts(SPIRV::VersionNumber::MaximumVersion,
-                             OptionsParser.getSPIRVExtStatusMap());
+                             SPIRVExtStatusMap);
 
   if (!OptionsParser.hasSPIRVExt())
     Opts.enableAllExtensions();
@@ -218,4 +270,17 @@ Compile(const char *ProgramSource, const char **InputHeaders,
   }
 
   return CL_SUCCESS;
+}
+
+extern "C" CC_DLL_EXPORT bool CheckCompileOptions(const char *Options,
+                                                  char *UnknownOptions,
+                                                  size_t UnknownOptionsSize) {
+  try {
+    OptionParser Parser("200");
+    return Parser.check(Options, UnknownOptions, UnknownOptionsSize);
+  } catch (std::bad_alloc &) {
+    if (UnknownOptions && UnknownOptionsSize > 0)
+      std::fill_n(UnknownOptions, UnknownOptionsSize, '\0');
+    return false;
+  }
 }
