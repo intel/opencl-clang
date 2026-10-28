@@ -3,6 +3,10 @@
 // RUN: %occ-cli %s --cl-options=-gline-tables-only %cfg_path --cl-device=%cl_device --output=%t.bc
 // RUN: llvm-dis %t.bc -o - | FileCheck %s
 
+// -profiling implies -gline-tables-only.
+// RUN: %occ-cli %s --cl-options=-profiling %cfg_path --cl-device=%cl_device --output=%t.bc
+// RUN: llvm-dis %t.bc -o - | FileCheck %s
+
 // CHECK: !dbg !{{[0-9]+}}
 // CHECK: !{{[0-9]+}} = !DILocation
 
