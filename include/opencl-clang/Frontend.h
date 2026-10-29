@@ -14,10 +14,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_FRONTEND_H
-#define OPENCL_CLANG_LIB_FRONTEND_H
+#ifndef OPENCL_CLANG_FRONTEND_H
+#define OPENCL_CLANG_FRONTEND_H
 
-#include "Action.h"
+#include "opencl-clang/Action.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/LLVMContext.h"
@@ -57,4 +57,4 @@ protected:
   FrontendAction() = default;
 };
 
-#endif // OPENCL_CLANG_LIB_FRONTEND_H
+#endif // OPENCL_CLANG_FRONTEND_H

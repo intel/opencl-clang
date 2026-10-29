@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_OPTIONS_COMMANDLINE_H
-#define OPENCL_CLANG_LIB_OPTIONS_COMMANDLINE_H
+#ifndef OPENCL_CLANG_OPTIONS_COMMANDLINE_H
+#define OPENCL_CLANG_OPTIONS_COMMANDLINE_H
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -52,4 +52,4 @@ void tokenizeCommandLine(llvm::StringRef Data, llvm::StringSaver &Saver,
                          llvm::StringRef Delimiters = " \t", char Quote = '"',
                          char Escape = '\\');
 
-#endif // OPENCL_CLANG_LIB_OPTIONS_COMMANDLINE_H
+#endif // OPENCL_CLANG_OPTIONS_COMMANDLINE_H
