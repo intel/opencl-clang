@@ -14,7 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Bitcode.h"
+#include "opencl-clang/Bitcode.h"
 
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Support/SmallVectorMemoryBuffer.h"

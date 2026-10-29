@@ -14,10 +14,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_SPIRV_H
-#define OPENCL_CLANG_LIB_SPIRV_H
+#ifndef OPENCL_CLANG_SPIRV_H
+#define OPENCL_CLANG_SPIRV_H
 
-#include "Action.h"
+#include "opencl-clang/Action.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
@@ -45,4 +45,4 @@ private:
   SPIRV::TranslatorOpts Opts;
 };
 
-#endif // OPENCL_CLANG_LIB_SPIRV_H
+#endif // OPENCL_CLANG_SPIRV_H
