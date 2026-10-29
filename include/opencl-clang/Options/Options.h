@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_OPTIONS_OPTIONS_H
-#define OPENCL_CLANG_LIB_OPTIONS_OPTIONS_H
+#ifndef OPENCL_CLANG_OPTIONS_OPTIONS_H
+#define OPENCL_CLANG_OPTIONS_OPTIONS_H
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -41,4 +41,4 @@ llvm::SmallVector<llvm::StringRef> getOptionValuesSplit(OptionID ID);
 // string if the option declares no values or the ID is invalid.
 llvm::StringRef getOptionValues(OptionID ID);
 
-#endif // OPENCL_CLANG_LIB_OPTIONS_OPTIONS_H
+#endif // OPENCL_CLANG_OPTIONS_OPTIONS_H
