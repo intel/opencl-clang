@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_BINARYRESULT_H
-#define OPENCL_CLANG_LIB_BINARYRESULT_H
+#ifndef OPENCL_CLANG_BINARYRESULT_H
+#define OPENCL_CLANG_BINARYRESULT_H
 
 #include "opencl-clang/OpenCLClang.h"
 #include "llvm/ADT/SmallVector.h"
@@ -71,4 +71,4 @@ private:
   int Result;
 };
 
-#endif // OPENCL_CLANG_LIB_BINARYRESULT_H
+#endif // OPENCL_CLANG_BINARYRESULT_H
