@@ -18,7 +18,7 @@ to any intellectual property rights is granted herein.
 
 #include "IniFiles.h"
 #include "common.h"
-#include "opencl_clang.h"
+#include "opencl-clang/OpenCLClang.h"
 #include "main.h"
 
 #include <algorithm>
