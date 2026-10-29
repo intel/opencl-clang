@@ -14,7 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "BuiltInHeaders.h"
+#include "opencl-clang/BuiltInHeaders.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"

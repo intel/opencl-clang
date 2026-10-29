@@ -1,4 +1,4 @@
-//===--- Bitcode.h - LLVM bitcode writer interface --------------*- C++ -*-===//
+//===--- SmallVectorStream.h - SmallVector-based streambuf ------*- C++ -*-===//
 //
 // Copyright (c) Intel Corporation (2026).
 //
@@ -14,28 +14,30 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_BITCODE_H
-#define OPENCL_CLANG_LIB_BITCODE_H
-
-#include "Action.h"
+#ifndef OPENCL_CLANG_SMALLVECTORSTREAM_H
+#define OPENCL_CLANG_SMALLVECTORSTREAM_H
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/Module.h"
 
-#include <memory>
+#include <streambuf>
 
-class BCWriterAction
-    : public Action<BCWriterAction, std::unique_ptr<llvm::Module>,
-                    llvm::SmallVector<char>> {
-  using Base = Action<BCWriterAction, std::unique_ptr<llvm::Module>,
-                      llvm::SmallVector<char>>;
-
+class SmallVectorBuffer : public std::streambuf {
 public:
-  BCWriterAction() = default;
+  SmallVectorBuffer() = delete;
+  SmallVectorBuffer(const SmallVectorBuffer &) = delete;
+  SmallVectorBuffer &operator=(const SmallVectorBuffer &) = delete;
+  SmallVectorBuffer(llvm::SmallVectorImpl<char> &O) : OS(O) {}
 
 private:
-  friend Base;
-  llvm::Expected<OutputType> runImpl(InputType &&Input);
+  // Since we don't touch any pointer in streambuf(pbase, pptr, epptr) this is
+  // the only method we need to override.
+  virtual std::streamsize xsputn(const char *s, std::streamsize n) override {
+    OS.append(s, s + n);
+    return n;
+  }
+
+  // All memory management is delegated to llvm::SmallVectorImpl
+  llvm::SmallVectorImpl<char> &OS;
 };
 
-#endif // OPENCL_CLANG_LIB_BITCODE_H
+#endif // OPENCL_CLANG_SMALLVECTORSTREAM_H

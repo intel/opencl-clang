@@ -188,5 +188,9 @@ add_subdirectory(lib)
 
 if(LLVM_INCLUDE_TESTS)
   set(OPENCL_CLANG_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+  # The build directory corresponding to this project, used by the lit Unit
+  # test suite to locate the compiled unit test binaries.
+  set(OPENCL_CLANG_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+  add_subdirectory(unittests)
   add_subdirectory(tests)
 endif()
