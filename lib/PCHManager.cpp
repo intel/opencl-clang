@@ -1,22 +1,20 @@
-/*****************************************************************************\
+//===--- PCHManager.cpp - PCH resource management implementation -*- C++ -===//
+//
+// Copyright (c) Intel Corporation (2009-2017).
+//
+// INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE. THIS CODE IS
+// LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
+// ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES. INTEL DOES NOT
+// PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS. INTEL SPECIFICALLY
+// DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
+// PARTICULAR PURPOSE, OR ANY OTHER WARRANTY. Intel disclaims all liability,
+// including liability for infringement of any proprietary rights, relating to
+// use of the code. No license, express or implied, by estoppel or otherwise,
+// to any intellectual property rights is granted herein.
+//
+//===----------------------------------------------------------------------===//
 
-Copyright (c) Intel Corporation (2009-2017).
-
-    INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE.  THIS CODE IS
-    LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
-    ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES.  INTEL DOES NOT
-    PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS.  INTEL SPECIFICALLY
-    DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
-    PARTICULAR PURPOSE, OR ANY OTHER WARRANTY.  Intel disclaims all liability,
-    including liability for infringement of any proprietary rights, relating to
-    use of the code. No license, express or implied, by estoppel or otherwise,
-    to any intellectual property rights is granted herein.
-
-  \file pch_mgr.cpp
-
-\*****************************************************************************/
-
-#include "pch_mgr.h"
+#include "PCHManager.h"
 
 #include "llvm/ADT/Twine.h"
 
@@ -31,79 +29,79 @@ Copyright (c) Intel Corporation (2009-2017).
 #include <stdio.h>
 
 struct auto_dlclose {
-  auto_dlclose(void *module) : m_pModule(module) {}
+  auto_dlclose(void *module) : Module(module) {}
 
   ~auto_dlclose() {
-    if (m_pModule)
-      dlclose(m_pModule);
+    if (Module)
+      dlclose(Module);
   }
 
-  void *get() { return m_pModule; }
+  void *get() { return Module; }
 
-  bool operator!() { return !m_pModule; }
+  bool operator!() { return !Module; }
 
-  operator bool() { return m_pModule != NULL; }
+  operator bool() { return Module != NULL; }
 
   void *release() {
-    void *pTemp = m_pModule;
-    m_pModule = NULL;
+    void *pTemp = Module;
+    Module = NULL;
     return pTemp;
   }
 
 private:
   auto_dlclose(const auto_dlclose &);
 
-  void *m_pModule;
+  void *Module;
 };
 #endif
 
-ResourceManager ResourceManager::g_instance;
+ResourceManager ResourceManager::Instance;
 
 void dummy() {}
 
 // returns the pointer to the buffer loaded from the resource with the given id
-Resource ResourceManager::get_resource(const char *name, const char *id,
+Resource ResourceManager::getResource(const char *name, const char *id,
                                        const char *type,
                                        bool requireNullTerminate) {
-  llvm::sys::ScopedLock mutexGuard(m_lock);
+  llvm::sys::ScopedLock mutexGuard(Lock);
 
-  auto res = m_buffers.find(id);
-  if (res == m_buffers.end()) {
+  auto res = Buffers.find(id);
+  if (res == Buffers.end()) {
     // lazy load the resource if not found in the cache
-    if (!load_resource(id, type, requireNullTerminate)) {
+    if (!loadResource(id, type, requireNullTerminate)) {
       return Resource();
     }
   }
 
-  res = m_buffers.find(id);
-  assert(res != m_buffers.end());
+  res = Buffers.find(id);
+  assert(res != Buffers.end());
 
   const char *data = res->second.first;
   size_t size = res->second.second;
   return Resource(data, size, name);
 }
 
-const char *ResourceManager::get_file(const char *path, bool binary,
+const char *ResourceManager::getFile(const char *path, bool binary,
                                       bool requireNullTerminate,
                                       size_t &out_size) {
-  llvm::sys::ScopedLock mutexGuard(m_lock);
+  llvm::sys::ScopedLock mutexGuard(Lock);
 
   std::string key(path);
 
-  if (m_buffers.find(key) == m_buffers.end()) {
+  if (Buffers.find(key) == Buffers.end()) {
     // lazy load the resource if not found in the cache
-    load_file(path, binary, requireNullTerminate);
+    loadFile(path, binary, requireNullTerminate);
   }
 
-  assert(m_buffers.find(key) != m_buffers.end());
-  out_size = m_buffers[key].second;
-  return m_buffers[key].first;
+  assert(Buffers.find(key) != Buffers.end());
+  out_size = Buffers[key].second;
+  return Buffers[key].first;
 }
 
-const char* ResourceManager::realloc_buffer(const char *id,
+const char* ResourceManager::reallocBuffer(const char *id,
                                             const char* buf, size_t size,
                                             bool requireNullTerminate) {
-  std::vector<char> &buffer = m_allocations[id];
+  std::vector<char> &buffer = Allocations[id];
 
   size_t alloc_size = requireNullTerminate ? size + 1 : size;
   buffer.resize(alloc_size);
@@ -119,7 +117,7 @@ const char* ResourceManager::realloc_buffer(const char *id,
 }
 
 #ifdef _WIN32
-bool ResourceManager::GetResourceWin32(const char *id, const char *pszType,
+bool ResourceManager::getResourceWin32(const char *id, const char *pszType,
                                        const char *&res, size_t &size) {
   HMODULE hMod = NULL;
   // Get the handle to the current module
@@ -162,7 +160,7 @@ bool ResourceManager::GetResourceWin32(const char *id, const char *pszType,
 #else // WIN32
 
 /**
- * GetResourceUnix loads resource from shared library `lib`.
+ * getResourceUnix loads resource from shared library `lib`.
  *
  * If `relocate` argument is `false`, returned resource is only valid if:
  *   1) library `lib` is loaded into memory before use of this function
@@ -171,7 +169,7 @@ bool ResourceManager::GetResourceWin32(const char *id, const char *pszType,
  * If relocate is `true`, resource will be memcpy'ed into an internal buffer,
  * i.e. no resource will be valid as long as the ResourceManager is alive.
  */
-bool ResourceManager::GetResourceUnix(const char *id, const char *pszType,
+bool ResourceManager::getResourceUnix(const char *id, const char *pszType,
                                       const char *lib, bool relocate,
                                       const char *&res, size_t &size) {
 
@@ -201,17 +199,17 @@ bool ResourceManager::GetResourceUnix(const char *id, const char *pszType,
 }
 #endif // WIN32
 
-bool ResourceManager::load_resource(const char *id, const char *pszType,
+bool ResourceManager::loadResource(const char *id, const char *pszType,
                                     bool requireNullTerminate) {
   // this function is called under lock
-  assert(m_buffers.find(id) == m_buffers.end());
+  assert(Buffers.find(id) == Buffers.end());
 
   const char *res = nullptr;
   size_t size = 0;
 #ifdef WIN32
-  bool ok = GetResourceWin32(id, pszType, res, size);
+  bool ok = getResourceWin32(id, pszType, res, size);
 #else
-  bool ok = GetResourceUnix(id, pszType, LIBOPENCL_CLANG_NAME,
+  bool ok = getResourceUnix(id, pszType, LIBOPENCL_CLANG_NAME,
                             false, res, size);
 #endif
 
@@ -221,19 +219,19 @@ bool ResourceManager::load_resource(const char *id, const char *pszType,
 
   if (requireNullTerminate && res[size] != '\0') {
     // reallocate the buffer to ensure the null termination
-    res = realloc_buffer(id, res, size, requireNullTerminate);
+    res = reallocBuffer(id, res, size, requireNullTerminate);
   }
 
-  m_buffers[id] = std::pair<const char *, size_t>(res, size);
+  Buffers[id] = std::pair<const char *, size_t>(res, size);
   return true;
 }
 
 // cache the content of the file to the internal buffers
-void ResourceManager::load_file(const char *path, bool binary,
+void ResourceManager::loadFile(const char *path, bool binary,
                                 bool requireNullTerminate) {
   std::string key(path);
   std::ifstream fs(path, binary ? std::ios::binary : std::ios::in);
-  std::vector<char> &buffer = m_allocations[key];
+  std::vector<char> &buffer = Allocations[key];
 
   buffer.assign(std::istreambuf_iterator<char>(fs),
                 std::istreambuf_iterator<char>());
@@ -241,6 +239,6 @@ void ResourceManager::load_file(const char *path, bool binary,
   if (requireNullTerminate && buffer.size() > 0 && buffer.back() != '\0') {
     buffer.push_back('\0');
   }
-  m_buffers[key] =
+  Buffers[key] =
       std::pair<const char *, size_t>(buffer.data(), buffer.size());
 }
