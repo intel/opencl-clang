@@ -1,26 +1,24 @@
-/*****************************************************************************\
+//===--- OpenCLClang.cpp - OpenCL Clang Frontend implementation -*- C++ -*-===//
+//
+// Copyright (c) Intel Corporation (2009-2017).
+//
+// INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE. THIS CODE IS
+// LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
+// ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES. INTEL DOES NOT
+// PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS. INTEL SPECIFICALLY
+// DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
+// PARTICULAR PURPOSE, OR ANY OTHER WARRANTY. Intel disclaims all liability,
+// including liability for infringement of any proprietary rights, relating to
+// use of the code. No license, express or implied, by estoppel or otherwise,
+// to any intellectual property rights is granted herein.
+//
+//===----------------------------------------------------------------------===//
 
-Copyright (c) Intel Corporation (2009-2017).
-
-    INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE.  THIS CODE IS
-    LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
-    ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES.  INTEL DOES NOT
-    PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS.  INTEL SPECIFICALLY
-    DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
-    PARTICULAR PURPOSE, OR ANY OTHER WARRANTY.  Intel disclaims all liability,
-    including liability for infringement of any proprietary rights, relating to
-    use of the code. No license, express or implied, by estoppel or otherwise,
-    to any intellectual property rights is granted herein.
-
-  \file common_clang.cpp
-
-\*****************************************************************************/
-
-#include "common_clang.h"
-#include "pch_mgr.h"
-#include "cl_headers/resource.h"
-#include "binary_result.h"
-#include "options.h"
+#include "opencl-clang/OpenCLClang.h"
+#include "PCHManager.h"
+#include "../cl_headers/Resource.h"
+#include "BinaryResult.h"
+#include "Options.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -86,22 +84,22 @@ static volatile bool lazyCCInit =
     true; // the flag must be 'volatile' to prevent caching in a CPU register
 static llvm::sys::Mutex lazyCCInitMutex;
 
-void CommonClangTerminate() { llvm::llvm_shutdown(); }
+void openCLClangTerminate() { llvm::llvm_shutdown(); }
 
 // This function mustn't be invoked from a static object constructor,
 // from a DllMain function (Windows specific), or from a function
 // w\ __attribute__ ((constructor)) (Linux specific).
-void CommonClangInitialize() {
+void openCLClangInitialize() {
   if (lazyCCInit) {
     llvm::sys::ScopedLock lock(lazyCCInitMutex);
 
     if (lazyCCInit) {
-      // CommonClangTerminate calls llvm_shutdown to deallocate resources used
+      // openCLClangTerminate calls llvm_shutdown to deallocate resources used
       // by LLVM libraries. llvm_shutdown uses static mutex to make it safe for
       // multi-threaded envirounment and LLVM libraries user is expected call
       // llvm_shutdown before static object are destroyed, so we use atexit to
       // satisfy this requirement.
-      atexit(CommonClangTerminate);
+      atexit(openCLClangTerminate);
       llvm::InitializeAllTargets();
       llvm::InitializeAllAsmPrinters();
       llvm::InitializeAllAsmParsers();
@@ -111,7 +109,7 @@ void CommonClangInitialize() {
   }
 }
 
-static bool GetHeaders(std::vector<Resource> &Result) {
+static bool getHeaders(std::vector<Resource> &Result) {
   struct {
     const char *ID;
     const char *Name;
@@ -148,7 +146,7 @@ static bool GetHeaders(std::vector<Resource> &Result) {
 
   ResourceManager &RM = ResourceManager::instance();
   for (auto Header : Headers) {
-    Resource R = RM.get_resource(Header.Name, Header.ID, "PCM", true);
+    Resource R = RM.getResource(Header.Name, Header.ID, "PCM", true);
     if (!R) {
       assert(0 && "Resource not found");
       return false;
@@ -160,7 +158,7 @@ static bool GetHeaders(std::vector<Resource> &Result) {
   return true;
 }
 
-static void PrintCompileOptions(const char *pszOptions, const char *pszOptionsEx,
+static void printCompileOptions(const char *pszOptions, const char *pszOptionsEx,
                                 const char *pszOpenCLVer, const char * pszSource) {
 #ifdef _DEBUG
   static int ID = 0;
@@ -217,10 +215,10 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
         IOCLFEBinaryResult **pBinaryResult) {
 
   // Capturing cclang compile options
-  PrintCompileOptions(pszOptions, pszOptionsEx, pszOpenCLVer, pszProgramSource);
+  printCompileOptions(pszOptions, pszOptionsEx, pszOpenCLVer, pszProgramSource);
 
   // Lazy initialization
-  CommonClangInitialize();
+  openCLClangInitialize();
 
   try {
     std::unique_ptr<OCLFEBinaryResult> pResult(new OCLFEBinaryResult());
@@ -287,16 +285,16 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
 
       // Input header with OpenCL defines.
       std::vector<Resource> vHeaderWithDefs;
-      if (!GetHeaders(vHeaderWithDefs)) {
+      if (!getHeaders(vHeaderWithDefs)) {
         return CL_COMPILE_PROGRAM_FAILURE;
       }
 
       for (const auto &Header:vHeaderWithDefs) {
         auto Buf = llvm::MemoryBuffer::getMemBuffer(
-            llvm::StringRef(Header.m_data, Header.m_size),
-            Header.m_name);
+            llvm::StringRef(Header.Data, Header.Size),
+            Header.Name);
 
-        MemFS->addFile(Header.m_name,(time_t)0, std::move(Buf));
+        MemFS->addFile(Header.Name,(time_t)0, std::move(Buf));
       }
 
       // Input Headers
@@ -312,7 +310,7 @@ Compile(const char *pszProgramSource, const char **pInputHeaders,
       success = clang::ExecuteCompilerInvocation(compiler.get());
     } catch (const std::exception &) {
     }
-    pResult->setIRType(IR_TYPE_COMPILED_OBJECT);
+    pResult->setIRType(IrTypeCompiledObject);
     pResult->setIRName(optionsParser.getSourceName());
 
     // Our error handler depends on the Diagnostics object, which we're
