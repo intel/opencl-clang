@@ -1,23 +1,21 @@
-/*****************************************************************************\
+//===--- OptionsCompile.cpp - Compile option processing ---------*- C++ -*-===//
+//
+// Copyright (c) Intel Corporation (2009-2017).
+//
+// INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE. THIS CODE IS
+// LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
+// ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES. INTEL DOES NOT
+// PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS. INTEL SPECIFICALLY
+// DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
+// PARTICULAR PURPOSE, OR ANY OTHER WARRANTY. Intel disclaims all liability,
+// including liability for infringement of any proprietary rights, relating to
+// use of the code. No license, express or implied, by estoppel or otherwise,
+// to any intellectual property rights is granted herein.
+//
+//===----------------------------------------------------------------------===//
 
-Copyright (c) Intel Corporation (2009-2017).
-
-    INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE.  THIS CODE IS
-    LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
-    ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES.  INTEL DOES NOT
-    PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS.  INTEL SPECIFICALLY
-    DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
-    PARTICULAR PURPOSE, OR ANY OTHER WARRANTY.  Intel disclaims all liability,
-    including liability for infringement of any proprietary rights, relating to
-    use of the code. No license, express or implied, by estoppel or otherwise,
-    to any intellectual property rights is granted herein.
-
-  \file options_compile.cpp
-
-\*****************************************************************************/
-
-#include "opencl_clang.h"
-#include "options.h"
+#include "opencl-clang/OpenCLClang.h"
+#include "Options.h"
 
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
@@ -31,13 +29,13 @@ Copyright (c) Intel Corporation (2009-2017).
 using namespace llvm::opt;
 
 #define OPTTABLE_CODE
-#include "opencl_clang_options.inc"
+#include "OpenCLClangOptions.inc"
 #undef OPTTABLE_CODE
 
 OpenCLCompileOptTable::OpenCLCompileOptTable()
     : OpenCLOptTable(optionTables()) {}
 
-std::atomic<int> EffectiveOptionsFilter::s_progID{1};
+std::atomic<int> EffectiveOptionsFilter::ProgID{1};
 
 // This code was adopted from the SPIRV-LLVM-Translator repository.
 static int parseSPVExtOption(
@@ -118,7 +116,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   bool isCpp = false;
   bool fp64Enabled = false;
   std::string szTriple;
-  std::string sourceName(llvm::Twine(s_progID++).str());
+  std::string sourceName(llvm::Twine(ProgID++).str());
 
   for (OpenCLArgList::const_iterator it = args.begin(), ie = args.end();
        it != ie; ++it) {
@@ -249,7 +247,7 @@ std::string EffectiveOptionsFilter::processOptions(const OpenCLArgList &args,
   }
 
   effectiveArgs.push_back("-D");
-  effectiveArgs.push_back("__OPENCL_VERSION__=" + m_opencl_ver);
+  effectiveArgs.push_back("__OPENCL_VERSION__=" + OpenCLVer);
   effectiveArgs.push_back("-x");
   effectiveArgs.push_back("cl");
 
@@ -447,40 +445,40 @@ int CompileOptionsParser::processOptions(const char *pszOptions,
   // parse options
   unsigned missingArgIndex, missingArgCount;
   std::unique_ptr<OpenCLArgList> pArgs(
-      m_optTbl.ParseArgs(pszOptions, missingArgIndex, missingArgCount));
+      OptTbl.parseArgs(pszOptions, missingArgIndex, missingArgCount));
 
   // -cl-std= only accepts the fixed set of values defined in
-  // opencl_clang_options.td to avoid masking a user error.
+  // OpenCLClangOptions.td to avoid masking a user error.
   std::string unknownArgs = pArgs->getFilteredArgs(OPT_COMPILE_UNKNOWN);
   if (unknownArgs.find("-cl-std=") != std::string::npos)
     return -1;
 
   // post process logic
-  m_sourceName =
-      m_commonFilter.processOptions(*pArgs, pszOptionsEx, m_effectiveArgs);
+  SourceName =
+      CommonFilter.processOptions(*pArgs, pszOptionsEx, EffectiveArgs);
 
   // build the raw options array
-  for (ArgsVector::iterator it = m_effectiveArgs.begin(),
-                            end = m_effectiveArgs.end();
+  for (ArgsVector::iterator it = EffectiveArgs.begin(),
+                            end = EffectiveArgs.end();
        it != end; ++it) {
     llvm::StringRef arg(*it);
     (void)arg.consume_front("-");
     // support -- prefix as well.
     (void)arg.consume_front("-");
     if (arg == "cl-opt-disable") {
-      m_optDisable = true;
+      OptDisable = true;
     } else if (arg == "emit-spirv") {
-      m_emitSPIRV = true;
+      EmitSPIRV = true;
       continue;
     } else if (arg.consume_front("spirv-ext=")) {
-      m_hasSPIRVExt = true;
-      // m_SPIRVExtStatusMap will be initialized and updated according to `arg`.
-      int ret = parseSPVExtOption(arg, m_SPIRVExtStatusMap);
+      HasSPIRVExt = true;
+      // SPIRVExtStatusMap will be initialized and updated according to `arg`.
+      int ret = parseSPVExtOption(arg, SPIRVExtStatusMap);
       if (0 != ret)
         return ret;
       continue;
     }
-    m_effectiveArgsRaw.push_back(it->c_str());
+    EffectiveArgsRaw.push_back(it->c_str());
   }
   return 0;
 }
@@ -491,7 +489,7 @@ bool CompileOptionsParser::checkOptions(const char *pszOptions,
   // Parse the arguments.
   unsigned missingArgIndex, missingArgCount;
   std::unique_ptr<OpenCLArgList> pArgs(
-      m_optTbl.ParseArgs(pszOptions, missingArgIndex, missingArgCount));
+      OptTbl.parseArgs(pszOptions, missingArgIndex, missingArgCount));
 
   // Check for missing argument error.
   if (missingArgCount) {

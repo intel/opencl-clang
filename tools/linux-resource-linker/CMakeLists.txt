@@ -1,4 +1,4 @@
-add_executable(linux_resource_linker linux_resource_linker.cpp)
+add_executable(linux_resource_linker LinuxResourceLinker.cpp)
 
 if(LLVM_USE_HOST_TOOLS)
   build_native_tool(linux_resource_linker LINUX_RESOURCE_LINKER_COMMAND)

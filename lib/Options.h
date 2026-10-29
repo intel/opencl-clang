@@ -1,25 +1,21 @@
-/*****************************************************************************\
+//===--- Options.h - OpenCL compile/link option parsing ----------*- C++ -*-===//
+//
+// Copyright (c) Intel Corporation (2009-2017).
+//
+// INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE. THIS CODE IS
+// LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
+// ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES. INTEL DOES NOT
+// PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS. INTEL SPECIFICALLY
+// DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
+// PARTICULAR PURPOSE, OR ANY OTHER WARRANTY. Intel disclaims all liability,
+// including liability for infringement of any proprietary rights, relating to
+// use of the code. No license, express or implied, by estoppel or otherwise,
+// to any intellectual property rights is granted herein.
+//
+//===----------------------------------------------------------------------===//
 
-Copyright (c) Intel Corporation (2009-2017).
-
-    INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE.  THIS CODE IS
-    LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
-    ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES.  INTEL DOES NOT
-    PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS.  INTEL SPECIFICALLY
-    DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
-    PARTICULAR PURPOSE, OR ANY OTHER WARRANTY.  Intel disclaims all liability,
-    including liability for infringement of any proprietary rights, relating to
-    use of the code. No license, express or implied, by estoppel or otherwise,
-    to any intellectual property rights is granted herein.
-
-  \file opencl_clang.h
-
-  \brief Defines the common structures for both compile and link options parsing
-
-\*****************************************************************************/
-
-#ifndef OPENCL_CLANG_OPTIONS_H
-#define OPENCL_CLANG_OPTIONS_H
+#ifndef OPENCL_CLANG_LIB_OPTIONS_H
+#define OPENCL_CLANG_LIB_OPTIONS_H
 
 #include "llvm/Option/Arg.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -45,7 +41,7 @@ enum COMPILE_OPT_ID {
                VISIBILITY, PARAM, HELPTEXT, HELPTEXTSFORVARIANTS, METAVAR,     \
                VALUES, SUBCOMMANDIDS_OFFSET)                                   \
   OPT_COMPILE_##ID,
-#include "opencl_clang_options.inc"
+#include "OpenCLClangOptions.inc"
   OPT_COMPILE_LAST_OPTION
 #undef OPTION
 #undef PREFIX
@@ -64,19 +60,19 @@ public:
   OpenCLArgList(const char *pszOptions);
 
   const char *getArgString(unsigned index) const override {
-    return m_argStrings[index];
+    return ArgStrings[index];
   }
 
   unsigned getNumInputArgStrings() const override {
-    return m_uiOriginalArgsCount;
+    return OriginalArgsCount;
   }
 
   std::string getFilteredArgs(int id) const;
 
 public:
-  /// MakeIndex - Get an index for the given string(s).
-  unsigned MakeIndex(llvm::StringRef str) const;
-  unsigned MakeIndex(llvm::StringRef str0, llvm::StringRef str1) const;
+  /// makeIndex - Get an index for the given string(s).
+  unsigned makeIndex(llvm::StringRef str) const;
+  unsigned makeIndex(llvm::StringRef str0, llvm::StringRef str1) const;
 
   const char *MakeArgStringRef(llvm::StringRef str) const override;
 
@@ -87,18 +83,18 @@ private:
   ///
   /// This is mutable since we treat the ArgList as being the list
   /// of Args, and allow routines to add new strings (to have a
-  /// convenient place to store the memory) via MakeIndex.
-  mutable llvm::opt::ArgStringList m_argStrings;
+  /// convenient place to store the memory) via makeIndex.
+  mutable llvm::opt::ArgStringList ArgStrings;
 
   /// Strings for synthesized arguments.
   ///
   /// This is mutable since we treat the ArgList as being the list
   /// of Args, and allow routines to add new strings (to have a
-  /// convenient place to store the memory) via MakeIndex.
-  mutable std::list<std::string> m_synthesizedStrings;
+  /// convenient place to store the memory) via makeIndex.
+  mutable std::list<std::string> SynthesizedStrings;
 
   /// The number of original input argument strings.
-  unsigned m_uiOriginalArgsCount;
+  unsigned OriginalArgsCount;
 };
 
 //
@@ -109,12 +105,12 @@ public:
   OpenCLOptTable(const llvm::opt::OptTable::Tables &pOptionTables)
       : llvm::opt::OptTable(pOptionTables) {}
 
-  OpenCLArgList *ParseArgs(const char *szOptions, unsigned &missingArgIndex,
+  OpenCLArgList *parseArgs(const char *szOptions, unsigned &missingArgIndex,
                            unsigned &missingArgCount) const;
 
 private:
   /// Synthesized arguments - owned to avoid memory leaks.
-  mutable std::vector<std::unique_ptr<llvm::opt::Arg>> m_synthesizedArgs;
+  mutable std::vector<std::unique_ptr<llvm::opt::Arg>> SynthesizedArgs;
 };
 
 // OpenCL OptTable for compile options
@@ -135,7 +131,7 @@ public:
 class EffectiveOptionsFilter {
 public:
   EffectiveOptionsFilter(const char *pszOpenCLVer)
-      : m_opencl_ver(pszOpenCLVer) {
+      : OpenCLVer(pszOpenCLVer) {
     assert(pszOpenCLVer != NULL);
   }
 
@@ -144,8 +140,8 @@ public:
                              ArgsVector &effectiveArgs);
 
 private:
-  std::string m_opencl_ver;
-  static std::atomic<int> s_progID;
+  std::string OpenCLVer;
+  static std::atomic<int> ProgID;
 };
 
 ///
@@ -154,7 +150,7 @@ private:
 class CompileOptionsParser {
 public:
   CompileOptionsParser(const char *pszOpenCLVersion)
-      : m_commonFilter(pszOpenCLVersion), m_emitSPIRV(false), m_optDisable(false) {}
+      : CommonFilter(pszOpenCLVersion), EmitSPIRV(false), OptDisable(false) {}
 
   //
   // Validates and prepares the effective options to pass to clang upon
@@ -171,40 +167,40 @@ public:
   //
   // Returns the calculated source name for the input source
   //
-  std::string getSourceName() const { return m_sourceName; }
+  std::string getSourceName() const { return SourceName; }
 
-  const char *const *beginArgs() const { return m_effectiveArgsRaw.data(); }
+  const char *const *beginArgs() const { return EffectiveArgsRaw.data(); }
 
   const char *const *endArgs() const {
-    return beginArgs() + m_effectiveArgsRaw.size();
+    return beginArgs() + EffectiveArgsRaw.size();
   }
 
   llvm::ArrayRef<const char *> args() {
-    return m_effectiveArgsRaw;
+    return EffectiveArgsRaw;
   }
 
   std::string getEffectiveOptionsAsString() const;
 
-  bool hasEmitSPIRV() const { return m_emitSPIRV; }
+  bool hasEmitSPIRV() const { return EmitSPIRV; }
 
-  bool hasSPIRVExt() const { return m_hasSPIRVExt; }
+  bool hasSPIRVExt() const { return HasSPIRVExt; }
 
   SPIRV::TranslatorOpts::ExtensionsStatusMap getSPIRVExtStatusMap() const {
-    return m_SPIRVExtStatusMap;
+    return SPIRVExtStatusMap;
   }
 
-  bool hasOptDisable() const { return m_optDisable; }
+  bool hasOptDisable() const { return OptDisable; }
 
 private:
-  OpenCLCompileOptTable m_optTbl;
-  EffectiveOptionsFilter m_commonFilter;
-  ArgsVector m_effectiveArgs;
-  llvm::SmallVector<const char *, 16> m_effectiveArgsRaw;
-  std::string m_sourceName;
-  bool m_emitSPIRV;
-  bool m_hasSPIRVExt = false;
-  SPIRV::TranslatorOpts::ExtensionsStatusMap m_SPIRVExtStatusMap = {};
-  bool m_optDisable;
+  OpenCLCompileOptTable OptTbl;
+  EffectiveOptionsFilter CommonFilter;
+  ArgsVector EffectiveArgs;
+  llvm::SmallVector<const char *, 16> EffectiveArgsRaw;
+  std::string SourceName;
+  bool EmitSPIRV;
+  bool HasSPIRVExt = false;
+  SPIRV::TranslatorOpts::ExtensionsStatusMap SPIRVExtStatusMap = {};
+  bool OptDisable;
 };
 
 // Tokenize a string into tokens separated by any char in 'delims'.
@@ -272,4 +268,4 @@ void quoted_tokenize(OutIt dest, llvm::StringRef str, llvm::StringRef delims,
   }
 }
 
-#endif
+#endif // OPENCL_CLANG_LIB_OPTIONS_H

@@ -1,6 +1,6 @@
 set(OCC_CLI_TARGET_NAME occ-cli)
 
-include_directories("${OPENCL_CLANG_SOURCE_DIR}")
+include_directories("${OPENCL_CLANG_SOURCE_DIR}/include")
 link_directories("${LLVM_LIBRARY_DIRS}")
 
 add_executable(${OCC_CLI_TARGET_NAME}
