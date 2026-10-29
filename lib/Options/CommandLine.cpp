@@ -14,7 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CommandLine.h"
+#include "opencl-clang/Options/CommandLine.h"
 
 #include "llvm/ADT/SmallString.h"
 
