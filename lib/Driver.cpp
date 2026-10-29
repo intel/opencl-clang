@@ -14,11 +14,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "BinaryResult.h"
-#include "Bitcode.h"
-#include "Frontend.h"
-#include "Options/OptionParser.h"
-#include "SPIRV.h"
+#include "opencl-clang/BinaryResult.h"
+#include "opencl-clang/Bitcode.h"
+#include "opencl-clang/Frontend.h"
+#include "opencl-clang/Options/OptionParser.h"
+#include "opencl-clang/SPIRV.h"
 
 #include "opencl-clang/OpenCLClang.h"
 
