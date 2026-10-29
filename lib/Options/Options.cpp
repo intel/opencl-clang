@@ -14,7 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Options.h"
+#include "opencl-clang/Options/Options.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Config/llvm-config.h"

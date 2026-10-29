@@ -1,4 +1,4 @@
-//===--- Action.h - Base class for the frontend wrapper actions -*- C++ -*-===//
+//===--- Bitcode.h - LLVM bitcode writer interface --------------*- C++ -*-===//
 //
 // Copyright (c) Intel Corporation (2026).
 //
@@ -14,31 +14,28 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_ACTION_H
-#define OPENCL_CLANG_LIB_ACTION_H
+#ifndef OPENCL_CLANG_BITCODE_H
+#define OPENCL_CLANG_BITCODE_H
 
-#include "llvm/Support/Error.h"
+#include "opencl-clang/Action.h"
 
-template <typename ActionImpl, typename InputT, typename OutputT> class Action {
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Module.h"
+
+#include <memory>
+
+class BCWriterAction
+    : public Action<BCWriterAction, std::unique_ptr<llvm::Module>,
+                    llvm::SmallVector<char>> {
+  using Base = Action<BCWriterAction, std::unique_ptr<llvm::Module>,
+                      llvm::SmallVector<char>>;
+
 public:
-  using InputType = InputT;
-  using OutputType = OutputT;
+  BCWriterAction() = default;
 
-  llvm::Expected<OutputType> run(llvm::Expected<InputType> &&Input) {
-    if (!Input)
-      return Input.takeError();
-    return static_cast<ActionImpl *>(this)->runImpl(std::move(*Input));
-  }
-
-  Action(const Action &) = delete;
-  Action(Action &&) = delete;
-  Action &operator=(const Action &) = delete;
-  Action &operator=(Action &&) = delete;
-
-  virtual ~Action() = default;
-
-protected:
-  Action() = default;
+private:
+  friend Base;
+  llvm::Expected<OutputType> runImpl(InputType &&Input);
 };
 
-#endif // OPENCL_CLANG_LIB_ACTION_H
+#endif // OPENCL_CLANG_BITCODE_H

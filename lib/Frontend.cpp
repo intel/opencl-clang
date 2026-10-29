@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Frontend.h"
-#include "BuiltInHeaders.h"
+#include "opencl-clang/Frontend.h"
+#include "opencl-clang/BuiltInHeaders.h"
 
 #include "clang/CodeGen/CodeGenAction.h"
 #include "clang/Frontend/CompilerInstance.h"

@@ -21,9 +21,8 @@ add_dependencies(opencl-clang-options opencl-clang-options-tablegen)
 target_compile_definitions(opencl-clang-options PRIVATE
   OPENCL_CLANG_NATIVE_TRIPLE="${OPENCL_CLANG_NATIVE_TRIPLE}")
 target_include_directories(opencl-clang-options
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..
-  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
-  INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+  PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(opencl-clang-options PROPERTIES
   POSITION_INDEPENDENT_CODE ON)
 

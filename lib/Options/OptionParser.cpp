@@ -14,10 +14,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "OptionParser.h"
-#include "BuiltInHeaders.h"
-#include "CommandLine.h"
-#include "Options.h"
+#include "opencl-clang/Options/OptionParser.h"
+#include "opencl-clang/BuiltInHeaders.h"
+#include "opencl-clang/Options/CommandLine.h"
+#include "opencl-clang/Options/Options.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"

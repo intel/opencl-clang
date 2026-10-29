@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_OPTIONS_OPTIONPARSER_H
-#define OPENCL_CLANG_LIB_OPTIONS_OPTIONPARSER_H
+#ifndef OPENCL_CLANG_OPTIONS_OPTIONPARSER_H
+#define OPENCL_CLANG_OPTIONS_OPTIONPARSER_H
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallString.h"
@@ -84,4 +84,4 @@ private:
   bool HasSPIRVExt = false;
 };
 
-#endif // OPENCL_CLANG_LIB_OPTIONS_OPTIONPARSER_H
+#endif // OPENCL_CLANG_OPTIONS_OPTIONPARSER_H

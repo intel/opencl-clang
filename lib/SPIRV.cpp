@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "SPIRV.h"
-#include "SmallVectorStream.h"
+#include "opencl-clang/SPIRV.h"
+#include "opencl-clang/SmallVectorStream.h"
 
 #ifdef USE_PREBUILT_LLVM
 #include "LLVMSPIRVLib/LLVMSPIRVLib.h"

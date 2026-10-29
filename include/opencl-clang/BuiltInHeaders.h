@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPENCL_CLANG_LIB_HEADERS_BUILTIN_H
-#define OPENCL_CLANG_LIB_HEADERS_BUILTIN_H
+#ifndef OPENCL_CLANG_BUILTIN_HEADERS_H
+#define OPENCL_CLANG_BUILTIN_HEADERS_H
 
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/Support/VirtualFileSystem.h"
@@ -55,4 +55,4 @@ private:
   createOpenCLHeadersFS() const;
 };
 
-#endif // OPENCL_CLANG_LIB_HEADERS_BUILTIN_H
+#endif // OPENCL_CLANG_BUILTIN_HEADERS_H

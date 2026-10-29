@@ -5,16 +5,14 @@ add_subdirectory(Headers)
 # Source code
 #
 set(TARGET_INCLUDE_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/OpenCLClang.h
-
-  Action.h
-  Bitcode.h
-  BuiltInHeaders.h
-  Frontend.h
-  SPIRV.h
-  SmallVectorStream.h
-
-  BinaryResult.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../interface/opencl-clang/OpenCLClang.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/Action.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/BinaryResult.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/Bitcode.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/BuiltInHeaders.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/Frontend.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/SmallVectorStream.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/SPIRV.h
 )
 
 set(TARGET_SOURCE_FILES
@@ -59,6 +57,7 @@ endif(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
 
 include_directories( AFTER
             ${LLVM_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/../interface
             ${CMAKE_CURRENT_SOURCE_DIR}/../include
             ${CMAKE_CURRENT_BINARY_DIR}
             ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}
@@ -173,12 +172,12 @@ elseif(UNIX)
     endif()
 endif(WIN32)
 
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/OpenCLClang.h
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../interface/opencl-clang/OpenCLClang.h
         DESTINATION include/opencl-clang
         COMPONENT ${TARGET_NAME})
 
 # Install backward-compatibility forwarding header
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/opencl-clang/OpenCLClang.h
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../interface/opencl-clang/OpenCLClang.h
         DESTINATION include/cclang
         RENAME opencl_clang.h
         COMPONENT ${TARGET_NAME})
