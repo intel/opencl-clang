@@ -208,7 +208,7 @@ if(USE_PREBUILT_LLVM)
 else(USE_PREBUILT_LLVM)
   set(TABLEGEN_ADDITIONAL "")
 endif(USE_PREBUILT_LLVM)
-tablegen(LLVM ${COMPILE_OPTIONS_INC} -gen-opt-parser-defs ${TABLEGEN_ADDITIONAL})
+llvm_tablegen(${COMPILE_OPTIONS_INC} -gen-opt-parser-defs ${TABLEGEN_ADDITIONAL})
 add_public_tablegen_target(CClangCompileOptions)
 
 #
