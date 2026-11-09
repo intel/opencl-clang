@@ -51,23 +51,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
       ${CMAKE_MODULE_PATH}
       ${LLVM_CMAKE_DIR})
 
-    # A prebuilt clang may predate the CL3.1 patches carried in patches/clang
-    # (only applied when building clang from source, see below). Probe it so
-    # we don't try to generate a PCM with a -cl-std value the compiler rejects.
-    find_program(OPENCL_CLANG_PROBE_CLANG clang PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH REQUIRED)
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cl31_check.cl" "")
-    execute_process(
-        COMMAND ${OPENCL_CLANG_PROBE_CLANG} -cl-std=CL3.1 -x cl -fsyntax-only "${CMAKE_CURRENT_BINARY_DIR}/cl31_check.cl"
-        RESULT_VARIABLE CLANG_CL31_CHECK_RESULT
-        OUTPUT_QUIET
-        ERROR_QUIET
-    )
-    if(CLANG_CL31_CHECK_RESULT EQUAL 0)
-        set(CLANG_SUPPORTS_CL31 TRUE)
-    else()
-        set(CLANG_SUPPORTS_CL31 FALSE)
-        message(STATUS "[OPENCL-CLANG] ${OPENCL_CLANG_PROBE_CLANG} does not support -cl-std=CL3.1; skipping OpenCL 3.1 PCM generation")
-    endif()
+    # The resource embedder script requires Python 3. In-tree builds get it from
+    # the LLVM build configuration.
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -85,19 +71,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif(LLVMSPIRV_INCLUDED_IN_LLVM)
 else(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(USE_PREBUILT_LLVM OFF)
-    set(CLANG_SUPPORTS_CL31 TRUE)
     find_package(Git REQUIRED)
 endif(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-
-if(NOT CLANG_SUPPORTS_CL31)
-  add_definitions(-DOPENCL_CLANG_NO_CL31_PCM)
-endif()
 
 include(AddLLVM)
 include(TableGen)
 
-if (NOT WIN32)
-    add_subdirectory( linux_linker bin)
+# LLVM 15 and older build with C++14 by default, opencl-clang requires C++17.
+if(NOT CMAKE_CXX_STANDARD OR CMAKE_CXX_STANDARD LESS 17)
+    set(CMAKE_CXX_STANDARD 17)
 endif()
 
 use_rtti(FALSE)
@@ -115,6 +97,13 @@ else ()
   endif()
 endif (CMAKE_SIZEOF_VOID_P EQUAL 4)
 
+# Native SPIR triple -- derived from host pointer size.
+if(ADDR EQUAL 64)
+  set(OPENCL_CLANG_NATIVE_TRIPLE "spir64-unknown-unknown")
+else()
+  set(OPENCL_CLANG_NATIVE_TRIPLE "spir-unknown-unknown")
+endif()
+
 # set windows binary suffix
 if (WIN32)
     set (BUILD_PLATFORM ${ADDR})
@@ -124,16 +113,15 @@ endif (WIN32)
 
 # set that name of the main output file as a target name
 if (NOT DEFINED OPENCL_CLANG_LIBRARY_NAME)
-    set(OPENCL_CLANG_LIBRARY_NAME "opencl-clang")
+    # COMMON_CLANG_LIBRARY_NAME is the name of the variable used by the
+    # opencl-clang branches for LLVM 15 and older.
+    if (DEFINED COMMON_CLANG_LIBRARY_NAME)
+        set(OPENCL_CLANG_LIBRARY_NAME ${COMMON_CLANG_LIBRARY_NAME})
+    else()
+        set(OPENCL_CLANG_LIBRARY_NAME "opencl-clang")
+    endif()
 endif()
 set(TARGET_NAME ${OPENCL_CLANG_LIBRARY_NAME}${BUILD_PLATFORM} )
-
-# OPENCL_CLANG_PCH_EXTENSION can override PCH extension map in options_compile.cpp.
-# Example: "cl_khr_3d_image_writes,cl_khr_depth_images"
-set(OPENCL_CLANG_PCH_EXTENSION "" CACHE STRING "Comma-separated list of OpenCL extensions")
-if (NOT "${OPENCL_CLANG_PCH_EXTENSION}" STREQUAL "")
-  add_definitions(-DPCH_EXTENSION="${OPENCL_CLANG_PCH_EXTENSION}")
-endif()
 
 if(NOT USE_PREBUILT_LLVM)
 
@@ -195,213 +183,14 @@ if(NOT USE_PREBUILT_LLVM)
                   ${TARGET_BRANCH})
 endif(NOT USE_PREBUILT_LLVM)
 
-#
-# TblGen the options include file
-#
-set (COMPILE_OPTIONS_TD  opencl_clang_options.td)
-set (COMPILE_OPTIONS_INC opencl_clang_options.inc)
-
-find_program(LLVM_TABLEGEN_EXE "llvm-tblgen" ${LLVM_TOOLS_BINARY_DIR})
-set(LLVM_TARGET_DEFINITIONS ${COMPILE_OPTIONS_TD})
-if(USE_PREBUILT_LLVM)
-  set(TABLEGEN_ADDITIONAL -I ${LLVM_INCLUDE_DIRS})
-else(USE_PREBUILT_LLVM)
-  set(TABLEGEN_ADDITIONAL "")
-endif(USE_PREBUILT_LLVM)
-llvm_tablegen(${COMPILE_OPTIONS_INC} -gen-opt-parser-defs ${TABLEGEN_ADDITIONAL})
-add_public_tablegen_target(CClangCompileOptions)
-
-#
-# Source code
-#
-set(TARGET_INCLUDE_FILES
-    opencl_clang.h
-    options.h
-    binary_result.h
-    pch_mgr.h
-    ${COMPILE_OPTIONS_TD}
-    ${COMPILE_OPTIONS_INC}
-)
-
-set(TARGET_SOURCE_FILES
-    opencl_clang.cpp
-    options.cpp
-    pch_mgr.cpp
-    options_compile.cpp
-)
-
-#
-# Resources
-#
-
-set( PRODUCT_VER_MAJOR 2 )
-set( PRODUCT_VER_MINOR 0 )
-set (LLVM_VER_MAJOR ${LLVM_VERSION_MAJOR} )
-set (LLVM_VER_MINOR ${LLVM_VERSION_MINOR} )
-
-add_definitions( -D__STDC_LIMIT_MACROS )
-add_definitions( -D__STDC_CONSTANT_MACROS )
-add_definitions( -DOPENCL_CLANG_EXPORTS )
-
-#
-# Include directories
-#
-
-if(NOT USE_PREBUILT_LLVM)
-    set(CLANG_BINARY_DIR ${LLVM_BINARY_DIR}/tools/clang/)
-    include_directories(
-        ${CLANG_BINARY_DIR}/include  # for tablegened includes
-        ${CLANG_SOURCE_DIR}/include) # for basic headers
-    # SPIRV headers are picked up transitively via the LLVMSPIRVLib target.
-endif(NOT USE_PREBUILT_LLVM)
-
-if(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
-    include_directories(${SPIRV_TRANSLATOR_DIR}/include)
-    link_directories(${SPIRV_TRANSLATOR_DIR}/lib${LLVM_LIBDIR_SUFFIX})
-endif(USE_PREBUILT_LLVM AND NOT LLVMSPIRV_INCLUDED_IN_LLVM)
-
-include_directories( AFTER
-            ${LLVM_INCLUDE_DIRS}
-            ${CMAKE_CURRENT_BINARY_DIR}
-            ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}
-            )
-
-link_directories(
-    ${LLVM_LIBRARY_DIRS}
-)
-
-set(OPENCL_CLANG_LINK_LIBS ${CMAKE_DL_LIBS})
-
-if(NOT LLVMSPIRVLib IN_LIST LLVM_AVAILABLE_LIBS OR (USE_PREBUILT_LLVM AND LLVM_LINK_LLVM_DYLIB))
-  # SPIRV-LLVM-Translator is not included into LLVM as a component.
-  # So, we need to list it here explicitly as an external library
-  list(APPEND OPENCL_CLANG_LINK_LIBS LLVMSPIRVLib)
-endif()
-
-add_subdirectory(cl_headers)
-
-set(LLVM_REQUIRES_EH ON)
-
-if(USE_PREBUILT_LLVM OR CLANG_LINK_CLANG_DYLIB)
-  list(APPEND OPENCL_CLANG_LINK_LIBS clang-cpp)
-else()
-  list(APPEND OPENCL_CLANG_LINK_LIBS
-    clangBasic
-    clangFrontend
-    clangFrontendTool
-    clangSerialization
-  )
-endif()
-
-if(USE_PREBUILT_LLVM AND UNIX)
-  # llvm_map_components_to_libnames(... all) returns empty string if llvm is
-  # pre-built locally in either static or shared type in Ubuntu 22.04 container.
-  find_program(LLVM_CONFIG_EXE
-    NAMES llvm-config-${PREFERRED_LLVM_VERSION} llvm-config
-    PATHS ${LLVM_BINARY_DIR} ${LLVM_BINARY_DIR}/bin)
-  if(NOT LLVM_CONFIG_EXE)
-    message(FATAL_ERROR "[OPENCL-CLANG] llvm-config is not found")
-  endif()
-
-  execute_process(COMMAND ${LLVM_CONFIG_EXE} --libs all OUTPUT_VARIABLE ALL_LIBS)
-  string(REGEX REPLACE "( |\r|\n|-l)+" ";" ALL_LLVM_LIBS ${ALL_LIBS})
-  set(ALL_LLVM_LIBS "LLVMSPIRVLib${ALL_LLVM_LIBS}")
-else()
-  llvm_map_components_to_libnames(ALL_LLVM_LIBS all)
-endif()
-set(OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL "" CACHE STRING "Space-separated list of LLVM libraries to exclude from all")
-if (NOT "${OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL}" STREQUAL "")
-  list(REMOVE_ITEM ALL_LLVM_LIBS ${OPENCL_CLANG_EXCLUDE_LIBS_FROM_ALL})
-endif()
-list(APPEND OPENCL_CLANG_LINK_LIBS ${ALL_LLVM_LIBS})
-
-add_llvm_library(${TARGET_NAME} SHARED
-  ${TARGET_INCLUDE_FILES}
-  ${TARGET_SOURCE_FILES}
-  $<TARGET_OBJECTS:cl_headers>
-
-  DEPENDS CClangCompileOptions
-
-  LINK_LIBS
-    ${OPENCL_CLANG_LINK_LIBS}
-  )
-
-if (WIN32)
-    # Configure version resource file on Windows.
-    # windows_resource_file should be defined by add_llvm_library and should
-    # contain the full path to a .rc file.
-    # It also might not be defined if this library is built out-of-tree:
-    # let's use our copy of the .rc file from the LLVM source tree in that case.
-    if (NOT DEFINED windows_resource_file)
-        set(windows_resource_file windows_resource_file.rc)
-    endif(NOT DEFINED windows_resource_file)
-
-    set(RC_CHAR_TM "\\231")
-    set(RC_CHAR_R "\\256")
-
-    set(RC_FILE_VERSION "${PRODUCT_VER_MAJOR}.${PRODUCT_VER_MINOR}.${LLVM_VER_MAJOR}.${LLVM_VER_MINOR}")
-    set(RC_PRODUCT_NAME "Intel${RC_CHAR_R} Front-end Library for OpenCL${RC_CHAR_TM} software")
-
-    # Adjust content of the resource file by specifying compile definitions
-    set_property(SOURCE ${windows_resource_file}
-        PROPERTY COMPILE_DEFINITIONS
-            "RC_VERSION_FIELD_1=${PRODUCT_VER_MAJOR}"
-            "RC_VERSION_FIELD_2=${PRODUCT_VER_MINOR}"
-            "RC_VERSION_FIELD_3=${LLVM_VER_MAJOR}"
-            "RC_VERSION_FIELD_4=${LLVM_VER_MINOR}"
-            "RC_COMPANY_NAME=\"Intel Corporation\""
-            "RC_FILE_DESCRIPTION=\"${RC_PRODUCT_NAME}\""
-            "RC_FILE_VERSION=\"${RC_FILE_VERSION}\""
-            "RC_INTERNAL_NAME=\"${TARGET_NAME}\""
-            "RC_ORIGINAL_FILENAME=\"${TARGET_NAME}.dll\""
-            "RC_PRODUCT_NAME=\"${RC_PRODUCT_NAME}\""
-            "RC_PRODUCT_VERSION=\"${RC_FILE_VERSION}\""
-            "RC_COPYRIGHT=\"Copyright (C) 2018 Intel Corporation\"")
-
-    # Enable compiler generation of Control Flow Guard security checks.
-    target_compile_options(${TARGET_NAME} PUBLIC "/guard:cf")
-    set_property(TARGET ${TARGET_NAME} APPEND PROPERTY
-        LINK_OPTIONS "LINKER:/DYNAMICBASE" "LINKER:/GUARD:CF")
-
-elseif(UNIX)
-    set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-        COMPILE_DEFINITIONS LIBOPENCL_CLANG_NAME="$<TARGET_SONAME_FILE_NAME:${TARGET_NAME}>")
-    
-    # Sanitizers do not support this flag, disable this when under sanitizer build
-    if(NOT LLVM_USE_SANITIZER)
-        set_property(TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-            LINK_FLAGS " -Wl,--no-undefined")
-    endif()
-endif(WIN32)
-
-install(FILES opencl_clang.h
-        DESTINATION include/cclang
-        COMPONENT ${TARGET_NAME})
-
-#
-# Stripped PDB files
-#
-if (WIN32)
-    get_target_property(RT_OUTPUT_DIRECTORY ${TARGET_NAME} RUNTIME_OUTPUT_DIRECTORY)
-    file(TO_NATIVE_PATH ${RT_OUTPUT_DIRECTORY}/${CMAKE_CFG_INTDIR}/${TARGET_NAME}_stripped.pdb PDB_NAME)
-    if (${MSVC_VERSION} EQUAL 1500)
-        # Visual Studio 2008
-        set_property(TARGET ${TARGET_NAME} APPEND PROPERTY LINK_OPTIONS "LINKER:/PDBSTRIPPED:${PDB_NAME}")
-    else (${MSVC_VERSION} EQUAL 1500)
-        # Visual Studio 2010 (assumed if not Visual Studio 2008)
-        # This is a fix due to a bug in CMake, Does not add the flag /DEBUG to the linker flags in Release mode.
-        # The /DEBUG flag is required in order to create stripped pdbs.
-        set_property(TARGET ${TARGET_NAME} APPEND PROPERTY LINK_OPTIONS $<$<CONFIG:Release>:LINKER:/DEBUG> "$<$<CONFIG:Debug,Release>:LINKER:/PDBSTRIPPED:${PDB_NAME}>")
-    endif (${MSVC_VERSION} EQUAL 1500)
-    if (INSTALL_PDBS)
-        install(FILES ${RT_OUTPUT_DIRECTORY}/\${BUILD_TYPE}/${TARGET_NAME}.pdb DESTINATION bin)
-    endif(INSTALL_PDBS)
-    install(FILES ${RT_OUTPUT_DIRECTORY}/\${BUILD_TYPE}/${TARGET_NAME}_stripped.pdb DESTINATION bin)
-else (WIN32)
-    SET_LINUX_EXPORTS_FILE( ${TARGET_NAME} opencl_clang.map )
-endif(WIN32)
+add_subdirectory(utils)
+add_subdirectory(lib)
 
 if(LLVM_INCLUDE_TESTS)
   set(OPENCL_CLANG_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+  # The build directory corresponding to this project, used by the lit Unit
+  # test suite to locate the compiled unit test binaries.
+  set(OPENCL_CLANG_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+  add_subdirectory(unittests)
   add_subdirectory(tests)
 endif()
