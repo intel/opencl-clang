@@ -204,8 +204,32 @@ function ( SET_LINUX_EXPORTS_FILE TARGET FILE_NAME )
     if(NOT WIN32)
         get_target_property( SOURCE_FILES ${TARGET_NAME} SOURCES )
         list( GET SOURCE_FILES 0 FIRST_SOURCE )
-        set_source_files_properties( ${FIRST_SOURCE} PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME} )
+        set_source_files_properties( ${FIRST_SOURCE} PROPERTIES OBJECT_DEPENDS ${FILE_NAME} )
         set_property( TARGET ${TARGET_NAME} APPEND_STRING PROPERTY
-                        LINK_FLAGS " -Wl,-Bsymbolic -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/${FILE_NAME}" )
+                        LINK_FLAGS " -Wl,-Bsymbolic -Wl,--version-script=${FILE_NAME}" )
     endif(NOT WIN32)
 endfunction ( SET_LINUX_EXPORTS_FILE )
+
+# Check if C compiler supports C23 #embed directive
+include(CheckCSourceCompiles)
+function(check_c23_embed_supported flag)
+  if (DEFINED CACHE{CLCLANG_HAVE_C23_EMBED})
+    set(${flag} ${CLCLANG_HAVE_C23_EMBED} PARENT_SCOPE)
+    return()
+  endif()
+
+  check_c_source_compiles("
+const unsigned char data[] = {
+#embed __FILE__ limit(10)
+};
+int main(void) { return 0; }
+" CLCLANG_HAVE_C23_EMBED)
+
+  if (CLCLANG_HAVE_C23_EMBED)
+    message(STATUS "C23 #embed directive is supported")
+  else()
+    message(STATUS "C23 #embed directive is not supported")
+  endif()
+  set(CLCLANG_HAVE_C23_EMBED ${CLCLANG_HAVE_C23_EMBED} CACHE INTERNAL "Whether C23 #embed directive is supported")
+  set(${flag} ${CLCLANG_HAVE_C23_EMBED} PARENT_SCOPE)
+endfunction()
