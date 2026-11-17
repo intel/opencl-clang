@@ -13,6 +13,7 @@ set(OPENCL_CLANG_TEST_DEPENDS
   not
   occ-cli
   ${TARGET_NAME}
+  OpenCLClangUnitTests
 )
 
 configure_lit_site_cfg(
@@ -20,6 +21,13 @@ configure_lit_site_cfg(
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
   MAIN_CONFIG
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py
+)
+
+configure_lit_site_cfg(
+  ${CMAKE_CURRENT_SOURCE_DIR}/Unit/lit.site.cfg.py.in
+  ${CMAKE_CURRENT_BINARY_DIR}/Unit/lit.site.cfg.py
+  MAIN_CONFIG
+  ${CMAKE_CURRENT_SOURCE_DIR}/Unit/lit.cfg.py
 )
 
 add_lit_testsuite(check-opencl-clang "Running the OpenCL Clang regression tests"

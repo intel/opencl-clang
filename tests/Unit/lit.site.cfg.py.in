@@ -1,0 +1,9 @@
+@LIT_SITE_CFG_IN_HEADER@
+
+import os
+
+config.opencl_clang_obj_root = lit_config.substitute(path(r"@OPENCL_CLANG_BINARY_DIR@"))
+config.llvm_build_mode = lit_config.substitute("@LLVM_BUILD_MODE@")
+
+# Let the main config do the real work.
+lit_config.load_config(config, os.path.join(r"@CMAKE_CURRENT_SOURCE_DIR@", "Unit", "lit.cfg.py"))
