@@ -165,10 +165,15 @@ TEST(OptionParser, MathOptionsAreForwarded) {
   auto &Args = Parser.getCCArgs();
   for (StringRef Opt :
        {"-cl-single-precision-constant",
-        "-cl-fp32-correctly-rounded-divide-sqrt", "-cl-mad-enable",
-        "-cl-no-signed-zeros", "-cl-unsafe-math-optimizations",
+        "-cl-fp32-correctly-rounded-divide-sqrt", "-cl-no-signed-zeros", "-cl-unsafe-math-optimizations",
         "-cl-finite-math-only", "-cl-uniform-work-group-size"})
     EXPECT_TRUE(contains(Args, Opt)) << Opt.str();
+}
+
+TEST(OptionParser, MadEnableIsAcceptedButNotForwarded) {
+  OptionParser Parser("120");
+  ASSERT_TRUE(Parser.process("-cl-mad-enable", ""));
+  EXPECT_FALSE(contains(Parser.getCCArgs(), "-cl-mad-enable"));
 }
 
 TEST(OptionParser, DenormsAreZero) {
