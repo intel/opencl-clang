@@ -175,12 +175,14 @@ void OptionParser::handleOption(const opt::Arg *A,
   case OPT_W_Separate:
   case OPT_cl_single_precision_constant:
   case OPT_cl_fp32_correctly_rounded_divide_sqrt:
-  case OPT_cl_mad_enable:
   case OPT_cl_no_signed_zeros:
   case OPT_cl_uniform_work_group_size:
   case OPT_cl_unsafe_math_optimizations:
   case OPT_cl_finite_math_only:
     CCArgs.emplace_back(A->getAsString(ParsedArgs));
+    break;
+  case OPT_cl_mad_enable:
+    // Not forwarded: cc1 rejects it since llvm/llvm-project#244661.
     break;
   case OPT_Xclang:
     CCArgs.emplace_back("-Xclang");
