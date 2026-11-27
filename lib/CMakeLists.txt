@@ -86,6 +86,7 @@ if(USE_PREBUILT_LLVM OR CLANG_LINK_CLANG_DYLIB)
 else()
   list(APPEND OPENCL_CLANG_LINK_LIBS
     clangBasic
+    clangCodeGen
     clangFrontend
     clangFrontendTool
     clangSerialization
