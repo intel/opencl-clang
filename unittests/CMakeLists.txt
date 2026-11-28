@@ -29,11 +29,8 @@ set(OPENCL_CLANG_INTERNAL_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 function(add_opencl_clang_unittest test_name)
   cmake_parse_arguments(ARG "" "" "LINK_LIBS" ${ARGN})
 
-  # opencl-clang is built with exceptions (use_eh(TRUE) in the top-level
-  # CMakeLists.txt), but LLVM's precompiled headers are not. Tell LLVM, as
-  # lib/CMakeLists.txt does, so that add_unittest() uses the matching EH flags
-  # and does not reuse a PCH built with different ones (on MSVC the PCH has
-  # _HAS_EXCEPTIONS=0 and the command line _HAS_EXCEPTIONS=1).
+  # As in lib/CMakeLists.txt: use_eh(TRUE) builds the tests with exceptions,
+  # so they must not reuse LLVM's precompiled headers built without them.
   set(LLVM_REQUIRES_EH ON)
   add_unittest(OpenCLClangUnitTests ${test_name} ${ARG_UNPARSED_ARGUMENTS})
   target_include_directories(${test_name} PRIVATE
