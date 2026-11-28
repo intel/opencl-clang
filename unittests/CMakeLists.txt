@@ -29,6 +29,9 @@ set(OPENCL_CLANG_INTERNAL_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 function(add_opencl_clang_unittest test_name)
   cmake_parse_arguments(ARG "" "" "LINK_LIBS" ${ARGN})
 
+  # As in lib/CMakeLists.txt: use_eh(TRUE) builds the tests with exceptions,
+  # so they must not reuse LLVM's precompiled headers built without them.
+  set(LLVM_REQUIRES_EH ON)
   add_unittest(OpenCLClangUnitTests ${test_name} ${ARG_UNPARSED_ARGUMENTS})
   target_include_directories(${test_name} PRIVATE
     ${OPENCL_CLANG_INTERNAL_INCLUDE_DIR}
